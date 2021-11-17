@@ -17,7 +17,8 @@
       </template>
 
       <h2 class="textlabel flex items-center col-span-1 col-start-1">
-        Assignee<span v-if="create" class="text-red-600">*</span>
+        Assignee
+        <span v-if="create" class="text-red-600">*</span>
       </h2>
       <!-- Only DBA can be assigned to the issue -->
       <div class="col-span-2">
@@ -31,6 +32,22 @@
             }
           "
         />
+      </div>
+
+      <h2 class="textlabel flex items-center col-span-1 col-start-1">
+        <span class="w-14">Execute When Available</span>
+        <span v-if="create" class="text-red-600">*</span>
+      </h2>
+      <div class="col-span-2 flex items-center">
+        <NSwitch v-model:value="disabled" />
+      </div>
+
+      <h2 class="textlabel flex items-center col-span-1 col-start-1">
+        Date
+        <span v-if="create" class="text-red-600"> *</span>
+      </h2>
+      <div class="col-span-2">
+        <NDatePicker v-model:value="range" type="datetimerange" clearable />
       </div>
 
       <template v-for="(field, index) in inputFieldList" :key="index">
@@ -204,6 +221,7 @@ import IssueStatusIcon from "../components/IssueStatusIcon.vue";
 import IssueSubscriberPanel from "../components/IssueSubscriberPanel.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
 import { InputField } from "../plugins";
+import { NDatePicker, NSwitch } from "naive-ui";
 import {
   Database,
   Environment,
@@ -255,6 +273,8 @@ export default {
     },
   },
   components: {
+    NDatePicker,
+    NSwitch,
     DatabaseSelect,
     ProjectSelect,
     EnvironmentSelect,
