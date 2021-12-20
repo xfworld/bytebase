@@ -28,6 +28,35 @@
           @input="state.project.key = $event.target.value"
         />
       </div>
+      <div class="col-span-1">
+        <div for="name" class="text-lg leading-6 font-medium text-control">
+          Mode<span class="text-red-600">*</span>
+        </div>
+        <div class="mt-2 textlabel">
+          <div class="radio-set-row">
+            <div class="radio">
+              <input
+                v-model="state.project.tenantMode"
+                tabindex="-1"
+                type="radio"
+                class="btn"
+                value="DISABLED"
+              />
+              <label class="label">Standard</label>
+            </div>
+            <div class="radio">
+              <input
+                v-model="state.project.tenantMode"
+                tabindex="-1"
+                type="radio"
+                class="btn"
+                value="TENANT"
+              />
+              <label class="label">Tenant</label>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <!-- Create button group -->
     <div class="pt-4 flex justify-end">
@@ -50,7 +79,13 @@
 </template>
 
 <script lang="ts">
-import { computed, reactive, onMounted, onUnmounted } from "vue";
+import {
+  computed,
+  reactive,
+  onMounted,
+  onUnmounted,
+  defineComponent,
+} from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import isEmpty from "lodash-es/isEmpty";
@@ -61,7 +96,7 @@ interface LocalState {
   project: ProjectCreate;
 }
 
-export default {
+export default defineComponent({
   name: "ProjectCreate",
   props: {},
   emits: ["dismiss"],
@@ -73,6 +108,7 @@ export default {
       project: {
         name: "New Project",
         key: randomString(3).toUpperCase(),
+        tenantMode: "DISABLED",
       },
     });
 
@@ -125,5 +161,5 @@ export default {
       create,
     };
   },
-};
+});
 </script>

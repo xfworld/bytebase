@@ -197,6 +197,7 @@ export const unknown = (
     memberList: [],
     workflowType: "UI",
     visibility: "PUBLIC",
+    tenantMode: "DISABLED",
   };
 
   const UNKNOWN_PROJECT_HOOK: ProjectWebhook = {
@@ -242,6 +243,7 @@ export const unknown = (
     id: UNKNOWN_ID,
     instance: UNKNOWN_INSTANCE,
     project: UNKNOWN_PROJECT,
+    labels: [],
     dataSourceList: [],
     anomalyList: [],
     creator: UNKNOWN_PRINCIPAL,
@@ -548,6 +550,7 @@ export const empty = (
     memberList: [],
     workflowType: "UI",
     visibility: "PUBLIC",
+    tenantMode: "DISABLED",
   };
 
   const EMPTY_PROJECT_HOOK: ProjectWebhook = {
