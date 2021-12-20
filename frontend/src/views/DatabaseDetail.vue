@@ -3,12 +3,7 @@
     <main class="flex-1 relative overflow-y-auto">
       <!-- Highlight Panel -->
       <div
-        class="
-          px-4
-          pb-4
-          space-y-2
-          md:space-y-0 md:flex md:items-center md:justify-between
-        "
+        class="px-4 pb-4 space-y-2 md:space-y-0 md:flex md:items-center md:justify-between"
       >
         <div class="flex-1 min-w-0">
           <!-- Summary -->
@@ -16,15 +11,7 @@
             <div>
               <div class="flex items-center">
                 <h1
-                  class="
-                    pt-2
-                    pb-2.5
-                    text-xl
-                    font-bold
-                    leading-6
-                    text-main
-                    truncate
-                  "
+                  class="pt-2 pb-2.5 text-xl font-bold leading-6 text-main truncate"
                 >
                   {{ database.name }}
                 </h1>
@@ -32,11 +19,7 @@
             </div>
           </div>
           <dl
-            class="
-              flex flex-col
-              space-y-1
-              md:space-y-0 md:flex-row md:flex-wrap
-            "
+            class="flex flex-col space-y-1 md:space-y-0 md:flex-row md:flex-wrap"
           >
             <dt class="sr-only">Environment</dt>
             <dd class="flex items-center text-sm md:mr-4">
@@ -103,6 +86,10 @@
               </button>
             </dd>
           </dl>
+          <div v-if="database.labels.length > 0" class="flex items-center mt-1">
+            <label class="textlabel">Labels&nbsp;-&nbsp;</label>
+            <DatabaseLabels :labels="database.labels" :editable="false" />
+          </div>
         </div>
         <div class="flex items-center space-x-2">
           <button
@@ -209,7 +196,7 @@
 </template>
 
 <script lang="ts">
-import { computed, onMounted, reactive, watch } from "vue";
+import { computed, defineComponent, onMounted, reactive, watch } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import ProjectSelect from "../components/ProjectSelect.vue";
@@ -217,6 +204,7 @@ import DatabaseBackupPanel from "../components/DatabaseBackupPanel.vue";
 import DatabaseMigrationHistoryPanel from "../components/DatabaseMigrationHistoryPanel.vue";
 import DatabaseOverviewPanel from "../components/DatabaseOverviewPanel.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
+import DatabaseLabels from "../components/DatabaseLabels";
 import { consoleLink, idFromSlug, isDBAOrOwner } from "../utils";
 import {
   ProjectId,
@@ -224,6 +212,7 @@ import {
   DEFAULT_PROJECT_ID,
   Repository,
   baseDirectoryWebUrl,
+  Database,
 } from "../types";
 import { isEmpty } from "lodash";
 import { BBTabFilterItem } from "../bbkit/types";
@@ -249,7 +238,7 @@ interface LocalState {
   selectedIndex: number;
 }
 
-export default {
+export default defineComponent({
   name: "DatabaseDetail",
   components: {
     ProjectSelect,
@@ -257,6 +246,7 @@ export default {
     DatabaseMigrationHistoryPanel,
     DatabaseBackupPanel,
     InstanceEngineIcon,
+    DatabaseLabels,
   },
   props: {
     databaseSlug: {
@@ -276,7 +266,7 @@ export default {
 
     const currentUser = computed(() => store.getters["auth/currentUser"]());
 
-    const database = computed(() => {
+    const database = computed((): Database => {
       return store.getters["database/databaseById"](
         idFromSlug(props.databaseSlug)
       );
@@ -476,5 +466,5 @@ export default {
       selectTab,
     };
   },
-};
+});
 </script>
