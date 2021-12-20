@@ -5,6 +5,7 @@ import {
   Database,
   DatabaseCreate,
   DatabaseId,
+  DatabaseLabel,
   DatabaseState,
   DataSource,
   empty,
@@ -74,6 +75,24 @@ function convert(
     }
   }
 
+  const labels: DatabaseLabel[] = [];
+  try {
+    const array = JSON.parse(database.attributes.labels as any);
+    if (Array.isArray(array)) {
+      array.forEach((item) => {
+        if (
+          item &&
+          typeof item["key"] === "string" &&
+          typeof item["value"] === "string"
+        ) {
+          labels.push(item);
+        }
+      });
+    }
+  } catch {
+    // nothing to catch
+  }
+
   // Only able to assign an empty data source list / anomaly list, otherwise would cause circular dependency.
   // This should be fine as e.g. we shouldn't access data source via dataSource.database.dataSourceList
   const databaseWPartial = {
@@ -85,10 +104,12 @@ function convert(
       | "dataSourceList"
       | "sourceBackup"
       | "anomalyList"
+      | "labels"
     >),
     id: parseInt(database.id),
     instance,
     project,
+    labels,
     dataSourceList: [],
     sourceBackup,
     anomalyList: [],
@@ -247,13 +268,12 @@ const actions = {
   },
 
   async fetchDatabaseByInstanceIdAndName(
-      { commit, rootGetters }: any,
-      {
-        instanceId,
-        name,
-      }: {instanceId: InstanceId, name: string}
+    { commit, rootGetters }: any,
+    { instanceId, name }: { instanceId: InstanceId; name: string }
   ) {
-    const data = (await axios.get(`/api/database?instance=${instanceId}&name=${name}`)).data;
+    const data = (
+      await axios.get(`/api/database?instance=${instanceId}&name=${name}`)
+    ).data;
     const database = data.data[0];
     return convert(database, data.included, rootGetters);
   },
