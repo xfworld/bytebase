@@ -139,6 +139,7 @@ settings:
     members: Members
     version-control: Version Control
     plans: Plans
+    label-management: Label Management
   profile:
     email: Email
     role: Role
@@ -156,6 +157,7 @@ settings:
       provide its URL pattern here. Once provided, Bytebase will surface the
       console link on the relevant database and table UI.
     tip-link: Detailed guide
+    label-management: Label Management
   members:
     active: Active members
     inactive: Inactive members
@@ -182,6 +184,11 @@ settings:
       upgrade: Upgrade to Team plan to enable role management
       not-allow-edit: Only Owner can change the role
       not-allow-remove: Can not remove the last Owner
+  label-management:
+    table:
+      key: Key
+      values: Values
+    value-placeholder: Label value...
 activity:
   name: Name
   comment: Comment

@@ -32,6 +32,7 @@ import { Repository } from "./repository";
 import { Setting, SettingName } from "./setting";
 import { Table } from "./table";
 import { VCS } from "./vcs";
+import { Label } from "./label";
 
 export interface ActuatorState {
   serverInfo?: ServerInfo;
@@ -163,4 +164,8 @@ export interface NotificationState {
 
 export interface CommandState {
   commandListById: Map<CommandId, Command[]>;
+}
+
+export interface LabelState {
+  labelList: Label[];
 }

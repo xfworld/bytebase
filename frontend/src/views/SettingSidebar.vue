@@ -3,19 +3,7 @@
   <nav class="flex-1 flex flex-col px-3 overflow-y-auto">
     <div class="space-y-1">
       <button
-        class="
-          group
-          flex
-          items-center
-          px-2
-          py-2
-          text-base
-          leading-5
-          font-normal
-          rounded-md
-          text-gray-700
-          focus:outline-none
-        "
+        class="group flex items-center px-2 py-2 text-base leading-5 font-normal rounded-md text-gray-700 focus:outline-none"
         @click.prevent="goBack"
       >
         <heroicons-outline:chevron-left
@@ -26,18 +14,7 @@
 
       <div class="mt-8">
         <div
-          class="
-            group
-            flex
-            items-center
-            px-2
-            py-2
-            text-sm
-            leading-5
-            font-medium
-            rounded-md
-            text-gray-700
-          "
+          class="group flex items-center px-2 py-2 text-sm leading-5 font-medium rounded-md text-gray-700"
         >
           <heroicons-solid:user-circle class="mr-3 w-5 h-5" />
           {{ $t("settings.sidebar.account") }}
@@ -53,18 +30,7 @@
       </div>
       <div class="mt-8">
         <div
-          class="
-            group
-            flex
-            items-center
-            px-2
-            py-2
-            text-sm
-            leading-5
-            font-medium
-            rounded-md
-            text-gray-700
-          "
+          class="group flex items-center px-2 py-2 text-sm leading-5 font-medium rounded-md text-gray-700"
         >
           <heroicons-solid:office-building class="mr-3 w-5 h-5" />
           {{ $t("settings.sidebar.workspace") }}
@@ -82,6 +48,16 @@
           >
             Agents
           </router-link> -->
+          <!--
+            Label Management is visible to all
+            but only editable to Owners and DBAs
+          -->
+          <router-link
+            to="/setting/label-management"
+            class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
+          >
+            {{ $t("settings.sidebar.label-management") }}
+          </router-link>
           <router-link
             to="/setting/member"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"

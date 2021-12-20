@@ -268,6 +268,14 @@ const routes: Array<RouteRecordRaw> = [
                 props: true,
               },
               {
+                path: "label-management",
+                name: "setting.workspace.label-management",
+                meta: { title: () => "Label Management" },
+                component: () =>
+                  import("../views/SettingWorkspaceLabelManagement.vue"),
+                props: true,
+              },
+              {
                 path: "agent",
                 name: "setting.workspace.agent",
                 meta: { title: () => "Agents" },
