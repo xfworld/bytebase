@@ -40,7 +40,7 @@ interface LocalState {
 }
 
 export default {
-  name: "Home",
+  name: "ProjectDashboard",
   components: {
     ProjectTable,
   },

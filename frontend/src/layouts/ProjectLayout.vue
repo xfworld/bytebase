@@ -4,6 +4,12 @@
   </div>
   <h1 class="px-6 pb-4 text-xl font-bold leading-6 text-main truncate">
     {{ project.name }}
+    <span
+      v-if="project.tenantMode === 'TENANT'"
+      class="text-sm font-normal px-2 ml-2 rounded whitespace-nowrap inline-flex items-center bg-gray-200"
+    >
+      Tenant
+    </span>
   </h1>
   <BBTabFilter
     class="px-3 pb-2 border-b border-block-border"
@@ -28,7 +34,7 @@
 </template>
 
 <script lang="ts">
-import { computed, onMounted, reactive, watch } from "vue";
+import { computed, defineComponent, onMounted, reactive, watch } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import { idFromSlug, isProjectOwner } from "../utils";
@@ -56,7 +62,7 @@ interface LocalState {
   selectedIndex: number;
 }
 
-export default {
+export default defineComponent({
   name: "ProjectLayout",
   components: {
     ArchiveBanner,
@@ -164,5 +170,5 @@ export default {
       selectTab,
     };
   },
-};
+});
 </script>
