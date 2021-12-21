@@ -66,14 +66,14 @@
         class="btn-normal py-2 px-4"
         @click.prevent="cancel"
       >
-        Cancel
+        {{ $t("common.cancel") }}
       </button>
       <button
         class="btn-primary ml-3 inline-flex justify-center py-2 px-4"
         :disabled="!allowCreate"
         @click.prevent="create"
       >
-        Create
+        {{ $t("common.create") }}
       </button>
     </div>
   </form>
@@ -92,6 +92,7 @@ import { useRouter } from "vue-router";
 import isEmpty from "lodash-es/isEmpty";
 import { Project, ProjectCreate } from "../types";
 import { projectSlug, randomString } from "../utils";
+import { useI18n } from "vue-i18n";
 
 interface LocalState {
   project: ProjectCreate;
@@ -104,6 +105,7 @@ export default defineComponent({
   setup(props, { emit }) {
     const store = useStore();
     const router = useRouter();
+    const { t } = useI18n();
 
     const state = reactive<LocalState>({
       project: {
@@ -143,7 +145,9 @@ export default defineComponent({
           store.dispatch("notification/pushNotification", {
             module: "bytebase",
             style: "SUCCESS",
-            title: `Successfully created project '${createdProject.name}'.`,
+            title: t("project.create-modal.success-prompt", {
+              name: createdProject.name,
+            }),
           });
 
           router.push(`/project/${projectSlug(createdProject)}`);
