@@ -21,9 +21,11 @@
           <dl
             class="flex flex-col space-y-1 md:space-y-0 md:flex-row md:flex-wrap"
           >
-            <dt class="sr-only">Environment</dt>
+            <dt class="sr-only">{{ $t("common.environment") }}</dt>
             <dd class="flex items-center text-sm md:mr-4">
-              <span class="textlabel">Environment&nbsp;-&nbsp;</span>
+              <span class="textlabel"
+                >{{ $t("common.environment") }}&nbsp;-&nbsp;</span
+              >
               <router-link
                 :to="`/environment/${environmentSlug(
                   database.instance.environment
@@ -33,10 +35,12 @@
                 {{ environmentName(database.instance.environment) }}
               </router-link>
             </dd>
-            <dt class="sr-only">Instance</dt>
+            <dt class="sr-only">{{ $t("common.instance") }}</dt>
             <dd class="flex items-center text-sm md:mr-4">
               <InstanceEngineIcon :instance="database.instance" />
-              <span class="ml-1 textlabel">Instance&nbsp;-&nbsp;</span>
+              <span class="ml-1 textlabel"
+                >{{ $t("common.instance") }}&nbsp;-&nbsp;</span
+              >
               <router-link
                 :to="`/instance/${instanceSlug(database.instance)}`"
                 class="normal-link"
@@ -44,9 +48,11 @@
                 {{ instanceName(database.instance) }}
               </router-link>
             </dd>
-            <dt class="sr-only">Project</dt>
+            <dt class="sr-only">{{ $t("common.project") }}</dt>
             <dd class="flex items-center text-sm md:mr-4">
-              <span class="textlabel">Project&nbsp;-&nbsp;</span>
+              <span class="textlabel"
+                >{{ $t("common.project") }}&nbsp;-&nbsp;</span
+              >
               <router-link
                 :to="`/project/${projectSlug(database.project)}`"
                 class="normal-link"
@@ -55,19 +61,23 @@
               </router-link>
             </dd>
             <template v-if="database.sourceBackup">
-              <dt class="sr-only">Parent</dt>
+              <dt class="sr-only">{{ $t("db.parent") }}</dt>
               <dd class="flex items-center text-sm md:mr-4 tooltip-wrapper">
-                <span class="textlabel">Restored&nbsp;from&nbsp;</span>
+                <span class="textlabel">{{
+                  $t("database.restored-from")
+                }}</span>
                 <router-link
                   :to="`/db/${database.sourceBackup.databaseId}`"
                   class="normal-link"
                 >
                   <!-- Do not display the name of the backup's database because that requires a fetch  -->
-                  <span class="tooltip"
-                    >{{ database.name }} is restored from another database
-                    backup</span
-                  >
-                  database backup
+                  <span class="tooltip">{{
+                    $t(
+                      "database.database-name-is-restored-from-another-database-backup",
+                      [database.name]
+                    )
+                  }}</span>
+                  {{ $t("database.database-backup") }}
                 </router-link>
               </dd>
             </template>
@@ -75,7 +85,7 @@
               v-if="databaseConsoleLink.length > 0"
               class="flex items-center text-sm md:mr-4"
             >
-              <span class="textlabel">SQL Console</span>
+              <span class="textlabel">{{ $t("database.sql-console") }}</span>
               <button
                 class="ml-1 btn-icon"
                 @click.prevent="
@@ -98,7 +108,7 @@
             class="btn-normal"
             @click.prevent="tryTransferProject"
           >
-            <span>Transfer Project</span>
+            <span>{{ $t("database.transfer-project") }}</span>
             <heroicons-outline:switch-horizontal
               class="-mr-1 ml-2 h-5 w-5 text-control-light"
             />
@@ -121,11 +131,11 @@
 
     <BBModal
       v-if="state.showModal"
-      :title="'Transfer project'"
+      :title="$t('database.transfer-project')"
       @close="state.showModal = false"
     >
       <div class="col-span-1 w-64">
-        <label for="user" class="textlabel"> Project </label>
+        <label for="user" class="textlabel"> {{ $t("common.project") }} </label>
         <!-- Only allow to transfer database to the project having OWNER role -->
         <!-- eslint-disable vue/attribute-hyphenation -->
         <ProjectSelect
@@ -148,7 +158,7 @@
           class="btn-normal py-2 px-4"
           @click.prevent="state.showModal = false"
         >
-          Cancel
+          {{ $t("common.cancel") }}
         </button>
         <button
           type="button"
@@ -159,7 +169,7 @@
             state.showModal = false;
           "
         >
-          Transfer
+          {{ $t("common.transfer") }}
         </button>
       </div>
     </BBModal>
@@ -216,6 +226,7 @@ import {
 } from "../types";
 import { isEmpty } from "lodash";
 import { BBTabFilterItem } from "../bbkit/types";
+import { useI18n } from "vue-i18n";
 
 const OVERVIEW_TAB = 0;
 const MIGRATION_HISTORY_TAB = 1;
@@ -225,12 +236,6 @@ type DatabaseTabItem = {
   name: string;
   hash: string;
 };
-
-const databaseTabItemList: DatabaseTabItem[] = [
-  { name: "Overview", hash: "overview" },
-  { name: "Migration History", hash: "migration-history" },
-  { name: "Backups", hash: "backup" },
-];
 
 interface LocalState {
   showModal: boolean;
@@ -257,6 +262,13 @@ export default defineComponent({
   setup(props) {
     const store = useStore();
     const router = useRouter();
+    const { t } = useI18n();
+
+    const databaseTabItemList: DatabaseTabItem[] = [
+      { name: t("common.overview"), hash: "overview" },
+      { name: t("migration-history.self"), hash: "migration-history" },
+      { name: t("common.backups"), hash: "backup" },
+    ];
 
     const state = reactive<LocalState>({
       showModal: false,
@@ -354,9 +366,9 @@ export default defineComponent({
 
     const alterSchemaText = computed(() => {
       if (database.value.project.workflowType == "VCS") {
-        return "Alter Schema in VCS";
+        return t("database.alter-schema-in-vcs");
       }
-      return "Alter Schema";
+      return t("quick-action.alter-schema");
     });
 
     const tabItemList = computed((): BBTabFilterItem[] => {
@@ -406,7 +418,10 @@ export default defineComponent({
           store.dispatch("notification/pushNotification", {
             module: "bytebase",
             style: "SUCCESS",
-            title: `Successfully transferred '${updatedDatabase.name}' to project '${updatedDatabase.project.name}'.`,
+            title: t(
+              "database.successfully-transferred-updateddatabase-name-to-project-updateddatabase-project-name",
+              [updatedDatabase.name, updatedDatabase.project.name]
+            ),
           });
         });
     };
