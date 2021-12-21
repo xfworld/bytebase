@@ -8,7 +8,7 @@
       v-if="project.tenantMode === 'TENANT'"
       class="text-sm font-normal px-2 ml-2 rounded whitespace-nowrap inline-flex items-center bg-gray-200"
     >
-      Tenant
+      {{ $t("project.mode.tenant") }}
     </span>
   </h1>
   <BBTabFilter

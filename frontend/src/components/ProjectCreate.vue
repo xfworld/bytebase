@@ -31,7 +31,7 @@
       </div>
       <div class="col-span-1">
         <div for="name" class="text-lg leading-6 font-medium text-control">
-          Mode<span class="text-red-600">*</span>
+          {{ $t("common.mode") }}<span class="text-red-600">*</span>
         </div>
         <div class="mt-2 textlabel">
           <div class="radio-set-row">
@@ -43,7 +43,7 @@
                 class="btn"
                 value="DISABLED"
               />
-              <label class="label">Standard</label>
+              <label class="label">{{ $t("project.mode.standard") }}</label>
             </div>
             <div class="radio">
               <input
@@ -53,7 +53,7 @@
                 class="btn"
                 value="TENANT"
               />
-              <label class="label">Tenant</label>
+              <label class="label">{{ $t("project.mode.tenant") }}</label>
             </div>
           </div>
         </div>
