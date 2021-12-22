@@ -599,6 +599,7 @@ database:
   index-size: 索引大小
   columns: 列
   indexes: 索引
+  group-other: <<其他>>
 repository:
   branch-observe-file-change: Bytebase 跟踪文件变更的分支。
   branch-specify-tip: '诀窍: 可以使用诸如 "feature/*" 这样的通配符'
@@ -761,6 +762,8 @@ project:
   mode:
     standard: 标准
     tenant: 多租户
+  tabs:
+    deployment-configuration: 部署配置
 inbox:
   mark-all-as-read: 全部标记为已读
   view-older: 查看更早
@@ -814,3 +817,6 @@ archive:
   project-search-bar-placeholder: 搜索@.lower:{'common.project'}的名称
   instance-bar-placeholder: 搜索@.lower:{'common.instance'}的名称
   environment-bar-placeholder: 搜索@.lower:{'common.environment'}的名称
+deployment-config:
+  state-n: 阶段 - {n}
+  add-selector: 添加选择条件

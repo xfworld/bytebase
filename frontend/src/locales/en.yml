@@ -654,6 +654,7 @@ database:
   index-size: Index size
   columns: Columns
   indexes: Indexes
+  group-other: <<other>>
 t:
   database: {}
 repository:
@@ -862,6 +863,8 @@ project:
   mode:
     standard: Standard
     tenant: Tenant
+  tabs:
+    deployment-configuration: Deployment Configuration
 inbox:
   mark-all-as-read: Mark all as read
   view-older: View older
@@ -939,3 +942,6 @@ archive:
   project-search-bar-placeholder: Search @.lower:{'common.project'} name
   instance-search-bar-placeholder: Search @.lower:{'common.instance'} name
   environment-search-bar-placeholder: Search @.lower:{'common.environment'} name
+deployment-config:
+  state-n: State - {n}
+  add-selector: Add selector

@@ -598,6 +598,7 @@ export const empty = (
     project: EMPTY_PROJECT,
     dataSourceList: [],
     anomalyList: [],
+    labels: [],
     creator: EMPTY_PRINCIPAL,
     createdTs: 0,
     updater: EMPTY_PRINCIPAL,

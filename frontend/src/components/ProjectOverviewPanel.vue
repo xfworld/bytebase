@@ -23,11 +23,13 @@
         :style="`INFO`"
         :title="$t('project.overview.info-slot-content')"
       />
-      <DatabaseTable
-        v-if="databaseList.length > 0"
-        :mode="'PROJECT'"
-        :database-list="databaseList"
-      />
+      <template v-if="databaseList.length > 0">
+        <TenantDatabaseTable
+          v-if="isTenantProject"
+          :database-list="databaseList"
+        />
+        <DatabaseTable v-else :mode="'PROJECT'" :database-list="databaseList" />
+      </template>
       <div v-else class="text-center textinfolabel">
         <i18n-t keypath="project.overview.no-db-prompt" tag="p">
           <template #newDb>
@@ -72,10 +74,17 @@
 </template>
 
 <script lang="ts">
-import { reactive, watchEffect, PropType } from "vue";
+import {
+  reactive,
+  watchEffect,
+  PropType,
+  computed,
+  defineComponent,
+} from "vue";
 import { useStore } from "vuex";
 import ActivityTable from "../components/ActivityTable.vue";
 import DatabaseTable from "../components/DatabaseTable.vue";
+import TenantDatabaseTable from "./TenantDatabaseTable";
 import IssueTable from "../components/IssueTable.vue";
 import {
   Activity,
@@ -94,11 +103,12 @@ interface LocalState {
   closedIssueList: Issue[];
 }
 
-export default {
+export default defineComponent({
   name: "ProjectOverviewPanel",
   components: {
     ActivityTable,
     DatabaseTable,
+    TenantDatabaseTable,
     IssueTable,
   },
   props: {
@@ -156,10 +166,15 @@ export default {
 
     watchEffect(prepareIssueList);
 
+    const isTenantProject = computed((): boolean => {
+      return props.project.tenantMode === "TENANT";
+    });
+
     return {
       DEFAULT_PROJECT_ID,
       state,
+      isTenantProject,
     };
   },
-};
+});
 </script>

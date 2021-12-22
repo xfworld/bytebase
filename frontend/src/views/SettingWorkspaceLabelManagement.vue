@@ -12,17 +12,6 @@
           :show-header="true"
           :row-clickable="false"
         >
-          <template #header>
-            <BBTableHeaderCell
-              class="w-36 table-cell"
-              :left-padding="4"
-              :title="COLUMN_LIST[0].title"
-            />
-            <BBTableHeaderCell
-              class="w-auto table-cell"
-              :title="COLUMN_LIST[1].title"
-            />
-          </template>
           <template #body="{ rowData: label }">
             <BBTableCell :left-padding="4" class="w-36 table-cell">
               {{ label.key }}
@@ -32,7 +21,7 @@
                 <div v-for="(value, j) in label.valueList" :key="j" class="tag">
                   <span>{{ value }}</span>
                   <span
-                    v-if="allowEdit"
+                    v-if="allowRemove"
                     class="remove"
                     @click="removeValue(label, value)"
                   >
@@ -92,6 +81,11 @@ export default {
       return isDBAOrOwner(currentUser.value.role);
     });
 
+    const allowRemove = computed(() => {
+      // no, not now
+      return false && allowEdit.value;
+    });
+
     const addValue = (label: Label, value: string) => {
       const labelPatch: LabelPatch = {
         valueList: [...label.valueList, value],
@@ -129,6 +123,7 @@ export default {
       COLUMN_LIST,
       labelList,
       allowEdit,
+      allowRemove,
       addValue,
       removeValue,
     };
