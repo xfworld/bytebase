@@ -66,45 +66,34 @@
 </template>
 
 <script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  reactive,
-  ref,
-  watchEffect,
-} from "vue";
-import { useStore } from "vuex";
-import { useRouter } from "vue-router";
-import { consoleLink, databaseSlug } from "../../utils";
+import { computed, defineComponent, PropType, ref, watchEffect } from "vue";
 import {
   Database,
   Environment,
   Label,
-  LabelKey,
-  LabelValue,
+  LabelKeyType,
+  LabelValueType,
 } from "../../types";
 import { BBTableColumn } from "../../bbkit/types";
-import InstanceEngineIcon from "../InstanceEngineIcon.vue";
 import DatabaseMatrixItem from "./DatabaseMatrixItem.vue";
-import { cloneDeep, isEmpty, groupBy } from "lodash-es";
+import { groupBy } from "lodash-es";
 import { useI18n } from "vue-i18n";
 
 type Mode = "ALL" | "ALL_SHORT" | "INSTANCE" | "PROJECT" | "PROJECT_SHORT";
 
 type DatabaseListGroupByLabel = {
-  labelValue: LabelValue;
+  labelValue: LabelValueType;
   databaseList: Database[];
 };
 
 type DatabaseMatrixGroupByLabelAndEnvironment = {
-  labelValue: LabelValue;
+  labelValue: LabelValueType;
   databaseMatrix: Database[][];
 };
 
 export default defineComponent({
   name: "TenantDatabaseMatrix",
-  components: { InstanceEngineIcon, DatabaseMatrixItem },
+  components: { DatabaseMatrixItem },
   props: {
     bordered: {
       default: true,
@@ -136,12 +125,10 @@ export default defineComponent({
     },
   },
   emits: ["select-database"],
-  setup(props, { emit }) {
-    const store = useStore();
-    const router = useRouter();
+  setup(props) {
     const { t } = useI18n();
 
-    const groupByLabel = ref<LabelKey>();
+    const groupByLabel = ref<LabelKeyType>();
     watchEffect(() => {
       groupByLabel.value = props.labelList[0]?.key;
     });
