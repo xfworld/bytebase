@@ -57,6 +57,7 @@
             :custom-click="customClick"
             @select-database="(db) => $emit('select-database', db)"
           />
+          <span v-if="dbList.length === 0">-</span>
         </div>
       </BBTableCell>
     </template>
