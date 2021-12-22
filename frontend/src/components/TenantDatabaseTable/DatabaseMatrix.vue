@@ -19,7 +19,7 @@
       >
         <div class="relative flex items-center">
           <span>{{ groupByLabel }}</span>
-          <heroicons-solid:chevron-down class="h-4 w-4 text-control-light" />
+          <heroicons-solid:selector class="h-4 w-4 text-control-light" />
           <select
             v-model="groupByLabel"
             class="absolute w-full h-full inset-0 opacity-0"
@@ -49,7 +49,7 @@
         {{ matrix.labelValue }}
       </BBTableCell>
       <BBTableCell v-for="(dbList, i) in matrix.databaseMatrix" :key="i">
-        <div class="flex flex-col items-center">
+        <div class="flex flex-col items-center space-y-1">
           <DatabaseMatrixItem
             v-for="db in dbList"
             :key="db.id"

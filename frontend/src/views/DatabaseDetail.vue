@@ -96,7 +96,7 @@
               </button>
             </dd>
           </dl>
-          <div v-if="database.labels.length > 0" class="flex items-center mt-1">
+          <div v-if="isTenantProject" class="flex items-center mt-1">
             <label class="textlabel">Labels&nbsp;-&nbsp;</label>
             <DatabaseLabels :labels="database.labels" :editable="false" />
           </div>
@@ -284,6 +284,10 @@ export default defineComponent({
       );
     });
 
+    const isTenantProject = computed(() => {
+      return database.value.project.tenantMode === "TENANT";
+    });
+
     const databaseConsoleLink = computed(() => {
       const consoleUrl =
         store.getters["setting/settingByName"]("bb.console.url").value;
@@ -468,6 +472,7 @@ export default defineComponent({
       MIGRATION_HISTORY_TAB,
       BACKUP_TAB,
       state,
+      isTenantProject,
       database,
       databaseConsoleLink,
       allowChangeProject,
