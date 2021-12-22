@@ -15,6 +15,8 @@
 </template>
 
 <script lang="ts">
+/* eslint-disable vue/no-mutating-props */
+
 import { computed, defineComponent, PropType, watchEffect } from "vue";
 import { useStore } from "vuex";
 import { DatabaseLabel, Label } from "../../types";
@@ -50,7 +52,6 @@ export default defineComponent({
     const addLabel = () => {
       const key = availableLabels.value[0]?.key || "";
       const value = availableLabels.value[0]?.valueList[0] || "";
-      // eslint-disable-next-line vue/no-mutating-props
       props.labels.push({
         key,
         value,
@@ -58,7 +59,6 @@ export default defineComponent({
     };
 
     const removeLabel = (index: number) => {
-      // eslint-disable-next-line vue/no-mutating-props
       props.labels.splice(index, 1);
     };
 
