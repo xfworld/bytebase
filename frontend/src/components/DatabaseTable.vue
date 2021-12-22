@@ -39,7 +39,7 @@
               xmlns="http://www.w3.org/2000/svg"
             ></svg>
             <template v-else-if="database.project.workflowType == 'VCS'">
-              <span class="tooltip">{{
+              <span class="tooltip whitespace-nowrap">{{
                 $t("database.version-control-enabled")
               }}</span>
               <heroicons-outline:collection

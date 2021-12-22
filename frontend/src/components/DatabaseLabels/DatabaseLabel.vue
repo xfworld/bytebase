@@ -1,11 +1,11 @@
 <template>
+  <!-- eslint-disable vue/no-mutating-props -->
   <div class="database-label" :class="{ editable }">
     <div class="select key">
       <span>{{ label.key }}</span>
       <span v-if="editable" class="dropdown-icon">
         <heroicons-solid:chevron-down class="h-4 w-4 text-control-light" />
       </span>
-      <!-- eslint-disable-next-line vue/no-mutating-props -->
       <select v-model="label.key">
         <option v-for="(key, i) in keys" :key="i" :value="key">
           {{ key }}
@@ -18,7 +18,6 @@
       <span v-if="editable" class="dropdown-icon">
         <heroicons-solid:chevron-down class="h-4 w-4 text-control-light" />
       </span>
-      <!-- eslint-disable-next-line vue/no-mutating-props -->
       <select v-model="label.value">
         <option v-for="(value, i) in values" :key="i" :value="value">
           {{ value }}
@@ -32,6 +31,8 @@
 </template>
 
 <script lang="ts">
+/* eslint-disable vue/no-mutating-props */
+
 import { computed, defineComponent, PropType, watch } from "vue";
 import { DatabaseLabel, Label } from "../../types";
 
@@ -72,7 +73,6 @@ export default defineComponent({
       () => props.label.key,
       () => {
         // when key changed, reset value selection
-        // eslint-disable-next-line vue/no-mutating-props
         props.label.value = values.value[0] || "";
       }
     );

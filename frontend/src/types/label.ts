@@ -26,3 +26,8 @@ export type DatabaseLabel = {
   key: LabelKey;
   value: LabelValue;
 };
+
+export type AvailableLabel = {
+  key: LabelKey;
+  valueList: LabelValue[];
+};

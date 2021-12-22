@@ -41,6 +41,7 @@ import { idFromSlug, isProjectOwner } from "../utils";
 import ArchiveBanner from "../components/ArchiveBanner.vue";
 import { BBTabFilterItem } from "../bbkit/types";
 import { useI18n } from "vue-i18n";
+import { Project } from "../types";
 
 const OVERVIEW_TAB = 0;
 const WEBHOOK_TAB = 4;
@@ -66,6 +67,7 @@ export default defineComponent({
     },
     projectWebhookSlug: {
       type: String,
+      default: undefined,
     },
   },
   setup(props) {
@@ -75,8 +77,14 @@ export default defineComponent({
 
     const currentUser = computed(() => store.getters["auth/currentUser"]());
 
+    const project = computed((): Project => {
+      return store.getters["project/projectById"](
+        idFromSlug(props.projectSlug)
+      );
+    });
+
     const projectTabItemList = computed((): ProjectTabItem[] => {
-      return [
+      const list: ProjectTabItem[] = [
         { name: t("common.overview"), hash: "overview" },
         { name: t("common.migration-history"), hash: "migration-history" },
         { name: t("common.activities"), hash: "activity" },
@@ -84,16 +92,18 @@ export default defineComponent({
         { name: t("common.webhooks"), hash: "webhook" },
         { name: t("common.settings"), hash: "setting" },
       ];
+      if (project.value.tenantMode === "TENANT") {
+        list.push({
+          name: t("project.tabs.deployment-configuration"),
+          hash: "deployment-configuration",
+        });
+      }
+
+      return list;
     });
 
     const state = reactive<LocalState>({
       selectedIndex: OVERVIEW_TAB,
-    });
-
-    const project = computed(() => {
-      return store.getters["project/projectById"](
-        idFromSlug(props.projectSlug)
-      );
     });
 
     // Only the project owner can edit the project general info and configure version control.

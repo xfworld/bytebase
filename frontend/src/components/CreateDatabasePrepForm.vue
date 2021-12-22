@@ -3,7 +3,8 @@
     <div class="grid gap-y-6 gap-x-4 grid-cols-4">
       <div class="col-span-2 col-start-2 w-64">
         <label for="name" class="textlabel">
-          {{ $t('create-db.new-database-name') }} <span class="text-red-600">*</span>
+          {{ $t("create-db.new-database-name") }}
+          <span class="text-red-600">*</span>
         </label>
         <input
           id="name"
@@ -13,10 +14,9 @@
           type="text"
           class="textfield mt-1 w-full"
         />
-        <span v-if="isReservedName" class="text-red-600"
-          >
-          <i18n-t keypath="create-db.reserved-db-error" >
-            <template v-slot:databaseName>
+        <span v-if="isReservedName" class="text-red-600">
+          <i18n-t keypath="create-db.reserved-db-error">
+            <template #databaseName>
               {{ state.databaseName }}
             </template>
           </i18n-t></span
@@ -25,30 +25,28 @@
 
       <div class="col-span-2 col-start-2 w-64">
         <label for="project" class="textlabel">
-          {{ $t('common.projects') }}  <span style="color: red">*</span>
+          {{ $t("common.projects") }} <span style="color: red">*</span>
         </label>
-        <!-- eslint-disable vue/attribute-hyphenation -->
         <ProjectSelect
           id="project"
           class="mt-1"
           name="project"
           :disabled="!allowEditProject"
-          :selectedId="state.projectId"
+          :selected-id="state.projectId"
           @select-project-id="selectProject"
         />
       </div>
 
       <div class="col-span-2 col-start-2 w-64">
         <label for="environment" class="textlabel">
-          {{ $t('common.environments') }} <span style="color: red">*</span>
+          {{ $t("common.environments") }} <span style="color: red">*</span>
         </label>
-        <!-- eslint-disable vue/attribute-hyphenation -->
         <EnvironmentSelect
           id="environment"
           class="mt-1 w-full"
           name="environment"
           :disabled="!allowEditEnvironment"
-          :selectedId="state.environmentId"
+          :selected-id="state.environmentId"
           @select-environment-id="selectEnvironment"
         />
       </div>
@@ -60,7 +58,7 @@
             :instance="selectedInstance"
           />
           <label for="instance" class="textlabel">
-            {{ $t('common.instances') }} <span class="text-red-600">*</span>
+            {{ $t("common.instances") }} <span class="text-red-600">*</span>
           </label>
         </div>
         <div class="flex flex-row space-x-2 items-center">
@@ -77,6 +75,24 @@
         </div>
       </div>
 
+      <div v-if="isTenantProject" class="col-span-2 col-start-2 w-64">
+        <div class="flex flex-row items-center space-x-1">
+          <label for="instance" class="textlabel">
+            {{ $t("common.labels") }} <span class="text-red-600">*</span>
+          </label>
+        </div>
+        <div class="flex flex-col space-y-1">
+          <DatabaseLabels
+            :labels="state.labels"
+            :editable="true"
+            class="flex-col items-start mt-1 gap-1"
+          />
+          <div v-if="labelsError.length > 0" class="text-red-600">
+            {{ labelsError }}
+          </div>
+        </div>
+      </div>
+
       <template
         v-if="
           selectedInstance.engine != 'CLICKHOUSE' &&
@@ -87,8 +103,8 @@
           <label for="charset" class="textlabel">
             {{
               selectedInstance.engine == "POSTGRES"
-                ? $t('db.encoding')
-                : $t('db.character-set')
+                ? $t("db.encoding")
+                : $t("db.character-set")
             }}</label
           >
           <input
@@ -102,7 +118,9 @@
         </div>
 
         <div class="col-span-2 col-start-2 w-64">
-          <label for="collation" class="textlabel">  {{ $t('db.collation') }} </label>
+          <label for="collation" class="textlabel">
+            {{ $t("db.collation") }}
+          </label>
           <input
             id="collation"
             v-model="state.collation"
@@ -118,7 +136,7 @@
 
       <div v-if="showAssigneeSelect" class="col-span-2 col-start-2 w-64">
         <label for="user" class="textlabel">
-          {{ $t('common.assignee') }} <span class="text-red-600">*</span>
+          {{ $t("common.assignee") }} <span class="text-red-600">*</span>
         </label>
         <!-- DBA and Owner always have all access, so we only need to grant to developer -->
         <!-- eslint-disable vue/attribute-hyphenation -->
@@ -140,14 +158,14 @@
         class="btn-normal py-2 px-4"
         @click.prevent="cancel"
       >
-        {{ $t('common.cancel') }}
+        {{ $t("common.cancel") }}
       </button>
       <button
         class="btn-primary ml-3 inline-flex justify-center py-2 px-4"
         :disabled="!allowCreate"
         @click.prevent="create"
       >
-        {{ $t('common.create') }}
+        {{ $t("common.create") }}
       </button>
     </div>
   </div>
@@ -161,6 +179,7 @@ import {
   onUnmounted,
   PropType,
   watchEffect,
+  defineComponent,
 } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
@@ -170,6 +189,7 @@ import EnvironmentSelect from "../components/EnvironmentSelect.vue";
 import ProjectSelect from "../components/ProjectSelect.vue";
 import MemberSelect from "../components/MemberSelect.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
+import DatabaseLabels from "./DatabaseLabels";
 import {
   EnvironmentId,
   InstanceId,
@@ -178,24 +198,27 @@ import {
   SYSTEM_BOT_ID,
   PrincipalId,
   Backup,
-  StageCreate,
   defaultCharset,
   defaultCollation,
   unknown,
+  Project,
+  DatabaseLabel,
 } from "../types";
 import { isDBAOrOwner, issueSlug } from "../utils";
+import { uniqBy } from "lodash";
 
 interface LocalState {
   projectId?: ProjectId;
   environmentId?: EnvironmentId;
   instanceId?: InstanceId;
+  labels?: DatabaseLabel[];
   databaseName?: string;
   characterSet: string;
   collation: string;
   assigneeId?: PrincipalId;
 }
 
-export default {
+export default defineComponent({
   name: "CreateDatabasePrepForm",
   components: {
     InstanceSelect,
@@ -203,6 +226,7 @@ export default {
     ProjectSelect,
     MemberSelect,
     InstanceEngineIcon,
+    DatabaseLabels,
   },
   props: {
     projectId: {
@@ -255,6 +279,7 @@ export default {
       projectId: props.projectId,
       environmentId: props.environmentId,
       instanceId: props.instanceId,
+      labels: [],
       characterSet: "",
       collation: "",
       assigneeId: showAssigneeSelect.value ? undefined : SYSTEM_BOT_ID,
@@ -264,10 +289,39 @@ export default {
       return state.databaseName?.toLowerCase() == "bytebase";
     });
 
+    const isTenantProject = computed((): boolean => {
+      if (!state.projectId) return false;
+      const project = store.getters["project/projectById"](
+        state.projectId
+      ) as Project;
+
+      return project.tenantMode === "TENANT";
+    });
+
+    const labelsError = computed((): string => {
+      const labels = state.labels || [];
+      for (let i = 0; i < labels.length; i++) {
+        const label = labels[i];
+        if (!label.key) return "Select a label key";
+        if (!label.value) return "Select a label value";
+      }
+      if (labels.length !== uniqBy(labels, "key").length) {
+        return "Duplicated label keys";
+      }
+      return "";
+    });
+
+    const invalidLabels = computed((): boolean => {
+      if (!isTenantProject.value) return false;
+      if (state.labels?.length === 0) return true;
+      return !!labelsError.value;
+    });
+
     const allowCreate = computed(() => {
       return (
         !isEmpty(state.databaseName) &&
         !isReservedName.value &&
+        !invalidLabels.value &&
         state.projectId &&
         state.environmentId &&
         state.instanceId &&
@@ -317,7 +371,6 @@ export default {
     };
 
     const create = async () => {
-
       var newIssue: IssueCreate;
       if (props.backup) {
         newIssue = {
@@ -333,11 +386,15 @@ export default {
           createContext: {
             instanceId: state.instanceId!,
             databaseName: state.databaseName,
-            characterSet: state.characterSet || defaultCharset(selectedInstance.value.engine),
-            collation: state.collation || defaultCollation(selectedInstance.value.engine),
+            characterSet:
+              state.characterSet ||
+              defaultCharset(selectedInstance.value.engine),
+            collation:
+              state.collation ||
+              defaultCollation(selectedInstance.value.engine),
             backupId: props.backup.id,
             backupName: props.backup.name,
-         },
+          },
           payload: {},
         };
       } else {
@@ -354,8 +411,12 @@ export default {
           createContext: {
             instanceId: state.instanceId!,
             databaseName: state.databaseName,
-            characterSet: state.characterSet || defaultCharset(selectedInstance.value.engine),
-            collation: state.collation || defaultCollation(selectedInstance.value.engine),
+            characterSet:
+              state.characterSet ||
+              defaultCharset(selectedInstance.value.engine),
+            collation:
+              state.collation ||
+              defaultCollation(selectedInstance.value.engine),
           },
           payload: {},
         };
@@ -370,6 +431,8 @@ export default {
       defaultCollation,
       state,
       isReservedName,
+      isTenantProject,
+      labelsError,
       allowCreate,
       allowEditProject,
       allowEditEnvironment,
@@ -384,5 +447,5 @@ export default {
       create,
     };
   },
-};
+});
 </script>
