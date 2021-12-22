@@ -709,7 +709,7 @@ database:
   index-size: Index size
   columns: Columns
   indexes: Indexes
-  group-other: <<other>>
+  empty-label-value: <<Empty Value>>
   row-count-est: Row count est.
 t:
   database: {}

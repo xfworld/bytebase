@@ -45,8 +45,15 @@
     </template>
 
     <template #body="{ rowData: matrix }">
-      <BBTableCell :left-padding="4" class="pr-2">
-        {{ matrix.labelValue }}
+      <BBTableCell
+        :left-padding="4"
+        class="pr-2 whitespace-nowrap"
+        :class="{
+          'text-control-placeholder': !matrix.labelValue,
+        }"
+      >
+        <template v-if="matrix.labelValue">{{ matrix.labelValue }}</template>
+        <template v-else>{{ $t("database.empty-label-value") }}</template>
       </BBTableCell>
       <BBTableCell v-for="(dbList, i) in matrix.databaseMatrix" :key="i">
         <div class="flex flex-col items-center space-y-1">
@@ -144,7 +151,7 @@ export default defineComponent({
             const label = db.labels.find(
               (target) => target.key === groupByLabel.value
             );
-            if (!label) return t("database.group-other");
+            if (!label) return "";
             return label.value;
           });
           return Object.keys(dict).map((value) => ({
@@ -182,171 +189,11 @@ export default defineComponent({
       ...props.environmentList.map((env) => ({ title: env.name })),
     ]);
 
-    // const columnListMap = computed(() => {
-    //   return new Map([
-    //     [
-    //       "ALL",
-    //       [
-    //         {
-    //           title: t("common.name"),
-    //         },
-    //         {
-    //           title: t("common.project"),
-    //         },
-    //         {
-    //           title: t("common.environment"),
-    //         },
-    //         {
-    //           title: t("common.instance"),
-    //         },
-    //         {
-    //           title: t("db.sync-status"),
-    //         },
-    //         {
-    //           title: t("db.last-successful-sync"),
-    //         },
-    //       ],
-    //     ],
-    //     [
-    //       "ALL_SHORT",
-    //       [
-    //         {
-    //           title: t("common.name"),
-    //         },
-    //         {
-    //           title: t("common.project"),
-    //         },
-    //         {
-    //           title: t("common.environment"),
-    //         },
-    //         {
-    //           title: t("common.instance"),
-    //         },
-    //       ],
-    //     ],
-    //     [
-    //       "INSTANCE",
-    //       [
-    //         {
-    //           title: t("common.name"),
-    //         },
-    //         {
-    //           title: t("common.project"),
-    //         },
-    //         {
-    //           title: t("db.sync-status"),
-    //         },
-    //         {
-    //           title: t("db.last-successful-sync"),
-    //         },
-    //       ],
-    //     ],
-    //     [
-    //       "PROJECT",
-    //       [
-    //         {
-    //           title: t("common.name"),
-    //         },
-    //         {
-    //           title: t("common.environment"),
-    //         },
-    //         {
-    //           title: t("common.instance"),
-    //         },
-    //         {
-    //           title: t("db.sync-status"),
-    //         },
-    //         {
-    //           title: t("db.last-successful-sync"),
-    //         },
-    //       ],
-    //     ],
-    //     [
-    //       "PROJECT_SHORT",
-    //       [
-    //         {
-    //           title: t("common.name"),
-    //         },
-    //         {
-    //           title: t("common.environment"),
-    //         },
-    //         {
-    //           title: t("common.instance"),
-    //         },
-    //       ],
-    //     ],
-    //   ]);
-    // });
-
-    // // const currentUser = computed(() => store.getters["auth/currentUser"]());
-
-    // const showInstanceColumn = computed(() => {
-    //   return props.mode != "INSTANCE";
-    // });
-
-    // const showProjectColumn = computed(() => {
-    //   return props.mode != "PROJECT" && props.mode != "PROJECT_SHORT";
-    // });
-
-    // const showEnvironmentColumn = computed(() => {
-    //   return props.mode != "INSTANCE";
-    // });
-
-    // const showMiscColumn = computed(() => {
-    //   return props.mode != "ALL_SHORT" && props.mode != "PROJECT_SHORT";
-    // });
-
-    // const columnList = computed(() => {
-    //   var list: BBTableColumn[] = columnListMap.value.get(props.mode)!;
-    //   if (showConsoleLink.value) {
-    //     // Use cloneDeep, otherwise it will alter the one in columnListMap
-    //     list = cloneDeep(list);
-    //     list.push({ title: t("database.sql-console") });
-    //   }
-    //   return list;
-    // });
-
-    // const showConsoleLink = computed(() => {
-    //   if (props.mode == "ALL_SHORT" || props.mode == "PROJECT_SHORT") {
-    //     return false;
-    //   }
-
-    //   const consoleUrl =
-    //     store.getters["setting/settingByName"]("bb.console.url").value;
-    //   return !isEmpty(consoleUrl);
-    // });
-
-    // const databaseConsoleLink = (databaseName: string) => {
-    //   const consoleUrl =
-    //     store.getters["setting/settingByName"]("bb.console.url").value;
-    //   if (!isEmpty(consoleUrl)) {
-    //     return consoleLink(consoleUrl, databaseName);
-    //   }
-    //   return "";
-    // };
-
-    // const clickDatabase = function (section: number, row: number) {
-    //   const database = props.databaseList[row];
-    //   if (props.customClick) {
-    //     emit("select-database", database);
-    //   } else {
-    //     router.push(`/db/${databaseSlug(database)}`);
-    //   }
-    // };
-
     return {
       groupByLabel,
       databaseListGroupByLabel,
       databaseMatrices,
       columnList,
-      // showInstanceColumn,
-      // showProjectColumn,
-      // showEnvironmentColumn,
-      // showMiscColumn,
-      // columnList,
-      // showConsoleLink,
-      // databaseConsoleLink,
-      // clickDatabase,
     };
   },
 });
