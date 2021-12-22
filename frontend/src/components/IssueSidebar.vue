@@ -237,8 +237,7 @@ import {
   TaskCreate,
   EMPTY_ID,
   Stage,
-  CreateDatabaseContext,
-  UpdateSchemaDetail,
+  StageCreate,
   Instance,
   ONBOARDING_ISSUE_ID,
   TaskDatabaseCreatePayload,
@@ -275,7 +274,7 @@ export default defineComponent({
     },
     selectedStage: {
       required: true,
-      type: Object as PropType<Stage | UpdateSchemaDetail>,
+      type: Object as PropType<Stage | StageCreate>,
     },
     inputFieldList: {
       required: true,
@@ -324,38 +323,28 @@ export default defineComponent({
         return props.database.name;
       }
 
-      // When props.database isn't there yet, it's an issue for creating databases.
-      if (props.issue.type == "bb.issue.database.create") {
+      const stage = props.selectedStage as Stage;
+      if (
+        stage.taskList[0].type == "bb.task.database.create" ||
+        stage.taskList[0].type == "bb.task.database.restore"
+      ) {
         if (props.create) {
-          const createContext = (props.issue as IssueCreate)
-            .createContext as CreateDatabaseContext;
-          return createContext.databaseName;
-        } else {
-          const stage = props.selectedStage as Stage;
-          // Create or restore issues start with creating database task.
-          if (stage.taskList.length == 0) {
-            return undefined;
-          }
-          if (stage.taskList[0].type == "bb.task.database.create") {
-            return (
-              (stage.taskList[0] as Task).payload as TaskDatabaseCreatePayload
-            ).databaseName;
-          }
+          const stage = props.selectedStage as StageCreate;
+          return stage.taskList[0].databaseName;
         }
+        return (
+          (stage.taskList[0] as Task).payload as TaskDatabaseCreatePayload
+        ).databaseName;
       }
       return undefined;
     });
 
     const environment = computed((): Environment => {
       if (props.create) {
-        // Issue template and environment supports schema update only.
-        if (props.issue.type == "bb.issue.database.schema.update") {
-          const stage = props.selectedStage as UpdateSchemaDetail;
-          const db: Database = store.getters["database/databaseById"](
-            stage.databaseId
-          );
-          return db.instance.environment;
-        }
+        const stage = props.selectedStage as StageCreate;
+        return store.getters["environment/environmentById"](
+          stage.environmentId
+        );
       }
       const stage = props.selectedStage as Stage;
       return stage.environment;
@@ -415,9 +404,6 @@ export default defineComponent({
     };
 
     const isDatabaseCreated = computed(() => {
-      if (props.create) {
-        return props.issue.type != "bb.issue.database.create";
-      }
       const stage = props.selectedStage as Stage;
       if (stage.taskList[0].type == "bb.task.database.create") {
         if (props.create) {
@@ -430,7 +416,8 @@ export default defineComponent({
 
     // We only show creation label for database create task
     const showDatabaseCreationLabel = computed(() => {
-      if (props.issue.type != "bb.issue.database.create") {
+      const stage = props.selectedStage as Stage;
+      if (stage.taskList[0].type != "bb.task.database.create") {
         return "";
       }
       return isDatabaseCreated.value ? "(created)" : "(pending create)";
@@ -440,11 +427,11 @@ export default defineComponent({
     // Will fix this in another branch.
     const clickDatabase = () => {
       // If the database has not been created yet, do nothing
-      if (props.database && props.database) {
+      if (props.database && props.database.value) {
         router.push({
           name: "workspace.database.detail",
           params: {
-            databaseSlug: databaseSlug(props.database),
+            databaseSlug: databaseSlug(props.database.value),
           },
         });
       } else {
