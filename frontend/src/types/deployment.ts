@@ -1,6 +1,6 @@
 import { Project } from ".";
 import { DeploymentConfigId } from "./id";
-import { LabelKey, LabelValue } from "./label";
+import { LabelKeyType, LabelValueType } from "./label";
 import { Principal } from "./principal";
 
 export type DeploymentConfig = {
@@ -17,6 +17,10 @@ export type DeploymentConfig = {
 
   // Domain specific fields
   schedule: DeploymentSchedule;
+};
+
+export type DeploymentConfigPatch = {
+  payload: string;
 };
 
 export type DeploymentSchedule = {
@@ -36,9 +40,9 @@ export type LabelSelector = {
 };
 
 export type LabelSelectorRequirement = {
-  key: LabelKey;
+  key: LabelKeyType;
   operator: OperatorType;
-  values: LabelValue[];
+  values: LabelValueType[];
 };
 
 export type OperatorType = "In" | "Exists";

@@ -33,6 +33,7 @@ import { Setting, SettingName } from "./setting";
 import { Table } from "./table";
 import { VCS } from "./vcs";
 import { Label } from "./label";
+import { DeploymentConfig } from "./deployment";
 
 export interface ActuatorState {
   serverInfo?: ServerInfo;
@@ -168,4 +169,8 @@ export interface CommandState {
 
 export interface LabelState {
   labelList: Label[];
+}
+
+export interface DeploymentState {
+  deploymentConfigByProjectId: Map<ProjectId, DeploymentConfig>;
 }

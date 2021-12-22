@@ -19,7 +19,7 @@
         <heroicons-solid:arrow-circle-down class="w-6 h-6" />
       </button>
     </div>
-    <div class="main space-y-2 py-2">
+    <div class="main flex-1 space-y-2 py-2 overflow-hidden">
       <slot name="header" />
       <div
         v-for="(selector, j) in deployment.spec.selector.matchExpressions"

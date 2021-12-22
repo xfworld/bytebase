@@ -26,6 +26,7 @@ import project from "./modules/project";
 import projectWebhook from "./modules/projectWebhook";
 import repository from "./modules/repository";
 import label from "./modules/label";
+import deployment from "./modules/deployment";
 // Following states are only stored in memory
 import router from "./modules/router";
 import setting from "./modules/setting";
@@ -76,6 +77,7 @@ export const store: Store<any> = createStore({
     view,
     anomaly,
     label,
+    deployment,
   },
   strict: !isProd,
 });

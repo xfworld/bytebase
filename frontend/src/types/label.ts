@@ -1,8 +1,8 @@
 import { LabelId } from "./id";
 import { Principal } from "./principal";
 
-export type LabelKey = string;
-export type LabelValue = string;
+export type LabelKeyType = string;
+export type LabelValueType = string;
 
 export type Label = {
   id: LabelId;
@@ -14,20 +14,20 @@ export type Label = {
   updatedTs: number;
 
   // Domain specific fields
-  key: LabelKey;
-  valueList: LabelValue[];
+  key: LabelKeyType;
+  valueList: LabelValueType[];
 };
 
 export type LabelPatch = {
-  valueList?: LabelValue[];
+  valueList?: LabelValueType[];
 };
 
 export type DatabaseLabel = {
-  key: LabelKey;
-  value: LabelValue;
+  key: LabelKeyType;
+  value: LabelValueType;
 };
 
 export type AvailableLabel = {
-  key: LabelKey;
-  valueList: LabelValue[];
+  key: LabelKeyType;
+  valueList: LabelValueType[];
 };

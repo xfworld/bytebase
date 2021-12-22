@@ -152,6 +152,7 @@ common:
   agents: Agents
   billings: Billings
   all: All
+  deployment-config: Deployment Config
 error-page:
   go-back-home: Go back home
 anomaly-center: Anomaly Center
@@ -900,8 +901,6 @@ project:
   mode:
     standard: Standard
     tenant: Tenant
-  tabs:
-    deployment-configuration: Deployment Configuration
 inbox:
   mark-all-as-read: Mark all as read
   view-older: View older
@@ -982,6 +981,8 @@ archive:
 deployment-config:
   state-n: State - {n}
   add-selector: Add selector
+  update-success: Successfully updated deployment config.
+  this-is-example-deployment-config: This is the deployment config example. You need to edit and save it.
 datasource:
   successfully-deleted-data-source-name: Successfully deleted data source '{0}'.
   create-data-source: Create data source

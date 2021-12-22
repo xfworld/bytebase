@@ -94,8 +94,8 @@ export default defineComponent({
       ];
       if (project.value.tenantMode === "TENANT") {
         list.push({
-          name: t("project.tabs.deployment-configuration"),
-          hash: "deployment-configuration",
+          name: t("common.deployment-config"),
+          hash: "deployment-config",
         });
       }
 

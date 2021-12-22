@@ -1,15 +1,26 @@
 <template>
-  <div class="max-w-3xl mx-auto divide-y">
-    <DeploymentConfig
-      v-if="schedule"
-      :schedule="schedule"
-      :allow-edit="allowEdit"
-      :label-list="availableLabelList"
-      :database-list="databaseList"
-    />
-    <div v-if="allowEdit" class="pt-4 flex justify-between items-center">
-      <button class="btn-normal" @click="addStage">Add Stage</button>
-      <button class="btn-primary">{{ $t("common.update") }}</button>
+  <div class="max-w-3xl mx-auto">
+    <BBAttention
+      v-if="deployment?.id === EMPTY_ID"
+      :style="'WARN'"
+      :title="$t('common.deployment-config')"
+      :description="$t('deployment-config.this-is-example-deployment-config')"
+    >
+    </BBAttention>
+    <div class="divide-y">
+      <DeploymentConfigTool
+        v-if="deployment"
+        :schedule="deployment.schedule"
+        :allow-edit="allowEdit"
+        :label-list="availableLabelList"
+        :database-list="databaseList"
+      />
+      <div v-if="allowEdit" class="pt-4 flex justify-between items-center">
+        <button class="btn-normal" @click="addStage">Add Stage</button>
+        <button class="btn-primary" @click="update">
+          {{ $t("common.update") }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -18,20 +29,25 @@
 import { computed, defineComponent, PropType, ref, watchEffect } from "vue";
 import { useStore } from "vuex";
 import {
-  ProjectPatch,
   Project,
-  Principal,
   Environment,
   Label,
   Database,
   AvailableLabel,
+  DeploymentConfig,
   DeploymentSchedule,
+  UNKNOWN_ID,
+  EMPTY_ID,
+  empty,
+  DeploymentConfigPatch,
 } from "../types";
-import DeploymentConfig from "./DeploymentConfig";
+import DeploymentConfigTool from "./DeploymentConfigTool";
+import { cloneDeep } from "lodash-es";
+import { useI18n } from "vue-i18n";
 
 export default defineComponent({
   name: "ProjectDeploymentConfigurationPanel",
-  components: { DeploymentConfig },
+  components: { DeploymentConfigTool },
   props: {
     project: {
       required: true,
@@ -44,11 +60,17 @@ export default defineComponent({
   },
   setup(props) {
     const store = useStore();
+    const { t } = useI18n();
+    const deployment = ref<DeploymentConfig>();
 
     const prepareList = () => {
       store.dispatch("environment/fetchEnvironmentList");
       store.dispatch("label/fetchLabelList");
       store.dispatch("database/fetchDatabaseListByProjectId", props.project.id);
+      store.dispatch(
+        "deployment/fetchDeploymentConfigByProjectId",
+        props.project.id
+      );
     };
 
     const environmentList = computed(
@@ -81,38 +103,26 @@ export default defineComponent({
       return list;
     });
 
-    const generateDefaultSchedule = () => {
-      const schedule: DeploymentSchedule = {
-        deployments: [],
-      };
-      environmentList.value.forEach((env) => {
-        schedule.deployments.push({
-          spec: {
-            selector: {
-              matchExpressions: [
-                {
-                  key: "environment",
-                  operator: "In",
-                  values: [env.name],
-                },
-              ],
-            },
-          },
-        });
-      });
-      return schedule;
-    };
-
-    const schedule = ref<DeploymentSchedule>();
-
     watchEffect(() => {
-      if (environmentList.value.length > 0) {
-        schedule.value = generateDefaultSchedule();
+      const dep = store.getters["deployment/deploymentConfigByProjectId"](
+        props.project.id
+      ) as DeploymentConfig;
+      if (dep.id === UNKNOWN_ID) {
+        if (environmentList.value.length > 0) {
+          deployment.value = empty("DEPLOYMENT_CONFIG") as DeploymentConfig;
+          deployment.value.schedule = generateDefaultSchedule(
+            environmentList.value
+          );
+        }
+      } else {
+        deployment.value = cloneDeep(dep);
       }
     });
 
     const addStage = () => {
-      schedule.value.deployments.push({
+      if (!deployment.value) return;
+
+      deployment.value.schedule.deployments.push({
         spec: {
           selector: {
             matchExpressions: [],
@@ -121,14 +131,55 @@ export default defineComponent({
       });
     };
 
+    const update = () => {
+      if (!deployment.value) return;
+
+      const deploymentConfigPatch: DeploymentConfigPatch = {
+        payload: JSON.stringify(deployment.value.schedule),
+      };
+      store.dispatch("deployment/patchDeploymentConfigByProjectId", {
+        projectId: props.project.id,
+        deploymentConfigPatch,
+      });
+      store.dispatch("notification/pushNotification", {
+        module: "bytebase",
+        style: "SUCCESS",
+        title: t("deployment-config.update-success"),
+      });
+    };
+
     return {
+      EMPTY_ID,
       environmentList,
       labelList,
       databaseList,
       availableLabelList,
-      schedule,
+      deployment,
       addStage,
+      update,
     };
   },
 });
+
+const generateDefaultSchedule = (environmentList: Environment[]) => {
+  const schedule: DeploymentSchedule = {
+    deployments: [],
+  };
+  environmentList.forEach((env) => {
+    schedule.deployments.push({
+      spec: {
+        selector: {
+          matchExpressions: [
+            {
+              key: "environment",
+              operator: "In",
+              values: [env.name],
+            },
+          ],
+        },
+      },
+    });
+  });
+  return schedule;
+};
 </script>

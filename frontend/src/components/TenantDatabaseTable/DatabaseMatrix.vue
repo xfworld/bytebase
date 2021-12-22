@@ -9,6 +9,7 @@
     :right-bordered="bordered"
     :top-bordered="bordered"
     :bottom-bordered="bordered"
+    :row-clickable="false"
   >
     <template #header>
       <BBTableHeaderCell

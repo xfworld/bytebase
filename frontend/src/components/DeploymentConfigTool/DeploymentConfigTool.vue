@@ -35,7 +35,7 @@ import {
 import DeploymentStage from "./DeploymentStage.vue";
 
 export default defineComponent({
-  name: "DeploymentConfig",
+  name: "DeploymentConfigTool",
   components: { DeploymentStage },
   props: {
     allowEdit: {

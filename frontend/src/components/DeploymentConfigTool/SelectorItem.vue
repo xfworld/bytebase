@@ -35,7 +35,6 @@
 import { computed, defineComponent, PropType, watch } from "vue";
 import {
   AvailableLabel,
-  LabelKey,
   LabelSelectorRequirement,
   OperatorType,
 } from "../../types";
@@ -72,10 +71,6 @@ export default defineComponent({
       return labelDefinition.valueList;
     });
 
-    const updateKey = (key: LabelKey) => {
-      props.selector.key = key;
-    };
-
     const resetValues = () => {
       props.selector.values = [];
     };
@@ -83,7 +78,7 @@ export default defineComponent({
     watch(() => props.selector.key, resetValues);
     watch(() => props.selector.operator, resetValues);
 
-    return { OPERATORS, keys, values, updateKey };
+    return { OPERATORS, keys, values };
   },
 });
 </script>

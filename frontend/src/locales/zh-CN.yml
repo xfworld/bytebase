@@ -152,6 +152,7 @@ common:
   agents: Agents
   billings: 计费
   all: 全部
+  deployment-config: 部署配置
 error-page:
   go-back-home: 回到主页
 anomaly-center: 异常中心
@@ -796,8 +797,6 @@ project:
   mode:
     standard: 标准
     tenant: 多租户
-  tabs:
-    deployment-configuration: 部署配置
 inbox:
   mark-all-as-read: 全部标记为已读
   view-older: 查看更早
@@ -854,6 +853,8 @@ archive:
 deployment-config:
   state-n: 阶段 - {n}
   add-selector: 添加选择条件
+  update-success: 成功更新部署配置
+  this-is-example-deployment-config: 这是部署配置的样例，你需要在此基础上编辑并保存。
 datasource:
   successfully-deleted-data-source-name: 成功删除数据源'{0}'。
   create-data-source: 创建数据源

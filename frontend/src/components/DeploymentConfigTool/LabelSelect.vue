@@ -13,7 +13,7 @@
           </template>
           <template v-else>
             <slot name="placeholder" :placeholder="placeholder">
-              {{ placeholder }}
+              <span class="whitespace-nowrap">{{ placeholder }}</span>
             </slot>
           </template>
           <slot name="arrow" :open="state.open">
