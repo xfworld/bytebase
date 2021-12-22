@@ -224,7 +224,7 @@ import {
   baseDirectoryWebUrl,
   Database,
 } from "../types";
-import { isEmpty } from "lodash";
+import { isEmpty } from "lodash-es";
 import { BBTabFilterItem } from "../bbkit/types";
 import { useI18n } from "vue-i18n";
 

@@ -88,6 +88,7 @@
           >
             <IssueSidebar
               :issue="issue"
+              :task="selectedTask"
               :database="database"
               :instance="instance"
               :create="state.create"
@@ -95,6 +96,7 @@
               :input-field-list="issueTemplate.inputFieldList"
               :allow-edit="allowEditSidebar"
               @update-assignee-id="updateAssigneeId"
+              @update-earliest-allowed-time="updateEarliestAllowedTime"
               @add-subscriber-id="addSubscriberId"
               @remove-subscriber-id="removeSubscriberId"
               @update-custom-field="updateCustomField"
@@ -278,7 +280,7 @@ import {
   OutputField,
   IssueTemplate,
 } from "../plugins";
-import { isEmpty } from "lodash";
+import { isEmpty } from "lodash-es";
 
 interface LocalState {
   // Needs to maintain this state and set it to false manually after creating the issue.
@@ -677,7 +679,7 @@ export default defineComponent({
       postUpdated?: (updatedTask: Task) => void
     ) => {
       if (issue.value.type != "bb.issue.database.schema.update") {
-          return;
+        return;
       }
       if (state.create) {
         const stage = selectedStage.value as UpdateSchemaDetail;
@@ -695,7 +697,8 @@ export default defineComponent({
 
     const applyStatementToOtherStages = (newStatement: string) => {
       if (issue.value.type == "bb.issue.database.schema.update") {
-        const createContext = ((issue.value as IssueCreate).createContext) as UpdateSchemaContext;
+        const createContext = (issue.value as IssueCreate)
+          .createContext as UpdateSchemaContext;
         for (const detail of createContext.updateSchemaDetailList) {
           detail.statement = newStatement;
         }
@@ -712,7 +715,8 @@ export default defineComponent({
 
     const applyRollbackStatementToOtherStages = (newStatement: string) => {
       if (issue.value.type == "bb.issue.database.schema.update") {
-        const createContext = ((issue.value as IssueCreate).createContext) as UpdateSchemaContext;
+        const createContext = (issue.value as IssueCreate)
+          .createContext as UpdateSchemaContext;
         for (const detail of createContext.updateSchemaDetailList) {
           detail.rollbackStatement = newStatement;
         }
@@ -742,6 +746,18 @@ export default defineComponent({
         patchIssue({
           assigneeId: newAssigneeId,
         });
+      }
+    };
+
+    const updateEarliestAllowedTime = (newEarliestAllowedTsMs: number) => {
+      if (state.create) {
+        selectedTask.value.earliestAllowedTs = newEarliestAllowedTsMs;
+      } else {
+        const taskPatch: TaskPatch = {
+          earliestAllowedTs: newEarliestAllowedTsMs,
+        };
+        patchTask((selectedTask.value as Task).id, taskPatch);
+        console.log("selectedTask", selectedTask.value.earliestAllowedTs);
       }
     };
 
@@ -896,7 +912,8 @@ export default defineComponent({
         if (issue.value.type == "bb.issue.database.create") {
           return "NO_PIPELINE";
         } else if (issue.value.type == "bb.issue.database.schema.update") {
-          const createContext = ((issue.value as IssueCreate).createContext) as UpdateSchemaContext;
+          const createContext = (issue.value as IssueCreate)
+            .createContext as UpdateSchemaContext;
           if (createContext.updateSchemaDetailList.length > 1) {
             return "MULTI_STAGE";
           }
@@ -1014,15 +1031,21 @@ export default defineComponent({
     };
 
     const selectedStatement = computed((): string => {
-      if (!state.create || issue.value.type != "bb.issue.database.schema.update") {
-          return "";
+      if (
+        !state.create ||
+        issue.value.type != "bb.issue.database.schema.update"
+      ) {
+        return "";
       }
       return (selectedStage.value as UpdateSchemaDetail).statement;
     });
 
     const selectedRollbackStatement = computed((): string => {
-      if (!state.create || issue.value.type != "bb.issue.database.schema.update") {
-          return "";
+      if (
+        !state.create ||
+        issue.value.type != "bb.issue.database.schema.update"
+      ) {
+        return "";
       }
       return (selectedStage.value as UpdateSchemaDetail).rollbackStatement;
     });
@@ -1030,7 +1053,9 @@ export default defineComponent({
     const selectedMigrateType = computed((): MigrationType => {
       if (state.create) {
         if (issue.value.type == "bb.issue.database.schema.update") {
-          return ((issue.value as IssueCreate).createContext as UpdateSchemaContext).migrationType;
+          return (
+            (issue.value as IssueCreate).createContext as UpdateSchemaContext
+          ).migrationType;
         }
       }
       if (
@@ -1170,7 +1195,8 @@ export default defineComponent({
         return false;
       }
       if (issue.value.type == "bb.issue.database.schema.update") {
-        const createContext = (issue.value as IssueCreate).createContext as UpdateSchemaContext;
+        const createContext = (issue.value as IssueCreate)
+          .createContext as UpdateSchemaContext;
         return createContext.updateSchemaDetailList.length > 1;
       }
       return false;
@@ -1179,9 +1205,10 @@ export default defineComponent({
     const database = computed((): Database | undefined => {
       if (state.create) {
         if (issue.value.type != "bb.issue.database.schema.update") {
-            return undefined;
+          return undefined;
         }
-        const databaseId = (selectedStage.value as UpdateSchemaDetail).databaseId;
+        const databaseId = (selectedStage.value as UpdateSchemaDetail)
+          .databaseId;
         if (databaseId) {
           return store.getters["database/databaseById"](databaseId);
         }
@@ -1197,10 +1224,12 @@ export default defineComponent({
           return database.value.instance;
         }
         if (issue.value.type != "bb.issue.database.schema.update") {
-            return undefined;
+          return undefined;
         }
-        const databaseId = (selectedStage.value as UpdateSchemaDetail).databaseId;
-        return (store.getters["database/databaseById"](databaseId) as Database).instance;
+        const databaseId = (selectedStage.value as UpdateSchemaDetail)
+          .databaseId;
+        return (store.getters["database/databaseById"](databaseId) as Database)
+          .instance;
       }
       return (selectedStage.value as Stage).taskList[0].instance;
     });
@@ -1231,6 +1260,7 @@ export default defineComponent({
       updateName,
       updateDescription,
       updateStatement,
+      updateEarliestAllowedTime,
       applyStatementToOtherStages,
       updateRollbackStatement,
       applyRollbackStatementToOtherStages,

@@ -17,8 +17,8 @@
       </template>
 
       <h2 class="textlabel flex items-center col-span-1 col-start-1">
-        {{ $t("common.assignee") }}
-        <span v-if="create" class="text-red-600">*</span>
+        {{ $t("common.assignee")
+        }}<span v-if="create" class="text-red-600">*</span>
       </h2>
       <!-- Only DBA can be assigned to the issue -->
       <div class="col-span-2">
@@ -33,6 +33,36 @@
             }
           "
         />
+      </div>
+
+      <h2 class="textlabel flex items-center col-span-1 col-start-1">
+        {{ $t("common.when") }}<span v-if="create" class="text-red-600">*</span>
+        <div class="tooltip-wrapper">
+          <span class="tooltip w-60">{{
+            $t("task.earliest-allowed-time-hint")
+          }}</span>
+          <!-- Heroicons name: outline/question-mark-circle -->
+          <heroicons-outline:question-mark-circle class="h-4 w-4" />
+        </div>
+      </h2>
+      <div class="col-span-2">
+        <!-- TODO: should added i18n support for naive-i18n & should fit in with the current theme -->
+        <n-date-picker
+          v-if="allowEditEarliestAllowedTime"
+          v-model:value="state.earliestAllowedTs"
+          :is-date-disabled="isDatePassed"
+          class="w-full"
+          type="datetime"
+          clearable
+          @update:value="
+            (newTimestampNs) => {
+              $emit('update-earliest-allowed-time', newTimestampNs / 1000);
+            }
+          "
+        />
+        <span v-else class="textfield col-span-2">
+          {{ moment(task.earliestAllowedTs * 1000).format("LLL") }}</span
+        >
       </div>
 
       <template v-for="(field, index) in inputFieldList" :key="index">
@@ -188,12 +218,14 @@
 import { computed, defineComponent, PropType, reactive } from "vue";
 import { useStore } from "vuex";
 import isEqual from "lodash-es/isEqual";
+import { NDatePicker } from "naive-ui";
 import PrincipalAvatar from "../components/PrincipalAvatar.vue";
 import MemberSelect from "../components/MemberSelect.vue";
 import StageSelect from "../components/StageSelect.vue";
 import IssueStatusIcon from "../components/IssueStatusIcon.vue";
 import IssueSubscriberPanel from "../components/IssueSubscriberPanel.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
+
 import { InputField } from "../plugins";
 import {
   Database,
@@ -201,6 +233,8 @@ import {
   Project,
   Issue,
   IssueCreate,
+  Task,
+  TaskCreate,
   EMPTY_ID,
   Stage,
   CreateDatabaseContext,
@@ -208,7 +242,6 @@ import {
   Instance,
   ONBOARDING_ISSUE_ID,
   TaskDatabaseCreatePayload,
-  Task,
 } from "../types";
 import { allTaskList, databaseSlug, isDBAOrOwner } from "../utils";
 import { useRouter } from "vue-router";
@@ -219,6 +252,7 @@ interface LocalState {}
 export default defineComponent({
   name: "IssueSidebar",
   components: {
+    NDatePicker,
     PrincipalAvatar,
     MemberSelect,
     StageSelect,
@@ -230,6 +264,10 @@ export default defineComponent({
     issue: {
       required: true,
       type: Object as PropType<Issue | IssueCreate>,
+    },
+    task: {
+      required: true,
+      type: Object as PropType<Task | TaskCreate>,
     },
     create: {
       required: true,
@@ -258,6 +296,7 @@ export default defineComponent({
   },
   emits: [
     "update-assignee-id",
+    "update-earliest-allowed-time",
     "add-subscriber-id",
     "remove-subscriber-id",
     "update-custom-field",
@@ -267,7 +306,12 @@ export default defineComponent({
     const store = useStore();
     const router = useRouter();
 
-    const state = reactive<LocalState>({});
+    const now = Date.now();
+    const state = reactive<LocalState>({
+      earliestAllowedTs: props.task.earliestAllowedTs
+        ? props.task.earliestAllowedTs * 1000
+        : null,
+    });
 
     const currentUser = computed(() => store.getters["auth/currentUser"]());
 
@@ -283,7 +327,8 @@ export default defineComponent({
       // When props.database isn't there yet, it's an issue for creating databases.
       if (props.issue.type == "bb.issue.database.create") {
         if (props.create) {
-          const createContext = (props.issue as IssueCreate).createContext as CreateDatabaseContext;
+          const createContext = (props.issue as IssueCreate)
+            .createContext as CreateDatabaseContext;
           return createContext.databaseName;
         } else {
           const stage = props.selectedStage as Stage;
@@ -291,9 +336,7 @@ export default defineComponent({
           if (stage.taskList.length == 0) {
             return undefined;
           }
-          if (
-            stage.taskList[0].type == "bb.task.database.create"
-          ) {
+          if (stage.taskList[0].type == "bb.task.database.create") {
             return (
               (stage.taskList[0] as Task).payload as TaskDatabaseCreatePayload
             ).databaseName;
@@ -308,7 +351,9 @@ export default defineComponent({
         // Issue template and environment supports schema update only.
         if (props.issue.type == "bb.issue.database.schema.update") {
           const stage = props.selectedStage as UpdateSchemaDetail;
-          const db: Database = store.getters["database/databaseById"](stage.databaseId);
+          const db: Database = store.getters["database/databaseById"](
+            stage.databaseId
+          );
           return db.instance.environment;
         }
       }
@@ -346,6 +391,16 @@ export default defineComponent({
           (props.issue as Issue).status == "OPEN" &&
           (currentUser.value.id == (props.issue as Issue).assignee?.id ||
             isDBAOrOwner(currentUser.value.role)))
+      );
+    });
+
+    const allowEditEarliestAllowedTime = computed(() => {
+      // only the assignee is allowed to modify EarliestAllowedTime
+      return (
+        props.create ||
+        ((props.issue as Issue).id != ONBOARDING_ISSUE_ID &&
+          (props.issue as Issue).status == "OPEN" &&
+          currentUser.value.id == (props.issue as Issue).assignee?.id)
       );
     });
 
@@ -409,6 +464,8 @@ export default defineComponent({
       }
     };
 
+    const isDatePassed = (ts: number) => ts < now;
+
     return {
       EMPTY_ID,
       state,
@@ -419,11 +476,13 @@ export default defineComponent({
       showInstance,
       showStageSelect,
       allowEditAssignee,
+      allowEditEarliestAllowedTime,
       allowEditCustomField,
       trySaveCustomField,
       isDatabaseCreated,
       showDatabaseCreationLabel,
       clickDatabase,
+      isDatePassed,
     };
   },
 });
