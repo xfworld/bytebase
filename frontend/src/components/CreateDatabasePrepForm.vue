@@ -204,8 +204,8 @@ import {
   Project,
   DatabaseLabel,
 } from "../types";
-import { isDBAOrOwner, issueSlug } from "../utils";
-import { uniqBy } from "lodash";
+import { isDBAOrOwner, issueSlug, validateLabels } from "../utils";
+import { useI18n } from "vue-i18n";
 
 interface LocalState {
   projectId?: ProjectId;
@@ -231,20 +231,25 @@ export default defineComponent({
   props: {
     projectId: {
       type: Number as PropType<ProjectId>,
+      default: undefined,
     },
     environmentId: {
       type: Number as PropType<EnvironmentId>,
+      default: undefined,
     },
     instanceId: {
       type: Number as PropType<InstanceId>,
+      default: undefined,
     },
     // If specified, then we are creating a database from the backup.
     backup: {
       type: Object as PropType<Backup>,
+      default: undefined,
     },
   },
   emits: ["dismiss"],
   setup(props, { emit }) {
+    const { t } = useI18n();
     const store = useStore();
     const router = useRouter();
 
@@ -299,15 +304,8 @@ export default defineComponent({
     });
 
     const labelsError = computed((): string => {
-      const labels = state.labels || [];
-      for (let i = 0; i < labels.length; i++) {
-        const label = labels[i];
-        if (!label.key) return "Select a label key";
-        if (!label.value) return "Select a label value";
-      }
-      if (labels.length !== uniqBy(labels, "key").length) {
-        return "Duplicated label keys";
-      }
+      const error = validateLabels(state.labels || []);
+      if (error) return t(error);
       return "";
     });
 

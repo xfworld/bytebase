@@ -154,6 +154,7 @@ common:
   all: All
   deployment-config: Deployment Config
   by: by
+  ok: OK
 error-page:
   go-back-home: Go back home
 anomaly-center: Anomaly Center
@@ -712,6 +713,10 @@ database:
   empty-label-value: <<Empty Value>>
   row-count-est: Row count est.
   no-label: No labels
+  label-error:
+    key-necessary: Key is required
+    value-necessary: Value is required
+    key-duplicated: Duplicated keys
 t:
   database: {}
 repository:

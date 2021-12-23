@@ -78,7 +78,7 @@ export default defineComponent({
 .add-button {
   @apply px-2 py-1 inline-flex items-center
     rounded bg-white border border-control-border
-    hover:border-control-hover
+    hover:bg-control-bg-hover
     cursor-pointer;
 }
 .textfield {

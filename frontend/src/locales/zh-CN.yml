@@ -154,6 +154,7 @@ common:
   all: 全部
   deployment-config: 部署配置
   by: 由
+  ok: OK
 error-page:
   go-back-home: 回到主页
 anomaly-center: 异常中心
@@ -654,6 +655,10 @@ database:
   empty-label-value: <<空值>>
   row-count-est: 估计行数
   no-label: 没有标签
+  label-error:
+    key-necessary: 需要指定 Key
+    value-necessary: 需要指定值
+    key-duplicated: Key 重复了
 repository:
   branch-observe-file-change: Bytebase 跟踪文件变更的分支。
   branch-specify-tip: '诀窍: 可以使用诸如 "feature/*" 这样的通配符'
