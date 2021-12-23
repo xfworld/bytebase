@@ -6,7 +6,7 @@
       <span v-if="editable" class="dropdown-icon">
         <heroicons-solid:selector class="h-4 w-4 text-control-light" />
       </span>
-      <select v-model="label.key">
+      <select v-if="editable" v-model="label.key">
         <option v-for="(key, i) in keys" :key="i" :value="key">
           {{ key }}
         </option>
@@ -18,7 +18,7 @@
       <span v-if="editable" class="dropdown-icon">
         <heroicons-solid:selector class="h-4 w-4 text-control-light" />
       </span>
-      <select v-model="label.value">
+      <select v-if="editable" v-model="label.value">
         <option v-for="(value, i) in values" :key="i" :value="value">
           {{ value }}
         </option>
