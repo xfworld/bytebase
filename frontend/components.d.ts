@@ -43,6 +43,7 @@ declare module 'vue' {
     DatabaseBackupPanel: typeof import('./src/components/DatabaseBackupPanel.vue')['default']
     DatabaseLabel: typeof import('./src/components/DatabaseLabels/DatabaseLabel.vue')['default']
     DatabaseLabels: typeof import('./src/components/DatabaseLabels/DatabaseLabels.vue')['default']
+    DatabaseLabelsEditor: typeof import('./src/components/DatabaseLabels/DatabaseLabelsEditor.vue')['default']
     DatabaseListSidePanel: typeof import('./src/components/DatabaseListSidePanel.vue')['default']
     DatabaseMatrix: typeof import('./src/components/TenantDatabaseTable/DatabaseMatrix.vue')['default']
     DatabaseMatrixItem: typeof import('./src/components/TenantDatabaseTable/DatabaseMatrixItem.vue')['default']

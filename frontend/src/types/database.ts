@@ -55,6 +55,6 @@ export type DatabaseCreate = {
 
 export type DatabasePatch = {
   // Related fields
-  projectId: ProjectId;
+  projectId?: ProjectId;
   labels?: DatabaseLabel[];
 };

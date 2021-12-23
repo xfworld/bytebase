@@ -711,6 +711,7 @@ database:
   indexes: Indexes
   empty-label-value: <<Empty Value>>
   row-count-est: Row count est.
+  no-label: No labels
 t:
   database: {}
 repository:

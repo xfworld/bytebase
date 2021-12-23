@@ -397,6 +397,35 @@ const actions = {
 
     return updatedDatabase;
   },
+
+  async patchDatabaseLabels(
+    { commit, rootGetters }: any,
+    {
+      databaseId,
+      labels,
+    }: {
+      databaseId: DatabaseId;
+      labels: DatabaseLabel[];
+    }
+  ) {
+    const data = (
+      await axios.patch(`/api/database/${databaseId}`, {
+        data: {
+          type: "databasePatch",
+          attributes: {
+            labels: JSON.stringify(labels),
+          },
+        },
+      })
+    ).data;
+    const updatedDatabase = convert(data.data, data.included, rootGetters);
+
+    commit("upsertDatabaseList", {
+      databaseList: [updatedDatabase],
+    });
+
+    return updatedDatabase;
+  },
 };
 
 const mutations = {

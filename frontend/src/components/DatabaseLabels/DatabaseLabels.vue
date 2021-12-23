@@ -41,6 +41,8 @@ export default defineComponent({
     const allowAdd = computed(() => props.labels.length < MAX_DATABASE_LABELS);
 
     const prepareLabelList = () => {
+      // need not to fetchLabelList if not editable
+      if (!props.editable) return;
       store.dispatch("label/fetchLabelList");
     };
     watchEffect(prepareLabelList);

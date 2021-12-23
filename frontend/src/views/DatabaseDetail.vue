@@ -96,9 +96,14 @@
               </button>
             </dd>
           </dl>
-          <div v-if="isTenantProject" class="flex items-center mt-1">
-            <label class="textlabel">Labels&nbsp;-&nbsp;</label>
-            <DatabaseLabels :labels="database.labels" :editable="false" />
+          <div v-if="isTenantProject" class="flex items-center mt-2 h-7">
+            <label class="textlabel">
+              {{ $t("common.labels") }}&nbsp;-&nbsp;
+            </label>
+            <DatabaseLabelsEditor
+              :labels="database.labels"
+              @save="updateLabels"
+            />
           </div>
         </div>
         <div class="flex items-center space-x-2">
@@ -214,7 +219,7 @@ import DatabaseBackupPanel from "../components/DatabaseBackupPanel.vue";
 import DatabaseMigrationHistoryPanel from "../components/DatabaseMigrationHistoryPanel.vue";
 import DatabaseOverviewPanel from "../components/DatabaseOverviewPanel.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
-import DatabaseLabels from "../components/DatabaseLabels";
+import { DatabaseLabelsEditor } from "../components/DatabaseLabels";
 import { consoleLink, idFromSlug, isDBAOrOwner } from "../utils";
 import {
   ProjectId,
@@ -223,6 +228,7 @@ import {
   Repository,
   baseDirectoryWebUrl,
   Database,
+  DatabaseLabel,
 } from "../types";
 import { isEmpty } from "lodash-es";
 import { BBTabFilterItem } from "../bbkit/types";
@@ -251,7 +257,7 @@ export default defineComponent({
     DatabaseMigrationHistoryPanel,
     DatabaseBackupPanel,
     InstanceEngineIcon,
-    DatabaseLabels,
+    DatabaseLabelsEditor,
   },
   props: {
     databaseSlug: {
@@ -430,6 +436,13 @@ export default defineComponent({
         });
     };
 
+    const updateLabels = (labels: DatabaseLabel[]) => {
+      store.dispatch("database/patchDatabaseLabels", {
+        databaseId: database.value.id,
+        labels,
+      });
+    };
+
     const selectTab = (index: number) => {
       state.selectedIndex = index;
       router.replace({
@@ -483,6 +496,7 @@ export default defineComponent({
       alterSchema,
       alterSchemaText,
       updateProject,
+      updateLabels,
       selectTab,
     };
   },

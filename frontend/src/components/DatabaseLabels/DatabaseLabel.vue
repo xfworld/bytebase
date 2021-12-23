@@ -4,7 +4,7 @@
     <div class="select key">
       <span>{{ label.key }}</span>
       <span v-if="editable" class="dropdown-icon">
-        <heroicons-solid:chevron-down class="h-4 w-4 text-control-light" />
+        <heroicons-solid:selector class="h-4 w-4 text-control-light" />
       </span>
       <select v-model="label.key">
         <option v-for="(key, i) in keys" :key="i" :value="key">
@@ -16,7 +16,7 @@
     <div class="select value">
       <span>{{ label.value }}</span>
       <span v-if="editable" class="dropdown-icon">
-        <heroicons-solid:chevron-down class="h-4 w-4 text-control-light" />
+        <heroicons-solid:selector class="h-4 w-4 text-control-light" />
       </span>
       <select v-model="label.value">
         <option v-for="(value, i) in values" :key="i" :value="value">
@@ -99,7 +99,7 @@ export default defineComponent({
   @apply ml-0 mr-1 flex items-center p-0 rounded-sm pointer-events-none; /* cursor-pointer hover:bg-gray-300;*/
 }
 .select select {
-  @apply absolute inset-0 p-0 m-0 opacity-0 !important;
+  @apply absolute w-full h-full inset-0 p-0 m-0 opacity-0 !important;
 }
 .colon {
   @apply ml-0.5 mr-2;
