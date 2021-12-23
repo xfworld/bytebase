@@ -88,10 +88,10 @@ export default defineComponent({
   @apply relative max-w-full flex shadow-sm rounded-md overflow-hidden;
 }
 .selector-item > * {
-  @apply text-sm select-none text-main bg-white border border-control-border rounded-md cursor-default relative;
+  @apply text-sm select-none text-main bg-white border border-control-border rounded-md cursor-default relative z-0;
 }
-.selector-item.editable > * {
-  @apply hover:bg-control-bg-hover;
+.selector-item.editable > *:hover {
+  @apply z-10 border-control-light-hover;
 }
 .selector-item > :not(:first-child, :last-child) {
   @apply rounded-l-none rounded-r-none;
@@ -109,6 +109,6 @@ export default defineComponent({
   @apply flex items-center relative;
 }
 .remove {
-  @apply flex items-center pl-2 pr-2 hover:bg-gray-200;
+  @apply flex items-center pl-2 pr-2;
 }
 </style>
