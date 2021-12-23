@@ -85,15 +85,13 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .database-label {
-  @apply relative z-0 flex items-center rounded overflow-hidden px-2 whitespace-nowrap bg-gray-200 select-none;
-}
-.database-label.editable > *:not(.remove) {
-  @apply focus:outline-none focus:ring-1 focus:ring-control focus:border-control focus:z-10;
+  @apply h-6 relative z-0 flex items-center rounded overflow-hidden px-2 whitespace-nowrap
+   bg-blue-100 border-blue-300 border select-none;
 }
 .select {
-  @apply relative flex items-center overflow-hidden;
+  @apply h-full relative flex items-center overflow-hidden;
 }
 .select .dropdown-icon {
   @apply ml-0 mr-1 flex items-center p-0 rounded-sm pointer-events-none; /* cursor-pointer hover:bg-gray-300;*/
@@ -105,6 +103,6 @@ export default defineComponent({
   @apply ml-0.5 mr-2;
 }
 .remove {
-  @apply ml-1 -mr-0.5 p-px cursor-pointer hover:bg-gray-300 rounded-sm;
+  @apply ml-0 -mr-1 p-px cursor-pointer hover:bg-blue-300 rounded-sm;
 }
 </style>

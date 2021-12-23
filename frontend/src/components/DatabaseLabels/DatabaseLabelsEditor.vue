@@ -112,9 +112,9 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .icon-btn {
-  @apply px-2 py-1 inline-flex items-center
+  @apply h-6 px-1 py-1 inline-flex items-center
     rounded bg-white border border-control-border
     hover:bg-control-bg-hover
     cursor-pointer;

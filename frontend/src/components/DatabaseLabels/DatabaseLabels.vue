@@ -8,9 +8,9 @@
       :available-labels="availableLabels"
       @remove="removeLabel(i)"
     />
-    <div v-if="editable && allowAdd" class="add-button" @click="addLabel">
+    <button v-if="editable && allowAdd" class="add-button" @click="addLabel">
       <heroicons-solid:plus class="w-4 h-4" />
-    </div>
+    </button>
   </div>
 </template>
 
@@ -74,23 +74,11 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .add-button {
-  @apply px-2 py-1 inline-flex items-center
+  @apply h-6 px-1 py-1 inline-flex items-center
     rounded bg-white border border-control-border
     hover:bg-control-bg-hover
     cursor-pointer;
-}
-.textfield {
-  @apply rounded px-2 py-0 text-sm w-32;
-}
-.textfield.error {
-  @apply border-error focus:ring-error focus:border-error;
-}
-.cancel {
-  @apply text-error;
-}
-.save {
-  @apply text-success;
 }
 </style>

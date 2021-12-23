@@ -134,6 +134,6 @@ export default defineComponent({
   @apply flex flex-1 gap-2  overflow-hidden max-h-full;
 }
 .tag {
-  @apply bg-gray-200 px-2 rounded whitespace-nowrap;
+  @apply bg-blue-100 border-blue-300 border px-2 rounded whitespace-nowrap;
 }
 </style>

@@ -83,7 +83,7 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .selector-item {
   @apply relative max-w-full flex shadow-sm rounded-md overflow-hidden;
 }
@@ -91,7 +91,7 @@ export default defineComponent({
   @apply text-sm select-none text-main bg-white border border-control-border rounded-md cursor-default relative z-0;
 }
 .selector-item.editable > *:hover {
-  @apply z-10 border-control-light-hover;
+  @apply z-10 bg-control-bg-hover;
 }
 .selector-item > :not(:first-child, :last-child) {
   @apply rounded-l-none rounded-r-none;

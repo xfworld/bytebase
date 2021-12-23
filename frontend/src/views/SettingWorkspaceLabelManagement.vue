@@ -43,21 +43,20 @@
 </template>
 
 <script lang="ts">
-import { computed, watchEffect } from "vue";
+import { computed, defineComponent, watchEffect } from "vue";
 import { useStore } from "vuex";
 import { isDBAOrOwner } from "../utils";
 import { Principal, Label, LabelPatch } from "../types";
 import { BBTableColumn } from "../bbkit/types";
-import { BBTable, BBTableCell, BBTableHeaderCell } from "../bbkit";
+import { BBTable, BBTableCell } from "../bbkit";
 import { useI18n } from "vue-i18n";
 import AddLabelValue from "../components/AddLabelValue.vue";
 
-export default {
+export default defineComponent({
   name: "SettingWorkspaceLabelManagement",
   components: {
     BBTable,
     BBTableCell,
-    BBTableHeaderCell,
     AddLabelValue,
   },
   setup() {
@@ -83,7 +82,8 @@ export default {
 
     const allowRemove = computed(() => {
       // no, not now
-      return false && allowEdit.value;
+      // return false;
+      return allowEdit.value;
     });
 
     const addValue = (label: Label, value: string) => {
@@ -128,17 +128,17 @@ export default {
       removeValue,
     };
   },
-};
+});
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .tags {
   @apply flex flex-wrap gap-2;
 }
 .tag {
-  @apply h-6 bg-gray-200 px-2 rounded whitespace-nowrap inline-flex items-center;
+  @apply h-6 bg-blue-100 border-blue-300 border px-2 rounded whitespace-nowrap inline-flex items-center;
 }
 .tag > .remove {
-  @apply ml-1 -mr-0.5 p-px cursor-pointer hover:bg-gray-300 rounded-sm;
+  @apply ml-1 -mr-1 p-px cursor-pointer hover:bg-blue-300 rounded-sm;
 }
 </style>
