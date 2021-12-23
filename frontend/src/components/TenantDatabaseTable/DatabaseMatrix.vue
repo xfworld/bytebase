@@ -84,7 +84,7 @@ import {
 import { BBTableColumn } from "../../bbkit/types";
 import DatabaseMatrixItem from "./DatabaseMatrixItem.vue";
 import { groupBy } from "lodash-es";
-import { useI18n } from "vue-i18n";
+import { findDefaultGroupByLabel } from "../../utils";
 
 type Mode = "ALL" | "ALL_SHORT" | "INSTANCE" | "PROJECT" | "PROJECT_SHORT";
 
@@ -133,11 +133,13 @@ export default defineComponent({
   },
   emits: ["select-database"],
   setup(props) {
-    const { t } = useI18n();
-
     const groupByLabel = ref<LabelKeyType>();
     watchEffect(() => {
-      groupByLabel.value = props.labelList[0]?.key;
+      // find the default label key to groupBy
+      groupByLabel.value = findDefaultGroupByLabel(
+        props.labelList,
+        props.databaseList
+      );
     });
 
     const databaseListGroupByLabel = computed(
