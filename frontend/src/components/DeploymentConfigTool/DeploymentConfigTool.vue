@@ -15,7 +15,7 @@
     >
       <template #header>
         <h3 class="text-lg leading-6 font-medium text-main">
-          {{ $t("deployment-config.state-n", { n: i + 1 }) }}
+          {{ $t("deployment-config.stage-n", { n: i + 1 }) }}
         </h3>
       </template>
     </DeploymentStage>

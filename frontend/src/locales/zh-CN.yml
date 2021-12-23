@@ -885,7 +885,7 @@ archive:
   instance-bar-placeholder: 搜索@.lower:{'common.instance'}的名称
   environment-bar-placeholder: 搜索@.lower:{'common.environment'}的名称
 deployment-config:
-  state-n: 阶段 - {n}
+  stage-n: 阶段 - {n}
   add-selector: 添加选择条件
   update-success: 成功更新部署配置
   this-is-example-deployment-config: 这是部署配置的样例，你需要在此基础上编辑并保存。

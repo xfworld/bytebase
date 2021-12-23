@@ -1012,7 +1012,7 @@ archive:
   instance-search-bar-placeholder: Search @.lower:{'common.instance'} name
   environment-search-bar-placeholder: Search @.lower:{'common.environment'} name
 deployment-config:
-  state-n: State - {n}
+  stage-n: Stage - {n}
   add-selector: Add selector
   update-success: Successfully updated deployment config.
   this-is-example-deployment-config: This is the deployment config example. You need to edit and save it.
