@@ -35,7 +35,6 @@ import {
   Database,
   AvailableLabel,
   DeploymentConfig,
-  DeploymentSchedule,
   UNKNOWN_ID,
   EMPTY_ID,
   empty,
@@ -44,6 +43,7 @@ import {
 import DeploymentConfigTool from "./DeploymentConfigTool";
 import { cloneDeep } from "lodash-es";
 import { useI18n } from "vue-i18n";
+import { generateDefaultSchedule } from "../utils";
 
 export default defineComponent({
   name: "ProjectDeploymentConfigurationPanel",
@@ -160,26 +160,4 @@ export default defineComponent({
     };
   },
 });
-
-const generateDefaultSchedule = (environmentList: Environment[]) => {
-  const schedule: DeploymentSchedule = {
-    deployments: [],
-  };
-  environmentList.forEach((env) => {
-    schedule.deployments.push({
-      spec: {
-        selector: {
-          matchExpressions: [
-            {
-              key: "environment",
-              operator: "In",
-              values: [env.name],
-            },
-          ],
-        },
-      },
-    });
-  });
-  return schedule;
-};
 </script>
