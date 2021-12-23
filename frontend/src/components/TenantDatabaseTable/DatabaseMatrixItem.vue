@@ -1,25 +1,51 @@
 <template>
-  <div class="bb-database-matrix-item" @click="clickDatabase">
-    <div class="sync-status whitespace-nowrap">
-      <span class="tooltip-wrapper">
-        <heroicons-solid:check
-          v-if="database.syncStatus === 'OK'"
-          class="w-4 h-4 text-success"
-        />
-        <heroicons-outline:exclamation v-else class="w-4 h-4 text-warning" />
-        <span class="tooltip">
-          {{ $t("db.last-successful-sync") }}
-          {{ humanizeTs(database.lastSuccessfulSyncTs) }}
-        </span>
-      </span>
-      <span class="flex-1">{{ database.syncStatus }}</span>
-    </div>
+  <NPopover trigger="hover">
+    <template #trigger>
+      <div class="bb-database-matrix-item" @click="clickDatabase">
+        <div class="sync-status whitespace-nowrap">
+          <span class="tooltip-wrapper">
+            <heroicons-solid:check
+              v-if="database.syncStatus === 'OK'"
+              class="w-4 h-4 text-success"
+            />
+            <heroicons-outline:exclamation
+              v-else
+              class="w-4 h-4 text-warning"
+            />
+          </span>
+          <span class="flex-1">{{ database.syncStatus }}</span>
+        </div>
 
-    <div class="instance whitespace-pre-wrap">
-      <InstanceEngineIcon :instance="database.instance" />
-      <span class="flex-1">{{ instanceName(database.instance) }}</span>
+        <div class="migration-version">&lt;&lt;fake version&gt;&gt;</div>
+
+        <div class="active issue">&lt;&lt;fake active issue&gt;&gt;</div>
+      </div>
+    </template>
+
+    <div class="popover">
+      <div class="instance flex items-center whitespace-pre-wrap">
+        <InstanceEngineIcon :instance="database.instance" />
+        <span class="flex-1">{{ instanceName(database.instance) }}</span>
+      </div>
+
+      <div class="last-sync flex items-center">
+        {{ $t("db.last-successful-sync") }}
+        {{ humanizeTs(database.lastSuccessfulSyncTs) }}
+      </div>
+
+      <div
+        v-if="database.labels.length > 0"
+        class="labels whitespace-nowrap flex-col items-start"
+      >
+        <div class="mb-2">{{ $t("common.labels") }}</div>
+        <DatabaseLabels
+          :labels="database.labels"
+          :editable="false"
+          class="flex-col items-start"
+        />
+      </div>
     </div>
-  </div>
+  </NPopover>
 </template>
 
 <script lang="ts">
@@ -28,11 +54,15 @@ import { useRouter } from "vue-router";
 import { Database } from "../../types";
 import { databaseSlug } from "../../utils";
 import InstanceEngineIcon from "../InstanceEngineIcon.vue";
+import DatabaseLabels from "../DatabaseLabels";
+import { NPopover } from "naive-ui";
 
 export default defineComponent({
   name: "DatabaseMatrixItem",
   components: {
     InstanceEngineIcon,
+    DatabaseLabels,
+    NPopover,
   },
   props: {
     database: {
@@ -68,5 +98,11 @@ export default defineComponent({
 }
 .bb-database-matrix-item > * {
   @apply flex items-center py-1 gap-1;
+}
+.popover {
+  @apply bg-white divide-y cursor-pointer select-none;
+}
+.popover > * {
+  @apply py-1 gap-1;
 }
 </style>
