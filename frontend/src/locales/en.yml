@@ -717,6 +717,8 @@ database:
     key-necessary: Key is required
     value-necessary: Value is required
     key-duplicated: Duplicated keys
+    value-duplicated: Duplicated values
+    max-length-exceeded: Length cannot exceed {len} characters
 t:
   database: {}
 repository:

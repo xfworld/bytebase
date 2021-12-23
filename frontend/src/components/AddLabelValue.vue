@@ -1,44 +1,61 @@
 <template>
   <div class="add-label-value">
-    <div v-if="!isAdding" class="btn" @click="isAdding = true">
+    <div v-if="!state.isAdding" class="icon-btn" @click="state.isAdding = true">
       <heroicons-solid:plus class="w-4 h-4" />
     </div>
     <template v-else>
       <input
         ref="input"
-        v-model="text"
+        v-model="state.text"
         type="text"
         autocomplete="off"
         class="textfield"
-        :class="{ error }"
+        :class="{ error: !!state.error && state.changed }"
         :placeholder="$t('settings.label-management.value-placeholder')"
         @blur="cancel"
         @keyup.esc="cancel"
         @keyup.enter="tryAdd"
       />
-      <div class="btn cancel" @click="cancel">
+      <div class="icon-btn cancel" @click="cancel">
         <heroicons-solid:x class="w-4 h-4" />
       </div>
-      <div class="btn save" @mousedown.prevent.stop="tryAdd">
-        <heroicons-solid:check class="w-4 h-4" />
-      </div>
+      <NPopover trigger="hover" :disabled="!state.error">
+        <template #trigger>
+          <div
+            class="icon-btn save"
+            :class="{ disabled: !!state.error }"
+            @mousedown.prevent.stop="tryAdd"
+          >
+            <heroicons-solid:check class="w-4 h-4" />
+          </div>
+        </template>
+
+        <div class="text-red-600 whitespace-nowrap">
+          {{ state.error }}
+        </div>
+      </NPopover>
     </template>
   </div>
 </template>
 
 <script lang="ts">
-import {
-  defineComponent,
-  PropType,
-  ref,
-  watchEffect,
-  nextTick,
-  watch,
-} from "vue";
+import { defineComponent, PropType, ref, nextTick, watch, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import { Label } from "../types";
+import { NPopover } from "naive-ui";
+
+type LocalState = {
+  isAdding: boolean;
+  text: string;
+  error: string | undefined;
+  changed: boolean;
+};
+
+const MAX_VALUE_LENGTH = 63;
 
 export default defineComponent({
   name: "AddLabelValue",
+  components: { NPopover },
   props: {
     label: {
       type: Object as PropType<Label>,
@@ -47,69 +64,90 @@ export default defineComponent({
   },
   emits: ["add"],
   setup(props, { emit }) {
+    const { t } = useI18n();
     const input = ref<HTMLInputElement>();
-    const isAdding = ref(false);
-    const text = ref("");
-    const error = ref(false);
+    const state = reactive<LocalState>({
+      isAdding: false,
+      text: "",
+      error: undefined,
+      changed: false,
+    });
 
     const check = () => {
-      const v = text.value.trim();
+      const v = state.text.trim();
       if (!v) {
         // can't be empty
-        error.value = true;
+        state.error = t("database.label-error.value-necessary");
       } else if (props.label.valueList.includes(v)) {
         // must be unique
-        error.value = true;
+        state.error = t("database.label-error.value-duplicated");
+      } else if (v.length > MAX_VALUE_LENGTH) {
+        // max length exceeded
+        state.error = t("database.label-error.max-length-exceeded", {
+          len: MAX_VALUE_LENGTH,
+        });
       } else {
         // ok
-        error.value = false;
+        state.error = undefined;
       }
-      return !error.value;
+      return !state.error;
     };
 
-    watch(text, check);
+    watch(
+      () => state.text,
+      () => {
+        state.changed = true;
+        check();
+      }
+    );
 
     const cancel = () => {
-      isAdding.value = false;
-      text.value = "";
+      state.isAdding = false;
+      state.text = "";
     };
 
     const tryAdd = () => {
-      if (!check()) {
+      if (state.error) {
         return;
       }
-      const v = text.value.trim();
+      const v = state.text.trim();
       emit("add", v);
       cancel();
     };
 
-    watchEffect(() => {
-      if (isAdding.value) {
-        // clear error status
-        error.value = false;
-        // auto focus if possible
-        nextTick(() => input.value?.focus());
+    watch(
+      () => state.isAdding,
+      (isAdding) => {
+        if (isAdding) {
+          // reset input state
+          check();
+          state.changed = false;
+          // auto focus if possible
+          nextTick(() => input.value?.focus());
+        }
       }
-    });
+    );
 
-    return { isAdding, text, error, tryAdd, cancel, input };
+    return { state, tryAdd, cancel, input };
   },
 });
 </script>
 
-<style>
+<style scoped lang="postcss">
 .add-label-value {
   @apply inline-flex flex-nowrap items-center gap-1 h-6;
 }
 .add-label-value > * {
   @apply h-full;
 }
-
-.btn {
-  @apply px-1 inline-flex items-center
+.icon-btn {
+  @apply px-1 py-1 inline-flex items-center
     rounded bg-white border border-control-border
-    hover:border-control-hover
+    hover:bg-control-bg-hover
     cursor-pointer;
+}
+.icon-btn.disabled {
+  @apply cursor-not-allowed bg-control-bg;
 }
 .textfield {
   @apply rounded px-2 py-0 text-sm w-32;
