@@ -45,16 +45,25 @@
       <heroicons:solid:x class="w-4 h-4" />
     </span>
   </div>
+
+  <div>
+    <div v-for="db in filteredDatabaseList" :key="db.id">
+      - name: {{ db.name }}, instance: {{ db.instance.name }}, env:
+      {{ db.instance.environment.name }}, labels:
+      {{ JSON.stringify(db.labels) }}
+    </div>
+  </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue";
+import { computed, defineComponent, PropType } from "vue";
 import {
   AvailableLabel,
   Database,
   Deployment,
   LabelSelectorRequirement,
 } from "../../types";
+import { filterDatabaseListByLabelSelector } from "../../utils";
 import SelectorItem from "./SelectorItem.vue";
 
 export default defineComponent({
@@ -104,10 +113,17 @@ export default defineComponent({
         values: [],
       });
     };
+    const filteredDatabaseList = computed(() => {
+      return filterDatabaseListByLabelSelector(
+        props.databaseList,
+        props.deployment.spec.selector
+      );
+    });
 
     return {
       removeSelector,
       addSelector,
+      filteredDatabaseList,
     };
   },
 });

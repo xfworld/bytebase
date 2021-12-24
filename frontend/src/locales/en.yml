@@ -719,6 +719,7 @@ database:
     key-duplicated: Duplicated keys
     value-duplicated: Duplicated values
     max-length-exceeded: Length cannot exceed {len} characters
+    max-label-count-exceeded: Cannot exceed {count} labels
 t:
   database: {}
 repository:

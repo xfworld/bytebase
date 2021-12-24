@@ -1,5 +1,11 @@
 import { countBy, uniqBy } from "lodash-es";
-import { Database, DatabaseLabel, Label } from "../types";
+import {
+  Database,
+  DatabaseLabel,
+  Label,
+  LabelSelector,
+  LabelSelectorRequirement,
+} from "../types";
 
 export const validateLabels = (labels: DatabaseLabel[]): string | undefined => {
   for (let i = 0; i < labels.length; i++) {
@@ -35,4 +41,57 @@ export const findDefaultGroupByLabel = (
     // just use the first label key
     return labelList[0]?.key;
   }
+};
+
+export const filterDatabaseListByLabelSelector = (
+  databaseList: Database[],
+  labelSelector: LabelSelector
+): Database[] => {
+  return databaseList.filter((db) =>
+    isDatabaseMatchesSelector(db, labelSelector)
+  );
+};
+
+export const isDatabaseMatchesSelector = (
+  database: Database,
+  selector: LabelSelector
+): boolean => {
+  const rules = selector.matchExpressions;
+  return rules.every((rule) => {
+    switch (rule.operator) {
+      case "In":
+        return checkLabelIn(database, rule);
+      case "Exists":
+        return checkLabelExists(database, rule);
+      default:
+        // unknown operators are taken as mismatch
+        console.warn(`known operator "${rule.operator}"`);
+        return false;
+    }
+  });
+};
+
+const checkLabelIn = (
+  db: Database,
+  rule: LabelSelectorRequirement
+): boolean => {
+  if (rule.key === "bb.environment") {
+    return rule.values.some((env) => env === db.instance.environment.name);
+  }
+
+  const label = db.labels.find((label) => label.key === rule.key);
+  if (!label) return false;
+
+  return rule.values.some((value) => value === label.value);
+};
+
+const checkLabelExists = (
+  db: Database,
+  rule: LabelSelectorRequirement
+): boolean => {
+  if (rule.key === "environment") {
+    return true;
+  }
+
+  return db.labels.some((label) => label.key === rule.key);
 };

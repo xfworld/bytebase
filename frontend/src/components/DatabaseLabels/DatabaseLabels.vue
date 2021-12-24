@@ -8,9 +8,27 @@
       :available-labels="availableLabels"
       @remove="removeLabel(i)"
     />
-    <button v-if="editable && allowAdd" class="add-button" @click="addLabel">
-      <heroicons-solid:plus class="w-4 h-4" />
-    </button>
+    <template v-if="editable">
+      <NPopover trigger="hover" :disabled="allowAdd">
+        <template #trigger>
+          <button
+            class="add-button"
+            :class="{ disabled: !allowAdd }"
+            @click="addLabel"
+          >
+            <heroicons-solid:plus class="w-4 h-4" />
+          </button>
+        </template>
+
+        <div class="text-red-600 whitespace-nowrap">
+          {{
+            $t("database.label-error.max-label-count-exceeded", {
+              count: MAX_DATABASE_LABELS,
+            })
+          }}
+        </div>
+      </NPopover>
+    </template>
   </div>
 </template>
 
@@ -20,11 +38,13 @@
 import { computed, defineComponent, PropType, watchEffect } from "vue";
 import { useStore } from "vuex";
 import { DatabaseLabel, Label } from "../../types";
+import { NPopover } from "naive-ui";
 
 const MAX_DATABASE_LABELS = 4;
 
 export default defineComponent({
   name: "DatabaseLabels",
+  components: { NPopover },
   props: {
     labels: {
       type: Array as PropType<DatabaseLabel[]>,
@@ -52,6 +72,8 @@ export default defineComponent({
     );
 
     const addLabel = () => {
+      if (!allowAdd.value) return;
+
       const key = availableLabels.value[0]?.key || "";
       const value = availableLabels.value[0]?.valueList[0] || "";
       props.labels.push({
@@ -65,6 +87,7 @@ export default defineComponent({
     };
 
     return {
+      MAX_DATABASE_LABELS,
       availableLabels,
       allowAdd,
       addLabel,
@@ -80,5 +103,8 @@ export default defineComponent({
     rounded bg-white border border-control-border
     hover:bg-control-bg-hover
     cursor-pointer;
+}
+.add-button.disabled {
+  @apply cursor-not-allowed bg-control-bg;
 }
 </style>

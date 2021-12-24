@@ -74,6 +74,10 @@ export default defineComponent({
     watch(
       () => props.labels,
       (labels) => {
+        // state.labels are a local deep-copy of props.labels
+        // <DatabaseLabels /> will mutate state.labels directly
+        // when save button clicked, we emit a event to notify the parent
+        //   component to dispatch a real save action
         state.labels = cloneDeep(labels);
         state.error = undefined;
       }

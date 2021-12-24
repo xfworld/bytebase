@@ -661,6 +661,7 @@ database:
     key-duplicated: Key 重复了
     value-duplicated: 值重复了
     max-length-exceeded: 长度不能超过 {len} 字符
+    max-label-count-exceeded: 不能多于 {count} 个标签
 repository:
   branch-observe-file-change: Bytebase 跟踪文件变更的分支。
   branch-specify-tip: '诀窍: 可以使用诸如 "feature/*" 这样的通配符'
