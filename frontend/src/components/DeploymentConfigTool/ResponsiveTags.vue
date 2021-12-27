@@ -129,11 +129,11 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .tags {
-  @apply flex flex-1 gap-2  overflow-hidden max-h-full;
+  @apply flex flex-1 gap-1 overflow-hidden max-h-full;
 }
 .tag {
-  @apply bg-blue-100 border-blue-300 border px-2 rounded whitespace-nowrap;
+  @apply inline-flex items-center bg-blue-100 border-blue-300 border px-2 rounded whitespace-nowrap;
 }
 </style>
