@@ -6,7 +6,7 @@
           <div
             class="icon-btn"
             :class="{ disabled: !editable }"
-            @click="state.isAdding = true"
+            @click="toggleAdding"
           >
             <heroicons-solid:plus class="w-4 h-4" />
           </div>
@@ -102,6 +102,11 @@ export default defineComponent({
 
     const editable = computed(() => !isReservedLabel(props.label));
 
+    const toggleAdding = () => {
+      if (isReservedLabel(props.label)) return;
+      state.isAdding = !state.isAdding;
+    };
+
     const check = () => {
       const v = state.text.trim();
       if (!v) {
@@ -157,7 +162,7 @@ export default defineComponent({
       }
     );
 
-    return { state, editable, tryAdd, cancel, input };
+    return { state, editable, toggleAdding, tryAdd, cancel, input };
   },
 });
 </script>
