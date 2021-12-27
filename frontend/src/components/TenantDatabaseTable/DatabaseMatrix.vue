@@ -1,5 +1,5 @@
 <template>
-  <div>{{ name }}</div>
+  <div class="text-base font-medium">{{ name }}</div>
   <BBTable
     :column-list="columnList"
     :data-source="filteredMatrices"
