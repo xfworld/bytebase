@@ -5,7 +5,6 @@
       v-model:value="selector.key"
       :options="keys"
       :disabled="!editable"
-      :placeholder="'Select key...'"
       class="select key"
     />
     <LabelSelect
@@ -20,7 +19,7 @@
       :options="values"
       :disabled="!editable"
       :multiple="true"
-      :placeholder="'Select values...'"
+      :placeholder="$t('database.label.placeholder.select-values')"
       class="select values"
     />
     <div v-if="editable" class="remove" @click="$emit('remove')">

@@ -726,6 +726,11 @@ database:
     max-length-exceeded: Length cannot exceed {len} characters
     max-label-count-exceeded: Cannot exceed {count} labels
     cannot-edit-reserved-label: Cannot edit reserved label "{key}"
+  label:
+    placeholder:
+      select-key: Select key...
+      select-value: Select value...
+      select-values: Select values...
 t:
   database: {}
 repository:

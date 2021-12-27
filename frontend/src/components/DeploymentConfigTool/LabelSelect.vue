@@ -2,7 +2,7 @@
   <div class="bb-label-select" :class="{ disabled }">
     <VBinder>
       <VTarget>
-        <div class="select-wrapper" @click="toggle">
+        <div class="select-wrapper" @click="open">
           <template v-if="!empty">
             <slot name="value" :value="state.value">
               <template v-if="Array.isArray(state.value)">
@@ -13,7 +13,9 @@
           </template>
           <template v-else>
             <slot name="placeholder" :placeholder="placeholder">
-              <span class="whitespace-nowrap">{{ placeholder }}</span>
+              <div class="placeholder">
+                {{ placeholder }}
+              </div>
             </slot>
           </template>
           <slot name="arrow" :open="state.open">
@@ -26,47 +28,53 @@
           </slot>
         </div>
       </VTarget>
-      <VFollower v-if="state.open" show placement="bottom-start">
-        <div ref="popup" class="rounded-md bg-white shadow-lg">
-          <ul
-            tabindex="-1"
-            role="listbox"
-            aria-labelledby="listbox-label"
-            aria-activedescendant="listbox-item-3"
-            class="max-h-56 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm"
+      <VFollower :show="state.open" placement="bottom-start">
+        <transition appear name="fade-fast">
+          <div
+            v-if="state.open"
+            ref="popup"
+            class="rounded-md bg-white shadow-lg"
           >
-            <!--
+            <ul
+              tabindex="-1"
+              role="listbox"
+              aria-labelledby="listbox-label"
+              aria-activedescendant="listbox-item-3"
+              class="max-h-56 rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm"
+            >
+              <!--
           Select option, manage highlight styles based on mouseenter/mouseleave and keyboard navigation.
 
           Highlighted: "text-white bg-indigo-600", Not Highlighted: "text-gray-900"
         -->
-            <slot
-              v-for="(item, index) in options"
-              :key="index"
-              name="item"
-              :item="item"
-              :index="index"
-              :selected="isSelected(item)"
-              :toggleSelection="() => toggleSelection(item)"
-            >
-              <li
-                role="option"
-                class="flex items-center text-main hover:text-main-text hover:bg-main-hover cursor-default select-none relative py-2 px-3"
-                @click="toggleSelection(item)"
+              <slot
+                v-for="(item, index) in options"
+                :key="index"
+                name="item"
+                :item="item"
+                :index="index"
+                :selected="isSelected(item)"
+                :toggleSelection="() => toggleSelection(item)"
               >
-                <span class="flex-1">
-                  {{ item }}
-                </span>
-                <span
-                  class="ml-1"
-                  :class="[isSelected(item) ? 'visible' : 'invisible']"
+                <li
+                  role="option"
+                  class="flex items-center text-main hover:text-main-text hover:bg-main-hover cursor-default select-none relative py-2 px-3"
+                  @click="toggleSelection(item)"
                 >
-                  <heroicons-solid:check class="h-5 w-5" />
-                </span>
-              </li>
-            </slot>
-          </ul>
-        </div>
+                  <span class="flex-1">
+                    {{ item }}
+                  </span>
+                  <span
+                    class="ml-1"
+                    :class="[isSelected(item) ? 'visible' : 'invisible']"
+                  >
+                    <heroicons-solid:check class="h-5 w-5" />
+                  </span>
+                </li>
+              </slot>
+            </ul>
+          </div>
+        </transition>
       </VFollower>
     </VBinder>
   </div>
@@ -133,7 +141,7 @@ export default defineComponent({
       }
     );
 
-    const toggle = () => {
+    const open = () => {
       if (props.disabled) {
         return;
       }
@@ -181,7 +189,7 @@ export default defineComponent({
     return {
       popup,
       state,
-      toggle,
+      open,
       close,
       empty,
       isSelected,
@@ -191,15 +199,18 @@ export default defineComponent({
 });
 </script>
 
-<style scoped>
+<style scoped lang="postcss">
 .bb-label-select {
   @apply overflow-hidden;
 }
 
 .select-wrapper {
-  @apply pl-3 pr-8 py-1.5 overflow-hidden max-w-full;
+  @apply h-8 pl-3 pr-8 py-1.5 overflow-hidden max-w-full;
 }
 .disabled .select-wrapper {
   @apply pr-3;
+}
+.placeholder {
+  @apply whitespace-nowrap text-control-light;
 }
 </style>
