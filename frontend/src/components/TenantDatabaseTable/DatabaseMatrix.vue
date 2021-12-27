@@ -2,7 +2,7 @@
   <div>{{ name }}</div>
   <BBTable
     :column-list="columnList"
-    :data-source="databaseMatrices"
+    :data-source="filteredMatrices"
     :show-header="true"
     :custom-header="true"
     :left-bordered="bordered"
@@ -18,10 +18,10 @@
         class="w-1/12 pr-2"
       >
         <div class="relative flex items-center">
-          <span>{{ groupByLabel }}</span>
+          <span>{{ firstByLabel }}</span>
           <heroicons-solid:selector class="h-4 w-4 text-control-light" />
           <select
-            v-model="groupByLabel"
+            v-model="firstByLabel"
             class="absolute w-full h-full inset-0 opacity-0"
           >
             <option
@@ -36,12 +36,17 @@
       </BBTableHeaderCell>
 
       <BBTableHeaderCell
-        v-for="env in environmentList"
-        :key="env.id"
-        :title="env.name"
-        :style="{ width: `${(100 - 1 / 12) / environmentList.length - 1}%` }"
+        v-for="xValue in filteredXAxisValues"
+        :key="xValue"
+        :title="xValue"
+        :style="{
+          width: `${(100 - 1 / 12) / filteredXAxisValues.length - 1}%`,
+        }"
         class="text-center"
-      />
+      >
+        <template v-if="xValue">{{ xValue }}</template>
+        <template v-else>{{ $t("database.empty-label-value") }}</template>
+      </BBTableHeaderCell>
     </template>
 
     <template #body="{ rowData: matrix }">
@@ -88,12 +93,7 @@ import { findDefaultGroupByLabel } from "../../utils";
 
 type Mode = "ALL" | "ALL_SHORT" | "INSTANCE" | "PROJECT" | "PROJECT_SHORT";
 
-type DatabaseListGroupByLabel = {
-  labelValue: LabelValueType;
-  databaseList: Database[];
-};
-
-type DatabaseMatrixGroupByLabelAndEnvironment = {
+type DatabaseMatrix = {
   labelValue: LabelValueType;
   databaseMatrix: Database[][];
 };
@@ -133,70 +133,149 @@ export default defineComponent({
   },
   emits: ["select-database"],
   setup(props) {
-    const groupByLabel = ref<LabelKeyType>();
+    /**
+     * `firstByLabel` defines the y-axis of matrix
+     * `thenByLabel` defines the x-axis of matrix
+     * for now, `thenByLabel` is specified as 'bb.environment'
+     */
+    const firstByLabel = ref<LabelKeyType>();
+    const thenByLabel = ref<LabelKeyType>("bb.environment");
+
+    const filteredXAxisValues = ref<LabelValueType[]>([]);
+    const filteredMatrices = ref<DatabaseMatrix[]>([]);
+
+    // find the default label key to firstBy
     watchEffect(() => {
-      // find the default label key to groupBy
-      groupByLabel.value = findDefaultGroupByLabel(
+      // excluding "bb.environment" because the x-axis is already specified
+      //   as "bb.environment"
+      firstByLabel.value = findDefaultGroupByLabel(
         props.labelList,
-        props.databaseList
+        props.databaseList,
+        [thenByLabel.value]
       );
     });
 
-    const databaseListGroupByLabel = computed(
-      (): DatabaseListGroupByLabel[] => {
-        if (!groupByLabel.value) {
-          // no field for grouping
-          // this is nonsense
-          return [];
-        } else {
-          const dict = groupBy(props.databaseList, (db) => {
-            const label = db.labels.find(
-              (target) => target.key === groupByLabel.value
-            );
-            if (!label) return "";
-            return label.value;
-          });
-          return Object.keys(dict).map((value) => ({
-            labelValue: value,
-            databaseList: dict[value],
-          }));
-        }
+    // pre-filtered y-axis values
+    const yAxisValues = computed((): string[] => {
+      const key = firstByLabel.value;
+      if (!key) {
+        // y-axis is undefined
+        return [];
       }
-    );
 
-    const databaseMatrices = computed(
-      (): DatabaseMatrixGroupByLabelAndEnvironment[] => {
-        return databaseListGroupByLabel.value.map(
-          ({ labelValue, databaseList }) => {
-            const databaseDictGroupByEnvironment = groupBy(
-              databaseList,
-              (db) => db.instance.environment.id
-            );
-            const databaseMatrix: Database[][] = [];
-            for (let i = 0; i < props.environmentList.length; i++) {
-              const env = props.environmentList[i];
-              databaseMatrix[i] = databaseDictGroupByEnvironment[env.id] || [];
-            }
-            return {
-              labelValue,
-              databaseMatrix,
-            };
-          }
-        );
+      // order based on label.valueList
+      // plus one more "<empty value>"
+      const label = props.labelList.find((label) => label.key === key);
+      if (!label) return [];
+      return [...label.valueList, ""];
+    });
+
+    // the matrix rows
+    const firstGroupedBy = computed(() => {
+      const key = firstByLabel.value;
+      if (!key) {
+        // y-axis is undefined
+        return [];
       }
-    );
+      const dict = groupBy(props.databaseList, (db) => getLabelValue(db, key));
+      return yAxisValues.value.map((labelValue) => {
+        const databaseList = dict[labelValue] || [];
+        return {
+          labelValue,
+          databaseList,
+        };
+      });
+      // .filter((pair) => pair.databaseList.length > 0);
+    });
+
+    // pre-filtered x-axis values
+    const xAxisValues = computed(() => {
+      // order based on label.valueList
+      // plus one more "<empty value>"
+      const key = thenByLabel.value;
+      const label = props.labelList.find((label) => label.key === key);
+      if (!label) return [];
+      return [...label.valueList, ""];
+    });
+
+    // pre-filtered database matrices
+    const matrices = computed(() => {
+      const key = thenByLabel.value;
+      return firstGroupedBy.value.map(
+        ({ labelValue: yValue, databaseList }) => {
+          const databaseMatrix: Database[][] = xAxisValues.value.map((xValue) =>
+            databaseList.filter((db) => getLabelValue(db, key) === xValue)
+          );
+          return {
+            labelValue: yValue,
+            databaseMatrix,
+          };
+        }
+      );
+    });
+
+    // now filter the axes and matrices
+    // we only remove rows/cols of "<empty value>"
+    // but keep other empty rows/cols because we want to give a whole view to
+    //   the project.
+    // e.g. if we hide "Prod" because there are no databases labeled as
+    //   "Prod", we are not able to judge whether there is no environment
+    //   named "Prod" or "Prod" has no databases.
+    watchEffect(() => {
+      filteredXAxisValues.value = [...xAxisValues.value];
+      // if every row's "<empty value>" has no databases
+      // we should hide the "<empty value>" col
+      const shouldClipLastCol = matrices.value.every(
+        (row) =>
+          row.databaseMatrix.length > 0 &&
+          row.databaseMatrix[row.databaseMatrix.length - 1].length === 0
+      );
+      if (shouldClipLastCol) filteredXAxisValues.value.pop();
+
+      filteredMatrices.value = [];
+      for (let i = 0; i < matrices.value.length; i++) {
+        const row = {
+          labelValue: matrices.value[i].labelValue,
+          databaseMatrix: [...matrices.value[i].databaseMatrix],
+        };
+        if (shouldClipLastCol) {
+          row.databaseMatrix.pop();
+        }
+        filteredMatrices.value.push(row);
+      }
+      // if every col of "<empty value>" row is empty
+      // we should hide the "<empty value>" row
+      if (
+        filteredMatrices.value.length > 0 &&
+        filteredMatrices.value[
+          filteredMatrices.value.length - 1
+        ].databaseMatrix.every((item) => item.length === 0)
+      ) {
+        filteredMatrices.value.pop();
+      }
+    });
 
     const columnList = computed((): BBTableColumn[] => [
-      { title: groupByLabel.value || "" },
-      ...props.environmentList.map((env) => ({ title: env.name })),
+      { title: firstByLabel.value || "" },
+      ...filteredXAxisValues.value.map((xValue) => ({ title: xValue })),
     ]);
 
     return {
-      groupByLabel,
-      databaseListGroupByLabel,
-      databaseMatrices,
+      firstByLabel,
       columnList,
+      firstGroupedBy,
+      yAxisValues,
+      xAxisValues,
+      matrices,
+      filteredXAxisValues,
+      filteredMatrices,
     };
   },
 });
+
+const getLabelValue = (db: Database, key: LabelKeyType): LabelValueType => {
+  const label = db.labels.find((target) => target.key === key);
+  if (!label) return "";
+  return label.value;
+};
 </script>

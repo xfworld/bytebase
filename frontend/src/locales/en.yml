@@ -713,7 +713,7 @@ database:
   index-size: Index size
   columns: Columns
   indexes: Indexes
-  empty-label-value: <<Empty Value>>
+  empty-label-value: <Empty Value>
   row-count-est: Row count est.
   no-label: No labels
   label-error:

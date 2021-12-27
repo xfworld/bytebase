@@ -1,10 +1,12 @@
-import { countBy, uniqBy } from "lodash-es";
+import { countBy, groupBy, uniqBy } from "lodash-es";
 import {
   Database,
   DatabaseLabel,
   Label,
+  LabelKeyType,
   LabelSelector,
   LabelSelectorRequirement,
+  LabelValueType,
 } from "../types";
 
 export const RESERVED_LABEL_ID = 0;
@@ -22,6 +24,22 @@ export const isReservedDatabaseLabel = (
   return label.id === RESERVED_LABEL_ID;
 };
 
+export const groupingDatabaseListByLabelKey = (
+  databaseList: Database[],
+  key: LabelKeyType,
+  emptyValue: LabelValueType = ""
+): Array<{ labelValue: LabelValueType; databaseList: Database[] }> => {
+  const dict = groupBy(databaseList, (db) => {
+    const label = db.labels.find((target) => target.key === key);
+    if (!label) return emptyValue;
+    return label.value;
+  });
+  return Object.keys(dict).map((value) => ({
+    labelValue: value,
+    databaseList: dict[value],
+  }));
+};
+
 export const validateLabels = (labels: DatabaseLabel[]): string | undefined => {
   for (let i = 0; i < labels.length; i++) {
     const label = labels[i];
@@ -36,11 +54,18 @@ export const validateLabels = (labels: DatabaseLabel[]): string | undefined => {
 
 export const findDefaultGroupByLabel = (
   labelList: Label[],
-  databaseList: Database[]
+  databaseList: Database[],
+  excludedKeys: LabelKeyType[]
 ): string | undefined => {
+  const availableKeys = labelList
+    .filter((label) => !excludedKeys.includes(label.key))
+    .map((label) => label.key);
+
   // concat all databases' keys into one array
   const databaseLabelKeys = databaseList.flatMap((db) =>
-    db.labels.map((label) => label.key)
+    db.labels
+      .map((label) => label.key)
+      .filter((key) => availableKeys.includes(key))
   );
   if (databaseLabelKeys.length > 0) {
     // counting up the keys' frequency
@@ -54,7 +79,7 @@ export const findDefaultGroupByLabel = (
     return countsList[0].key;
   } else {
     // just use the first label key
-    return labelList[0]?.key;
+    return availableKeys[0];
   }
 };
 
@@ -90,10 +115,6 @@ const checkLabelIn = (
   db: Database,
   rule: LabelSelectorRequirement
 ): boolean => {
-  if (rule.key === "bb.environment") {
-    return rule.values.some((env) => env === db.instance.environment.name);
-  }
-
   const label = db.labels.find((label) => label.key === rule.key);
   if (!label) return false;
 
@@ -104,9 +125,5 @@ const checkLabelExists = (
   db: Database,
   rule: LabelSelectorRequirement
 ): boolean => {
-  if (rule.key === "environment") {
-    return true;
-  }
-
   return db.labels.some((label) => label.key === rule.key);
 };

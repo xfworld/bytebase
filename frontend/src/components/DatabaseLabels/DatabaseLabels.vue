@@ -4,7 +4,7 @@
       v-for="(label, i) in labels"
       :key="i"
       :label="label"
-      :editable="editable"
+      :editable="isEditableLabel(label)"
       :available-labels="availableLabels"
       @remove="removeLabel(i)"
     />
@@ -39,6 +39,7 @@ import { computed, defineComponent, PropType, watchEffect } from "vue";
 import { useStore } from "vuex";
 import { DatabaseLabel, Label } from "../../types";
 import { NPopover } from "naive-ui";
+import { isReservedLabel, isReservedDatabaseLabel } from "../../utils";
 
 const MAX_DATABASE_LABELS = 4;
 
@@ -55,7 +56,7 @@ export default defineComponent({
       default: false,
     },
   },
-  setup(props, { emit }) {
+  setup(props) {
     const store = useStore();
 
     const allowAdd = computed(() => props.labels.length < MAX_DATABASE_LABELS);
@@ -67,15 +68,19 @@ export default defineComponent({
     };
     watchEffect(prepareLabelList);
 
-    const availableLabels = computed(
+    const labelList = computed(
       () => store.getters["label/labelList"]() as Label[]
+    );
+
+    const availableLabels = computed(() =>
+      labelList.value.filter((label) => !isReservedLabel(label))
     );
 
     const addLabel = () => {
       if (!allowAdd.value) return;
 
-      const key = availableLabels.value[0]?.key || "";
-      const value = availableLabels.value[0]?.valueList[0] || "";
+      const key = labelList.value[0]?.key || "";
+      const value = labelList.value[0]?.valueList[0] || "";
       props.labels.push({
         key,
         value,
@@ -86,9 +91,20 @@ export default defineComponent({
       props.labels.splice(index, 1);
     };
 
+    const isEditableLabel = (label: DatabaseLabel): boolean => {
+      if (labelList.value.length === 0) {
+        // not ready yet, disable editing temporarily
+        // this also avoid some UI blinking
+        return false;
+      }
+
+      return props.editable && !isReservedDatabaseLabel(label, labelList.value);
+    };
+
     return {
       MAX_DATABASE_LABELS,
       availableLabels,
+      isEditableLabel,
       allowAdd,
       addLabel,
       removeLabel,

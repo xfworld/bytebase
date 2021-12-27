@@ -72,7 +72,9 @@ export default defineComponent({
     watch(
       () => props.label.key,
       () => {
-        // when key changed, reset value selection
+        if (!props.editable) return false; // if not editable, do nothing
+
+        // otherwise when key changed, reset value selection
         props.label.value = values.value[0] || "";
       }
     );
@@ -87,7 +89,7 @@ export default defineComponent({
 
 <style scoped lang="postcss">
 .database-label {
-  @apply h-6 relative z-0 flex items-center rounded overflow-hidden px-2 whitespace-nowrap
+  @apply h-6 relative z-0 flex items-center text-sm rounded overflow-hidden px-2 whitespace-nowrap
    bg-blue-100 border-blue-300 border select-none;
 }
 .select {

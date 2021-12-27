@@ -10,7 +10,7 @@ export const generateDefaultSchedule = (environmentList: Environment[]) => {
         selector: {
           matchExpressions: [
             {
-              key: "environment",
+              key: "bb.environment",
               operator: "In",
               values: [env.name],
             },
