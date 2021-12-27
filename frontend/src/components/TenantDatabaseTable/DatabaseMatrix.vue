@@ -13,14 +13,17 @@
   >
     <template #header>
       <BBTableHeaderCell
-        :left-padding="4"
         :title="columnList[0].title + 'asdf'"
-        class="w-1/12 pr-2"
+        compact
+        class="w-1/12 pl-3 pr-2"
       >
-        <div class="relative flex items-center">
+        <div
+          class="pl-1 py-1 rounded inline-flex items-center hover:bg-control-bg-hover cursor-pointer select-none"
+          @click="toggleFirstByLabel"
+        >
           <span>{{ firstByLabel }}</span>
           <heroicons-solid:selector class="h-4 w-4 text-control-light" />
-          <select
+          <!-- <select
             v-model="firstByLabel"
             class="absolute w-full h-full inset-0 opacity-0"
           >
@@ -31,7 +34,7 @@
             >
               {{ label.key }}
             </option>
-          </select>
+          </select> -->
         </div>
       </BBTableHeaderCell>
 
@@ -265,8 +268,23 @@ export default defineComponent({
       ...filteredXAxisValues.value.map((xValue) => ({ title: xValue })),
     ]);
 
+    const toggleFirstByLabel = () => {
+      const key = firstByLabel.value;
+      if (!key) return;
+      const list = selectableLabelList.value;
+      if (list.length === 0) return;
+
+      const index = selectableLabelList.value.findIndex(
+        (label) => label.key === key
+      );
+      if (index < 0) return;
+      const next = (index + 1) % list.length;
+      firstByLabel.value = list[next].key;
+    };
+
     return {
       selectableLabelList,
+      toggleFirstByLabel,
       firstByLabel,
       columnList,
       firstGroupedBy,
