@@ -54,12 +54,9 @@ export const validateLabels = (labels: DatabaseLabel[]): string | undefined => {
 
 export const findDefaultGroupByLabel = (
   labelList: Label[],
-  databaseList: Database[],
-  excludedKeys: LabelKeyType[]
+  databaseList: Database[]
 ): string | undefined => {
-  const availableKeys = labelList
-    .filter((label) => !excludedKeys.includes(label.key))
-    .map((label) => label.key);
+  const availableKeys = labelList.map((label) => label.key);
 
   // concat all databases' keys into one array
   const databaseLabelKeys = databaseList.flatMap((db) =>

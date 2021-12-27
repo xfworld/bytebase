@@ -25,7 +25,7 @@
             class="absolute w-full h-full inset-0 opacity-0"
           >
             <option
-              v-for="label in labelList"
+              v-for="label in selectableLabelList"
               :key="label.key"
               :value="label.key"
             >
@@ -133,6 +133,13 @@ export default defineComponent({
   },
   emits: ["select-database"],
   setup(props) {
+    // make "bb.environment" non-selectable because it was already specified to
+    //   the x-axis
+    const selectableLabelList = computed(() => {
+      const excludes = new Set(["bb.environment"]);
+      return props.labelList.filter((label) => !excludes.has(label.key));
+    });
+
     /**
      * `firstByLabel` defines the y-axis of matrix
      * `thenByLabel` defines the x-axis of matrix
@@ -144,14 +151,12 @@ export default defineComponent({
     const filteredXAxisValues = ref<LabelValueType[]>([]);
     const filteredMatrices = ref<DatabaseMatrix[]>([]);
 
-    // find the default label key to firstBy
+    // find the default label key to firstBy (y-axis)
     watchEffect(() => {
-      // excluding "bb.environment" because the x-axis is already specified
-      //   as "bb.environment"
+      // "bb.environment" is excluded because it was specified to the x-axis
       firstByLabel.value = findDefaultGroupByLabel(
-        props.labelList,
-        props.databaseList,
-        [thenByLabel.value]
+        selectableLabelList.value,
+        props.databaseList
       );
     });
 
@@ -261,6 +266,7 @@ export default defineComponent({
     ]);
 
     return {
+      selectableLabelList,
       firstByLabel,
       columnList,
       firstGroupedBy,
