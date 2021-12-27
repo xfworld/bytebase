@@ -1,8 +1,26 @@
 <template>
   <div class="add-label-value">
-    <div v-if="!state.isAdding" class="icon-btn" @click="state.isAdding = true">
-      <heroicons-solid:plus class="w-4 h-4" />
-    </div>
+    <template v-if="!state.isAdding">
+      <NPopover trigger="hover" :disabled="editable">
+        <template #trigger>
+          <div
+            class="icon-btn"
+            :class="{ disabled: !editable }"
+            @click="state.isAdding = true"
+          >
+            <heroicons-solid:plus class="w-4 h-4" />
+          </div>
+        </template>
+
+        <span class="text-red-600">
+          {{
+            $t("database.label-error.cannot-edit-reserved-label", {
+              key: label.key,
+            })
+          }}
+        </span>
+      </NPopover>
+    </template>
     <template v-else>
       <input
         ref="input"
@@ -39,10 +57,19 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType, ref, nextTick, watch, reactive } from "vue";
+import {
+  defineComponent,
+  PropType,
+  ref,
+  nextTick,
+  watch,
+  reactive,
+  computed,
+} from "vue";
 import { useI18n } from "vue-i18n";
 import { Label } from "../types";
 import { NPopover } from "naive-ui";
+import { isReservedLabel } from "../utils";
 
 type LocalState = {
   isAdding: boolean;
@@ -72,6 +99,8 @@ export default defineComponent({
       error: undefined,
       changed: false,
     });
+
+    const editable = computed(() => !isReservedLabel(props.label));
 
     const check = () => {
       const v = state.text.trim();
@@ -128,7 +157,7 @@ export default defineComponent({
       }
     );
 
-    return { state, tryAdd, cancel, input };
+    return { state, editable, tryAdd, cancel, input };
   },
 });
 </script>

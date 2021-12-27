@@ -7,6 +7,21 @@ import {
   LabelSelectorRequirement,
 } from "../types";
 
+export const RESERVED_LABEL_ID = 0;
+
+export const isReservedLabel = (label: Label): boolean => {
+  return label.id === RESERVED_LABEL_ID;
+};
+
+export const isReservedDatabaseLabel = (
+  dbLabel: DatabaseLabel,
+  labelList: Label[]
+): boolean => {
+  const label = labelList.find((label) => label.key === dbLabel.key);
+  if (!label) return false;
+  return label.id === RESERVED_LABEL_ID;
+};
+
 export const validateLabels = (labels: DatabaseLabel[]): string | undefined => {
   for (let i = 0; i < labels.length; i++) {
     const label = labels[i];

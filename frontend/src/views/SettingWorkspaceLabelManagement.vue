@@ -81,9 +81,9 @@ export default defineComponent({
     });
 
     const allowRemove = computed(() => {
-      // no, not now
-      // return false;
-      return allowEdit.value;
+      // no, we don't allow to remove values now
+      return false;
+      // return allowEdit.value;
     });
 
     const addValue = (label: Label, value: string) => {
