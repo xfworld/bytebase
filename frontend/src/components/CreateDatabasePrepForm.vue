@@ -203,6 +203,8 @@ import {
   unknown,
   Project,
   DatabaseLabel,
+  CreateDatabaseContext,
+  Environment,
 } from "../types";
 import { isDBAOrOwner, issueSlug, validateLabels } from "../utils";
 import { useI18n } from "vue-i18n";
@@ -211,7 +213,7 @@ interface LocalState {
   projectId?: ProjectId;
   environmentId?: EnvironmentId;
   instanceId?: InstanceId;
-  labels?: DatabaseLabel[];
+  labels: DatabaseLabel[];
   databaseName?: string;
   characterSet: string;
   collation: string;
@@ -304,14 +306,14 @@ export default defineComponent({
     });
 
     const labelsError = computed((): string => {
-      const error = validateLabels(state.labels || []);
+      const error = validateLabels(state.labels);
       if (error) return t(error);
       return "";
     });
 
     const invalidLabels = computed((): boolean => {
       if (!isTenantProject.value) return false;
-      if (state.labels?.length === 0) return true;
+      if (state.labels.length === 0) return true;
       return !!labelsError.value;
     });
 
@@ -419,10 +421,31 @@ export default defineComponent({
           payload: {},
         };
       }
+      if (isTenantProject.value) {
+        const context = newIssue.createContext as CreateDatabaseContext;
+        context.labels = JSON.stringify(state.labels);
+      }
       store.dispatch("issue/createIssue", newIssue).then((createdIssue) => {
         router.push(`/issue/${issueSlug(createdIssue.name, createdIssue.id)}`);
       });
     };
+
+    // update `state.labels` when selected Environment changed
+    watchEffect(() => {
+      const envId = state.environmentId;
+      const { labels } = state;
+      const key = "bb.environment";
+      const index = labels.findIndex((label) => label.key === key);
+      if (envId) {
+        const env = store.getters["environment/environmentById"](
+          state.environmentId
+        ) as Environment;
+        if (index >= 0) labels[index].value = env.name;
+        else labels.unshift({ key, value: env.name });
+      } else {
+        if (index >= 0) labels.splice(index, 1);
+      }
+    });
 
     return {
       defaultCharset,
