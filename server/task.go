@@ -175,7 +175,7 @@ func (s *Server) registerTaskRoutes(g *echo.Group) {
 			}
 
 		}
-		// create an activity for earliest allowed time update
+		// create an activity and trigger task check for earliest allowed time update
 		if updatedTask.EarliestAllowedTs != task.EarliestAllowedTs {
 			// create an activity
 			issueFind := &api.IssueFind{
@@ -208,6 +208,29 @@ func (s *Server) registerTaskRoutes(g *echo.Group) {
 			})
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to create activity after updating task earliest allowed time: %v", updatedTask.Name)).SetInternal(err)
+			}
+
+			// trigger task check
+			payload, err = json.Marshal(api.TaskCheckEarliestAllowedTimePayload{
+				EarliestAllowedTs: *taskPatch.EarliestAllowedTs,
+			})
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("failed to marshal statement advise payload: %v, err: %w", task.Name, err))
+			}
+			_, err = s.TaskCheckRunService.CreateTaskCheckRunIfNeeded(ctx, &api.TaskCheckRunCreate{
+				CreatorID:               api.SystemBotID,
+				TaskID:                  task.ID,
+				Type:                    api.TaskCheckGeneralEarliestAllowedTime,
+				Payload:                 string(payload),
+				SkipIfAlreadyTerminated: false,
+			})
+			if err != nil {
+				// It's OK if we failed to trigger a check, just emit an error log
+				s.l.Error("Failed to trigger timing check after changing task earliest allowed time",
+					zap.Int("task_id", task.ID),
+					zap.String("task_name", task.Name),
+					zap.Error(err),
+				)
 			}
 		}
 
@@ -511,8 +534,9 @@ func (s *Server) changeTaskStatusWithPatch(ctx context.Context, task *api.Task, 
 			Name:          payload.DatabaseName,
 			CharacterSet:  payload.CharacterSet,
 			Collation:     payload.Collation,
+			Labels:        &payload.Labels,
 		}
-		_, err = s.DatabaseService.CreateDatabase(ctx, databaseCreate)
+		database, err := s.DatabaseService.CreateDatabase(ctx, databaseCreate)
 		if err != nil {
 			// Just emits an error instead of failing, since we have another periodic job to sync db info.
 			// Though the db will be assigned to the default project instead of the desired project in that case.
@@ -522,6 +546,27 @@ func (s *Server) changeTaskStatusWithPatch(ctx context.Context, task *api.Task, 
 				zap.Int("instance_id", task.InstanceID),
 				zap.Error(err),
 			)
+		}
+		err = s.composeDatabaseRelationship(ctx, database)
+		if err != nil {
+			s.l.Error("failed to compose database relationship after creating database",
+				zap.String("database_name", payload.DatabaseName),
+				zap.Int("project_id", payload.ProjectID),
+				zap.Int("instance_id", task.InstanceID),
+				zap.Error(err),
+			)
+		}
+		// Set database labels, except bb.environment is immutable and must match instance environment.
+		// This needs to be after we compose database relationship.
+		if err != nil && databaseCreate.Labels != nil && *databaseCreate.Labels != "" {
+			if err := s.setDatabaseLabels(ctx, *databaseCreate.Labels, database, databaseCreate.CreatorID); err != nil {
+				s.l.Error("failed to record database labels after creating database",
+					zap.String("database_name", payload.DatabaseName),
+					zap.Int("project_id", payload.ProjectID),
+					zap.Int("instance_id", task.InstanceID),
+					zap.Error(err),
+				)
+			}
 		}
 	}
 
