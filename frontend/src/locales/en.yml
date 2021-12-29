@@ -155,6 +155,7 @@ common:
   deployment-config: Deployment Config
   by: by
   ok: OK
+  share: Share
 error-page:
   go-back-home: Go back home
 anomaly-center: Anomaly Center
@@ -1058,3 +1059,6 @@ setting:
     free: Free
     team: Team
     enterprise: Enterprise
+sql-editor:
+  select-connection: Select Connections
+  sql-editor: SQL Editor

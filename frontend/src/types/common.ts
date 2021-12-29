@@ -64,6 +64,7 @@ export type RouterSlug = {
   dataSourceSlug?: string;
   migrationHistorySlug?: string;
   vcsSlug?: string;
+  connectionSlug?: string;
 };
 
 // Quick Action Type

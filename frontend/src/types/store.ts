@@ -34,6 +34,9 @@ import { Table } from "./table";
 import { VCS } from "./vcs";
 import { Label } from "./label";
 import { DeploymentConfig } from "./deployment";
+import { ConnectionAtom, ConnectionContext } from "./sqlEditor";
+import instanceStore from "../store/modules/instance";
+import sqlEditorStore from "../store/modules/sqlEditor";
 
 export interface ActuatorState {
   serverInfo?: ServerInfo;
@@ -113,6 +116,9 @@ export interface InstanceState {
   // The key is a concatenation of instance id and database name
   migrationHistoryListByIdAndDatabaseName: Map<string, MigrationHistory[]>;
 }
+export type InstanceGetters = typeof instanceStore.getters;
+export type InstanceActions = typeof instanceStore.actions;
+export type InstanceMutations = typeof instanceStore.mutations;
 
 export interface DataSourceState {
   dataSourceById: Map<DataSourceId, DataSource>;
@@ -174,3 +180,15 @@ export interface LabelState {
 export interface DeploymentState {
   deploymentConfigByProjectId: Map<ProjectId, DeploymentConfig>;
 }
+
+// type for vuex
+export interface SqlEditorState {
+  connectionTree: ConnectionAtom[];
+  connectionContext: ConnectionContext;
+  queryStatement: string;
+  selectedStatement: string;
+  queryResult: Array<Record<any, any>>;
+}
+export type SqlEditorGetters = typeof sqlEditorStore.getters;
+export type SqlEditorActions = typeof sqlEditorStore.actions;
+export type SqlEditorMutations = typeof sqlEditorStore.mutations;

@@ -6,7 +6,10 @@ declare module 'vue' {
     ActivityCommentLink: typeof import('./src/components/ActivityTable/ActivityCommentLink.vue')['default']
     ActivityTable: typeof import('./src/components/ActivityTable.vue')['default']
     ActivityTypeLink: typeof import('./src/components/ActivityTable/ActivityTypeLink.vue')['default']
+<<<<<<< HEAD
     AddLabelValue: typeof import('./src/components/AddLabelValue.vue')['default']
+=======
+>>>>>>> main
     AlterSchemaPrepForm: typeof import('./src/components/AlterSchemaPrepForm.vue')['default']
     AnomalyTable: typeof import('./src/components/AnomalyTable.vue')['default']
     ArchiveBanner: typeof import('./src/components/ArchiveBanner.vue')['default']
@@ -37,16 +40,25 @@ declare module 'vue' {
     BBTextField: typeof import('./src/bbkit/BBTextField.vue')['default']
     BookmarkListSidePanel: typeof import('./src/components/BookmarkListSidePanel.vue')['default']
     Breadcrumb: typeof import('./src/components/Breadcrumb.vue')['default']
+<<<<<<< HEAD
+=======
+    'Carbon:save': typeof import('virtual:vite-icons/carbon/save')['default']
+    'Carbon:share': typeof import('virtual:vite-icons/carbon/share')['default']
+>>>>>>> main
     ColumnTable: typeof import('./src/components/ColumnTable.vue')['default']
     CreateDatabasePrepForm: typeof import('./src/components/CreateDatabasePrepForm.vue')['default']
     DatabaseBackupCreateForm: typeof import('./src/components/DatabaseBackupCreateForm.vue')['default']
     DatabaseBackupPanel: typeof import('./src/components/DatabaseBackupPanel.vue')['default']
+<<<<<<< HEAD
     DatabaseLabel: typeof import('./src/components/DatabaseLabels/DatabaseLabel.vue')['default']
     DatabaseLabels: typeof import('./src/components/DatabaseLabels/DatabaseLabels.vue')['default']
     DatabaseLabelsEditor: typeof import('./src/components/DatabaseLabels/DatabaseLabelsEditor.vue')['default']
     DatabaseListSidePanel: typeof import('./src/components/DatabaseListSidePanel.vue')['default']
     DatabaseMatrix: typeof import('./src/components/TenantDatabaseTable/DatabaseMatrix.vue')['default']
     DatabaseMatrixItem: typeof import('./src/components/TenantDatabaseTable/DatabaseMatrixItem.vue')['default']
+=======
+    DatabaseListSidePanel: typeof import('./src/components/DatabaseListSidePanel.vue')['default']
+>>>>>>> main
     DatabaseMigrationHistoryPanel: typeof import('./src/components/DatabaseMigrationHistoryPanel.vue')['default']
     DatabaseOverviewPanel: typeof import('./src/components/DatabaseOverviewPanel.vue')['default']
     DatabaseSelect: typeof import('./src/components/DatabaseSelect.vue')['default']
@@ -57,23 +69,34 @@ declare module 'vue' {
     DataSourceMemberTable: typeof import('./src/components/DataSourceMemberTable.vue')['default']
     DataSourceSelect: typeof import('./src/components/DataSourceSelect.vue')['default']
     DataSourceTable: typeof import('./src/components/DataSourceTable.vue')['default']
+<<<<<<< HEAD
     DeploymentConfigTool: typeof import('./src/components/DeploymentConfigTool/DeploymentConfigTool.vue')['default']
     DeploymentStage: typeof import('./src/components/DeploymentConfigTool/DeploymentStage.vue')['default']
+=======
+>>>>>>> main
     EnvironmentForm: typeof import('./src/components/EnvironmentForm.vue')['default']
     EnvironmentSelect: typeof import('./src/components/EnvironmentSelect.vue')['default']
     EnvironmentTabFilter: typeof import('./src/components/EnvironmentTabFilter.vue')['default']
     EnvironmentTable: typeof import('./src/components/EnvironmentTable.vue')['default']
+<<<<<<< HEAD
     'Heroicons:solid:x': typeof import('virtual:vite-icons/heroicons-solid/x')['default']
     'HeroiconsOutline:archive': typeof import('virtual:vite-icons/heroicons-outline/archive')['default']
     'HeroiconsOutline:ban': typeof import('virtual:vite-icons/heroicons-outline/ban')['default']
+=======
+    'HeroiconsOutline:archive': typeof import('virtual:vite-icons/heroicons-outline/archive')['default']
+>>>>>>> main
     'HeroiconsOutline:bell': typeof import('virtual:vite-icons/heroicons-outline/bell')['default']
     'HeroiconsOutline:check': typeof import('virtual:vite-icons/heroicons-outline/check')['default']
     'HeroiconsOutline:checkCircle': typeof import('virtual:vite-icons/heroicons-outline/check-circle')['default']
     'HeroiconsOutline:chevronDoubleDown': typeof import('virtual:vite-icons/heroicons-outline/chevron-double-down')['default']
+<<<<<<< HEAD
     'HeroiconsOutline:chevronLeft': typeof import('virtual:vite-icons/heroicons-outline/chevron-left')['default']
     'HeroiconsOutline:chevronRight': typeof import('virtual:vite-icons/heroicons-outline/chevron-right')['default']
     'HeroiconsOutline:clipboard': typeof import('virtual:vite-icons/heroicons-outline/clipboard')['default']
     'HeroiconsOutline:code': typeof import('virtual:vite-icons/heroicons-outline/code')['default']
+=======
+    'HeroiconsOutline:clipboard': typeof import('virtual:vite-icons/heroicons-outline/clipboard')['default']
+>>>>>>> main
     'HeroiconsOutline:collection': typeof import('virtual:vite-icons/heroicons-outline/collection')['default']
     'HeroiconsOutline:cube': typeof import('virtual:vite-icons/heroicons-outline/cube')['default']
     'HeroiconsOutline:database': typeof import('virtual:vite-icons/heroicons-outline/database')['default']
@@ -85,6 +108,7 @@ declare module 'vue' {
     'HeroiconsOutline:eyeOff': typeof import('virtual:vite-icons/heroicons-outline/eye-off')['default']
     'HeroiconsOutline:hand': typeof import('virtual:vite-icons/heroicons-outline/hand')['default']
     'HeroiconsOutline:home': typeof import('virtual:vite-icons/heroicons-outline/home')['default']
+<<<<<<< HEAD
     'HeroiconsOutline:inbox': typeof import('virtual:vite-icons/heroicons-outline/inbox')['default']
     'HeroiconsOutline:informationCircle': typeof import('virtual:vite-icons/heroicons-outline/information-circle')['default']
     'HeroiconsOutline:lightningBolt': typeof import('virtual:vite-icons/heroicons-outline/lightning-bolt')['default']
@@ -98,12 +122,23 @@ declare module 'vue' {
     'HeroiconsOutline:plusSm': typeof import('virtual:vite-icons/heroicons-outline/plus-sm')['default']
     'HeroiconsOutline:questionMarkCircle': typeof import('virtual:vite-icons/heroicons-outline/question-mark-circle')['default']
     'HeroiconsOutline:refresh': typeof import('virtual:vite-icons/heroicons-outline/refresh')['default']
+=======
+    'HeroiconsOutline:informationCircle': typeof import('virtual:vite-icons/heroicons-outline/information-circle')['default']
+    'HeroiconsOutline:lightningBolt': typeof import('virtual:vite-icons/heroicons-outline/lightning-bolt')['default']
+    'HeroiconsOutline:menu': typeof import('virtual:vite-icons/heroicons-outline/menu')['default']
+    'HeroiconsOutline:minusCircle': typeof import('virtual:vite-icons/heroicons-outline/minus-circle')['default']
+    'HeroiconsOutline:pencil': typeof import('virtual:vite-icons/heroicons-outline/pencil')['default']
+    'HeroiconsOutline:pencilAlt': typeof import('virtual:vite-icons/heroicons-outline/pencil-alt')['default']
+    'HeroiconsOutline:plusSm': typeof import('virtual:vite-icons/heroicons-outline/plus-sm')['default']
+    'HeroiconsOutline:questionMarkCircle': typeof import('virtual:vite-icons/heroicons-outline/question-mark-circle')['default']
+>>>>>>> main
     'HeroiconsOutline:reply': typeof import('virtual:vite-icons/heroicons-outline/reply')['default']
     'HeroiconsOutline:search': typeof import('virtual:vite-icons/heroicons-outline/search')['default']
     'HeroiconsOutline:selector': typeof import('virtual:vite-icons/heroicons-outline/selector')['default']
     'HeroiconsOutline:shieldExclamation': typeof import('virtual:vite-icons/heroicons-outline/shield-exclamation')['default']
     'HeroiconsOutline:switchHorizontal': typeof import('virtual:vite-icons/heroicons-outline/switch-horizontal')['default']
     'HeroiconsOutline:template': typeof import('virtual:vite-icons/heroicons-outline/template')['default']
+<<<<<<< HEAD
     'HeroiconsOutline:thumbUp': typeof import('virtual:vite-icons/heroicons-outline/thumb-up')['default']
     'HeroiconsOutline:translate': typeof import('virtual:vite-icons/heroicons-outline/translate')['default']
     'HeroiconsOutline:trash': typeof import('virtual:vite-icons/heroicons-outline/trash')['default']
@@ -121,20 +156,37 @@ declare module 'vue' {
     'HeroiconsSolid:check': typeof import('virtual:vite-icons/heroicons-solid/check')['default']
     'HeroiconsSolid:checkCircle': typeof import('virtual:vite-icons/heroicons-solid/check-circle')['default']
     'HeroiconsSolid:chevronDown': typeof import('virtual:vite-icons/heroicons-solid/chevron-down')['default']
+=======
+    'HeroiconsOutline:translate': typeof import('virtual:vite-icons/heroicons-outline/translate')['default']
+    'HeroiconsOutline:trash': typeof import('virtual:vite-icons/heroicons-outline/trash')['default']
+    'HeroiconsOutline:user': typeof import('virtual:vite-icons/heroicons-outline/user')['default']
+    'HeroiconsOutline:users': typeof import('virtual:vite-icons/heroicons-outline/users')['default']
+    'HeroiconsOutline:x': typeof import('virtual:vite-icons/heroicons-outline/x')['default']
+    'HeroiconsSolid:check': typeof import('virtual:vite-icons/heroicons-solid/check')['default']
+    'HeroiconsSolid:checkCircle': typeof import('virtual:vite-icons/heroicons-solid/check-circle')['default']
+>>>>>>> main
     'HeroiconsSolid:chevronRight': typeof import('virtual:vite-icons/heroicons-solid/chevron-right')['default']
     'HeroiconsSolid:dotsVertical': typeof import('virtual:vite-icons/heroicons-solid/dots-vertical')['default']
     'HeroiconsSolid:home': typeof import('virtual:vite-icons/heroicons-solid/home')['default']
     'HeroiconsSolid:informationCircle': typeof import('virtual:vite-icons/heroicons-solid/information-circle')['default']
     'HeroiconsSolid:minus': typeof import('virtual:vite-icons/heroicons-solid/minus')['default']
+<<<<<<< HEAD
     'HeroiconsSolid:officeBuilding': typeof import('virtual:vite-icons/heroicons-solid/office-building')['default']
     'HeroiconsSolid:pencil': typeof import('virtual:vite-icons/heroicons-solid/pencil')['default']
     'HeroiconsSolid:plus': typeof import('virtual:vite-icons/heroicons-solid/plus')['default']
     'HeroiconsSolid:plusSm': typeof import('virtual:vite-icons/heroicons-solid/plus-sm')['default']
+=======
+    'HeroiconsSolid:pencil': typeof import('virtual:vite-icons/heroicons-solid/pencil')['default']
+    'HeroiconsSolid:plus': typeof import('virtual:vite-icons/heroicons-solid/plus')['default']
+>>>>>>> main
     'HeroiconsSolid:save': typeof import('virtual:vite-icons/heroicons-solid/save')['default']
     'HeroiconsSolid:search': typeof import('virtual:vite-icons/heroicons-solid/search')['default']
     'HeroiconsSolid:selector': typeof import('virtual:vite-icons/heroicons-solid/selector')['default']
     'HeroiconsSolid:star': typeof import('virtual:vite-icons/heroicons-solid/star')['default']
+<<<<<<< HEAD
     'HeroiconsSolid:userCircle': typeof import('virtual:vite-icons/heroicons-solid/user-circle')['default']
+=======
+>>>>>>> main
     'HeroiconsSolid:x': typeof import('virtual:vite-icons/heroicons-solid/x')['default']
     InboxList: typeof import('./src/components/InboxList.vue')['default']
     IndexTable: typeof import('./src/components/IndexTable.vue')['default']
@@ -159,18 +211,29 @@ declare module 'vue' {
     KBarFooter: typeof import('./src/components/KBar/KBarFooter.vue')['default']
     KBarHelper: typeof import('./src/components/KBar/KBarHelper.vue')['default']
     KBarWrapper: typeof import('./src/components/KBar/KBarWrapper.vue')['default']
+<<<<<<< HEAD
     LabelSelect: typeof import('./src/components/DeploymentConfigTool/LabelSelect.vue')['default']
+=======
+    'Mdi:play': typeof import('virtual:vite-icons/mdi/play')['default']
+>>>>>>> main
     MemberAddOrInvite: typeof import('./src/components/MemberAddOrInvite.vue')['default']
     MemberSelect: typeof import('./src/components/MemberSelect.vue')['default']
     MemberTable: typeof import('./src/components/MemberTable.vue')['default']
     MigrationHistoryStatusIcon: typeof import('./src/components/MigrationHistoryStatusIcon.vue')['default']
     MigrationHistoryTable: typeof import('./src/components/MigrationHistoryTable.vue')['default']
+<<<<<<< HEAD
+=======
+    MonacoEditor: typeof import('./src/components/MonacoEditor/MonacoEditor.vue')['default']
+>>>>>>> main
     PricingTable: typeof import('./src/components/PricingTable.vue')['default']
     PrincipalAvatar: typeof import('./src/components/PrincipalAvatar.vue')['default']
     ProfileDropdown: typeof import('./src/components/ProfileDropdown.vue')['default']
     ProjectActivityPanel: typeof import('./src/components/ProjectActivityPanel.vue')['default']
     ProjectCreate: typeof import('./src/components/ProjectCreate.vue')['default']
+<<<<<<< HEAD
     ProjectDeploymentConfigurationPanel: typeof import('./src/components/ProjectDeploymentConfigurationPanel.vue')['default']
+=======
+>>>>>>> main
     ProjectGeneralSettingPanel: typeof import('./src/components/ProjectGeneralSettingPanel.vue')['default']
     ProjectListSidePanel: typeof import('./src/components/ProjectListSidePanel.vue')['default']
     ProjectMemberPanel: typeof import('./src/components/ProjectMemberPanel.vue')['default']
@@ -187,6 +250,10 @@ declare module 'vue' {
     ProjectWebhookPanel: typeof import('./src/components/ProjectWebhookPanel.vue')['default']
     ProvideDashboardContext: typeof import('./src/components/ProvideDashboardContext.vue')['default']
     ProvideInstanceContext: typeof import('./src/components/ProvideInstanceContext.vue')['default']
+<<<<<<< HEAD
+=======
+    ProvideSqlEditorContext: typeof import('./src/components/ProvideSqlEditorContext.vue')['default']
+>>>>>>> main
     QuickActionPanel: typeof import('./src/components/QuickActionPanel.vue')['default']
     Quickstart: typeof import('./src/components/Quickstart.vue')['default']
     RenderResults: typeof import('./src/components/KBar/RenderResults.vue')['default']
@@ -198,9 +265,13 @@ declare module 'vue' {
     RepositoryTable: typeof import('./src/components/RepositoryTable.vue')['default']
     RepositoryVCSProviderPanel: typeof import('./src/components/RepositoryVCSProviderPanel.vue')['default']
     RequestDatabasePrepForm: typeof import('./src/components/RequestDatabasePrepForm.vue')['default']
+<<<<<<< HEAD
     ResponsiveTags: typeof import('./src/components/DeploymentConfigTool/ResponsiveTags.vue')['default']
     RoleSelect: typeof import('./src/components/RoleSelect.vue')['default']
     SelectorItem: typeof import('./src/components/DeploymentConfigTool/SelectorItem.vue')['default']
+=======
+    RoleSelect: typeof import('./src/components/RoleSelect.vue')['default']
+>>>>>>> main
     StageSelect: typeof import('./src/components/StageSelect.vue')['default']
     StatusTransitionForm: typeof import('./src/components/StatusTransitionForm.vue')['default']
     TableTable: typeof import('./src/components/TableTable.vue')['default']
@@ -208,7 +279,10 @@ declare module 'vue' {
     TaskCheckBar: typeof import('./src/components/TaskCheckBar.vue')['default']
     TaskCheckRunPanel: typeof import('./src/components/TaskCheckRunPanel.vue')['default']
     TaskRunTable: typeof import('./src/components/TaskRunTable.vue')['default']
+<<<<<<< HEAD
     TenantDatabaseTable: typeof import('./src/components/TenantDatabaseTable/TenantDatabaseTable.vue')['default']
+=======
+>>>>>>> main
     TransferDatabaseForm: typeof import('./src/components/TransferDatabaseForm.vue')['default']
     VCSCard: typeof import('./src/components/VCSCard.vue')['default']
     VCSProviderBasicInfoPanel: typeof import('./src/components/VCSProviderBasicInfoPanel.vue')['default']
