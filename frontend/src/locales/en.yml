@@ -229,7 +229,7 @@ settings:
     members: Members
     version-control: Version Control
     plans: Plans
-    label-management: Label Management
+    labels: Labels
   profile:
     email: Email
     role: Role
@@ -267,11 +267,6 @@ settings:
       upgrade: Upgrade to Team plan to enable role management
       not-allow-edit: Only Owner can change the role
       not-allow-remove: Can not remove the last Owner
-  label-management:
-    table:
-      key: Key
-      values: Values
-    value-placeholder: Label value...
 activity:
   name: Name
   comment: Comment
@@ -708,24 +703,7 @@ database:
   index-size: Index size
   columns: Columns
   indexes: Indexes
-  empty-label-value: <Empty Value>
   row-count-est: Row count est.
-  no-label: No labels
-  label-error:
-    key-necessary: Key is required
-    value-necessary: Value is required
-    key-duplicated: Duplicated keys
-    value-duplicated: Duplicated values
-    max-length-exceeded: Length cannot exceed {len} characters
-    max-label-count-exceeded: Cannot exceed {count} labels
-    cannot-edit-reserved-label: Cannot edit reserved label "{key}"
-  label:
-    placeholder:
-      select-key: Select key...
-      select-value: Select value...
-      select-values: Select values...
-t:
-  database: {}
 repository:
   branch-observe-file-change: The branch where Bytebase observes the file change.
   branch-specify-tip: 'Tip: You can also use wildcard like ''feature/*'
@@ -1051,6 +1029,23 @@ setting:
     free: Free
     team: Team
     enterprise: Enterprise
+  label:
+    key: Key
+    values: Values
+    value-placeholder: Label value...
 sql-editor:
   self: SQL Editor
   select-connection: Select Connections
+label:
+  error:
+    key-necessary: Key is required
+    value-necessary: Value is required
+    key-duplicated: Duplicated keys
+    value-duplicated: Duplicated values
+    max-length-exceeded: Length cannot exceed {len} characters
+    max-label-count-exceeded: Cannot exceed {count} labels
+    cannot-edit-reserved-label: Cannot edit reserved label "{key}"
+  placeholder:
+    select-key: Select key...
+    select-value: Select value...
+    select-values: Select values...

@@ -1,11 +1,11 @@
 <template>
   <div class="add-label-value">
     <template v-if="!state.isAdding">
-      <NPopover trigger="hover" :disabled="editable">
+      <NPopover trigger="hover" :disabled="!reserved">
         <template #trigger>
           <div
             class="icon-btn"
-            :class="{ disabled: !editable }"
+            :class="{ disabled: reserved }"
             @click="toggleAdding"
           >
             <heroicons-solid:plus class="w-4 h-4" />
@@ -14,7 +14,7 @@
 
         <span class="text-red-600">
           {{
-            $t("database.label-error.cannot-edit-reserved-label", {
+            $t("label.error.cannot-edit-reserved-label", {
               key: label.key,
             })
           }}
@@ -29,7 +29,7 @@
         autocomplete="off"
         class="textfield"
         :class="{ error: !!state.error && state.changed }"
-        :placeholder="$t('settings.label-management.value-placeholder')"
+        :placeholder="$t('setting.label.value-placeholder')"
         @blur="cancel"
         @keyup.esc="cancel"
         @keyup.enter="tryAdd"
@@ -100,24 +100,24 @@ export default defineComponent({
       changed: false,
     });
 
-    const editable = computed(() => !isReservedLabel(props.label));
+    const reserved = computed(() => isReservedLabel(props.label));
 
     const toggleAdding = () => {
       if (isReservedLabel(props.label)) return;
       state.isAdding = !state.isAdding;
     };
 
-    const check = () => {
+    const validate = () => {
       const v = state.text.trim();
       if (!v) {
         // can't be empty
-        state.error = t("database.label-error.value-necessary");
+        state.error = t("label.error.value-necessary");
       } else if (props.label.valueList.includes(v)) {
         // must be unique
-        state.error = t("database.label-error.value-duplicated");
+        state.error = t("label.error.value-duplicated");
       } else if (v.length > MAX_VALUE_LENGTH) {
         // max length exceeded
-        state.error = t("database.label-error.max-length-exceeded", {
+        state.error = t("label.error.max-length-exceeded", {
           len: MAX_VALUE_LENGTH,
         });
       } else {
@@ -131,7 +131,7 @@ export default defineComponent({
       () => state.text,
       () => {
         state.changed = true;
-        check();
+        validate();
       }
     );
 
@@ -154,7 +154,7 @@ export default defineComponent({
       (isAdding) => {
         if (isAdding) {
           // reset input state
-          check();
+          validate();
           state.changed = false;
           // auto focus if possible
           nextTick(() => input.value?.focus());
@@ -162,7 +162,7 @@ export default defineComponent({
       }
     );
 
-    return { state, editable, toggleAdding, tryAdd, cancel, input };
+    return { state, reserved, toggleAdding, tryAdd, cancel, input };
   },
 });
 </script>

@@ -270,11 +270,10 @@ const routes: Array<RouteRecordRaw> = [
                 props: true,
               },
               {
-                path: "label-management",
-                name: "setting.workspace.label-management",
-                meta: { title: () => t("settings.workspace.label-management") },
-                component: () =>
-                  import("../views/SettingWorkspaceLabelManagement.vue"),
+                path: "label",
+                name: "setting.workspace.label",
+                meta: { title: () => t("settings.sidebar.labels") },
+                component: () => import("../views/SettingWorkspaceLabel.vue"),
                 props: true,
               },
               {
