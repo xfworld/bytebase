@@ -23,9 +23,8 @@
           <router-link
             to="/setting/profile"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
+            >{{ $t("settings.sidebar.profile") }}</router-link
           >
-            {{ $t("settings.sidebar.profile") }}
-          </router-link>
         </div>
       </div>
       <div class="mt-8">
@@ -36,18 +35,23 @@
           {{ $t("settings.sidebar.workspace") }}
         </div>
         <div class="space-y-1">
-          <router-link
+          <!-- <router-link
             to="/setting/general"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
           >
             {{ $t("settings.sidebar.general") }}
-          </router-link>
+          </router-link>-->
           <!-- <router-link
             to="/setting/agent"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
           >
             Agents
           </router-link> -->
+          <router-link
+            to="/setting/member"
+            class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
+            >{{ $t("settings.sidebar.members") }}</router-link
+          >
           <!--
             Label Management is visible to all
             but only editable to Owners and DBAs
@@ -59,34 +63,26 @@
             {{ $t("settings.sidebar.label-management") }}
           </router-link>
           <router-link
-            to="/setting/member"
-            class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
-          >
-            {{ $t("settings.sidebar.members") }}
-          </router-link>
-          <router-link
             v-if="showOwnerItem"
             to="/setting/version-control"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
+            >{{ $t("settings.sidebar.version-control") }}</router-link
           >
-            {{ $t("settings.sidebar.version-control") }}
-          </router-link>
           <router-link
             v-if="false"
             to="/setting/plan"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
+            >{{ $t("settings.sidebar.plans") }}</router-link
           >
-            {{ $t("settings.sidebar.plans") }}
-          </router-link>
           <!-- <router-link
             to="/setting/billing"
             class="outline-item group w-full flex items-center pl-11 pr-2 py-2"
           >
             Billing
-          </router-link> -->
+          </router-link>-->
           <!-- <div class="pl-9 mt-1">
             <BBOutline :title="'Integrations'" :itemList="integrationList" />
-          </div> -->
+          </div>-->
         </div>
       </div>
     </div>

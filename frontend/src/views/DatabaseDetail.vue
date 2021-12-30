@@ -31,9 +31,10 @@
                   database.instance.environment
                 )}`"
                 class="normal-link"
+                >{{
+                  environmentName(database.instance.environment)
+                }}</router-link
               >
-                {{ environmentName(database.instance.environment) }}
-              </router-link>
             </dd>
             <dt class="sr-only">{{ $t("common.instance") }}</dt>
             <dd class="flex items-center text-sm md:mr-4">
@@ -44,9 +45,8 @@
               <router-link
                 :to="`/instance/${instanceSlug(database.instance)}`"
                 class="normal-link"
+                >{{ instanceName(database.instance) }}</router-link
               >
-                {{ instanceName(database.instance) }}
-              </router-link>
             </dd>
             <dt class="sr-only">{{ $t("common.project") }}</dt>
             <dd class="flex items-center text-sm md:mr-4">
@@ -56,49 +56,36 @@
               <router-link
                 :to="`/project/${projectSlug(database.project)}`"
                 class="normal-link"
+                >{{ projectName(database.project) }}</router-link
               >
-                {{ projectName(database.project) }}
-              </router-link>
             </dd>
             <template v-if="database.sourceBackup">
               <dt class="sr-only">{{ $t("db.parent") }}</dt>
               <dd class="flex items-center text-sm md:mr-4 tooltip-wrapper">
-                <span class="textlabel">{{
-                  $t("database.restored-from")
-                }}</span>
+                <span class="textlabel">
+                  {{ $t("database.restored-from") }}
+                </span>
                 <router-link
                   :to="`/db/${database.sourceBackup.databaseId}`"
                   class="normal-link"
                 >
                   <!-- Do not display the name of the backup's database because that requires a fetch  -->
-                  <span class="tooltip">{{
-                    $t(
-                      "database.database-name-is-restored-from-another-database-backup",
-                      [database.name]
-                    )
-                  }}</span>
+                  <span class="tooltip">
+                    {{
+                      $t(
+                        "database.database-name-is-restored-from-another-database-backup",
+                        [database.name]
+                      )
+                    }}
+                  </span>
                   {{ $t("database.database-backup") }}
                 </router-link>
               </dd>
             </template>
-            <!-- <dd
-              v-if="databaseConsoleLink.length > 0"
-              class="flex items-center text-sm md:mr-4"
-            >
-              <span class="textlabel">{{ $t("database.sql-console") }}</span>
-              <button
-                class="ml-1 btn-icon"
-                @click.prevent="
-                  window.open(urlfy(databaseConsoleLink), '_blank')
-                "
-              >
-                <heroicons-outline:external-link class="w-4 h-4" />
-              </button>
-            </dd> -->
             <dd class="flex items-center text-sm md:mr-4">
-              <span class="textlabel">{{ $t("sql-editor.sql-editor") }}</span>
+              <span class="textlabel">{{ $t("sql-editor.self") }}</span>
               <button class="ml-1 btn-icon" @click.prevent="gotoSqlEditor">
-                <heroicons-outline:external-link class="w-4 h-4" />
+                <heroicons-outline:terminal class="w-4 h-4" />
               </button>
             </dd>
           </dl>
@@ -146,7 +133,7 @@
       @close="state.showModal = false"
     >
       <div class="col-span-1 w-64">
-        <label for="user" class="textlabel"> {{ $t("common.project") }} </label>
+        <label for="user" class="textlabel">{{ $t("common.project") }}</label>
         <!-- Only allow to transfer database to the project having OWNER role -->
         <!-- eslint-disable vue/attribute-hyphenation -->
         <ProjectSelect
@@ -226,12 +213,7 @@ import DatabaseMigrationHistoryPanel from "../components/DatabaseMigrationHistor
 import DatabaseOverviewPanel from "../components/DatabaseOverviewPanel.vue";
 import InstanceEngineIcon from "../components/InstanceEngineIcon.vue";
 import { DatabaseLabelsEditor } from "../components/DatabaseLabels";
-import {
-  consoleLink,
-  idFromSlug,
-  isDBAOrOwner,
-  connectionSlug,
-} from "../utils";
+import { idFromSlug, isDBAOrOwner, connectionSlug } from "../utils";
 import {
   ProjectId,
   UNKNOWN_ID,
@@ -304,15 +286,6 @@ export default defineComponent({
     const isTenantProject = computed(() => {
       return database.value.project.tenantMode === "TENANT";
     });
-
-    // const databaseConsoleLink = computed(() => {
-    //   const consoleUrl =
-    //     store.getters["setting/settingByName"]("bb.console.url").value;
-    //   if (!isEmpty(consoleUrl)) {
-    //     return consoleLink(consoleUrl, database.value.name);
-    //   }
-    //   return "";
-    // });
 
     const isCurrentUserDBAOrOwner = computed((): boolean => {
       return isDBAOrOwner(currentUser.value.role);
@@ -479,7 +452,7 @@ export default defineComponent({
     };
 
     const gotoSqlEditor = () => {
-      router.replace({
+      router.push({
         name: "sql-editor.detail",
         params: {
           connectionSlug: connectionSlug(database.value),
@@ -507,7 +480,6 @@ export default defineComponent({
       state,
       isTenantProject,
       database,
-      // databaseConsoleLink,
       allowChangeProject,
       allowAdmin,
       allowEdit,
