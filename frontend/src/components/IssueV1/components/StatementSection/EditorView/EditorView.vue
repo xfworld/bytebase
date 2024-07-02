@@ -127,11 +127,12 @@
         :auto-focus="false"
         :readonly="isEditorReadonly"
         :dialect="dialect"
-        :advices="isEditorReadonly ? markers : []"
+        :advices="isEditorReadonly || isCreating ? markers : []"
         :auto-height="{ min: 120, max: 240 }"
         :auto-complete-context="{
           instance: database.instance,
           database: database.name,
+          scene: 'all',
         }"
         @update:content="handleStatementChange"
       />
@@ -176,10 +177,11 @@
         :auto-focus="false"
         :readonly="isEditorReadonly"
         :dialect="dialect"
-        :advices="isEditorReadonly ? markers : []"
+        :advices="isEditorReadonly || isCreating ? markers : []"
         :auto-complete-context="{
           instance: database.instance,
           database: database.name,
+          scene: 'all',
         }"
         @update:content="handleStatementChange"
       />
@@ -210,8 +212,7 @@ import { useElementSize } from "@vueuse/core";
 import { cloneDeep, head, uniq } from "lodash-es";
 import { ExpandIcon } from "lucide-vue-next";
 import { NButton, NTooltip, useDialog } from "naive-ui";
-import { v1 as uuidv1 } from "uuid";
-import { computed, h, reactive, ref, watch } from "vue";
+import { computed, h, reactive, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { ErrorList } from "@/components/IssueV1/components/common";
@@ -227,7 +228,6 @@ import {
   isDeploymentConfigChangeTaskV1,
   isGroupingChangeTaskV1,
   databaseEngineForSpec,
-  databaseForSpec,
 } from "@/components/IssueV1/logic";
 import { MonacoEditor } from "@/components/MonacoEditor";
 import { extensionNameOfLanguage } from "@/components/MonacoEditor/utils";
@@ -251,6 +251,7 @@ import { IssueStatus } from "@/types/proto/v1/issue_service";
 import type { Task } from "@/types/proto/v1/rollout_service";
 import { Task_Type } from "@/types/proto/v1/rollout_service";
 import { Sheet } from "@/types/proto/v1/sheet_service";
+import type { Advice } from "@/types/proto/v1/sql_service";
 import {
   defer,
   flattenTaskV1List,
@@ -271,11 +272,15 @@ type LocalState = EditState & {
   isUploadingFile: boolean;
 };
 
+const props = defineProps<{
+  advices?: Advice[];
+}>();
+
 const { t } = useI18n();
 const route = useRoute();
 const currentUser = useCurrentUserV1();
-const { events, isCreating, issue, selectedTask, selectedSpec, formatOnSave } =
-  useIssueContext();
+const context = useIssueContext();
+const { events, isCreating, issue, selectedTask, formatOnSave } = context;
 const project = computed(() => issue.value.projectEntity);
 const dialog = useDialog();
 const editorContainerElRef = ref<HTMLElement>();
@@ -290,19 +295,15 @@ const state = reactive<LocalState>({
   isUploadingFile: false,
 });
 
-const rolloutMode = computed(() => !!issue.value.rollout);
-
 const database = computed(() => {
-  return rolloutMode.value
-    ? databaseForTask(issue.value, selectedTask.value)
-    : databaseForSpec(issue.value, selectedSpec.value);
+  return databaseForTask(issue.value, selectedTask.value);
 });
 
 const language = useInstanceV1EditorLanguage(
   computed(() => database.value.instanceEntity)
 );
 const filename = computed(() => {
-  const name = (rolloutMode.value && selectedTask.value.name) || uuidv1();
+  const name = selectedTask.value.name;
   const ext = extensionNameOfLanguage(language.value);
   return `${name}.${ext}`;
 });
@@ -313,7 +314,7 @@ const dialect = computed((): SQLDialect => {
 const statementTitle = computed(() => {
   return language.value === "sql" ? t("common.sql") : t("common.statement");
 });
-const { markers } = useSQLAdviceMarkers();
+const { markers } = useSQLAdviceMarkers(context, toRef(props, "advices"));
 
 const allowEditStatementWhenCreating = computed(() => {
   if (route.query.sheetId) {
@@ -343,13 +344,7 @@ const isEditorReadonly = computed(() => {
   if (isCreating.value) {
     return !allowEditStatementWhenCreating.value;
   }
-  return (
-    !state.isEditing ||
-    // !allowEditStatement.value || // TODO
-    isSheetOversize.value ||
-    // isGroupingChangeIssue(issue.value as Issue) || // TODO
-    false // TODO
-  );
+  return !state.isEditing || isSheetOversize.value || false;
 });
 
 const {
@@ -371,13 +366,11 @@ const isSheetOversize = computed(() => {
 });
 
 const denyEditStatementReasons = computed(() => {
-  return rolloutMode.value
-    ? allowUserToEditStatementForTask(
-        issue.value,
-        selectedTask.value,
-        currentUser.value
-      )
-    : [];
+  return allowUserToEditStatementForTask(
+    issue.value,
+    selectedTask.value,
+    currentUser.value
+  );
 });
 
 const shouldShowEditButton = computed(() => {
@@ -648,35 +641,26 @@ const updateStatement = async (statement: string) => {
   }
 
   const specsIdList: string[] = [];
-  if (rolloutMode.value) {
-    // - find the task related plan/step/spec
-    // - create a new sheet
-    // - update sheet id in the spec
+  // - find the task related plan/step/spec
+  // - create a new sheet
+  // - update sheet id in the spec
 
-    // Find the target editing task(s)
-    // default to selectedTask
-    // also ask whether to apply the change to all tasks in the stage.
-    const { target, tasks } = await chooseUpdateStatementTarget();
+  // Find the target editing task(s)
+  // default to selectedTask
+  // also ask whether to apply the change to all tasks in the stage.
+  const { target, tasks } = await chooseUpdateStatementTarget();
 
-    if (target === "CANCELED" || tasks.length === 0) {
-      cancelEdit();
-      return;
-    }
-
-    tasks.forEach((task) => {
-      const spec = specForTask(planPatch, task);
-      if (spec) {
-        specsIdList.push(spec.id);
-      }
-    });
-  } else {
-    const spec = selectedSpec.value;
-    if (!spec) {
-      notifyNotEditableLegacyIssue();
-      return;
-    }
-    specsIdList.push(spec.id);
+  if (target === "CANCELED" || tasks.length === 0) {
+    cancelEdit();
+    return;
   }
+
+  tasks.forEach((task) => {
+    const spec = specForTask(planPatch, task);
+    if (spec) {
+      specsIdList.push(spec.id);
+    }
+  });
 
   const distinctSpecsIds = new Set(
     specsIdList.filter((id) => id && id !== String(EMPTY_ID))

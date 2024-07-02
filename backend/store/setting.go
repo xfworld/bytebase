@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/bytebase/bytebase/backend/common"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -51,7 +50,26 @@ func (s *Store) GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.Worksp
 	}
 
 	payload := new(storepb.WorkspaceProfileSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (s *Store) GetAppIMSetting(ctx context.Context) (*storepb.AppIMSetting, error) {
+	settingName := api.SettingAppIM
+	setting, err := s.GetSettingV2(ctx, &FindSettingMessage{
+		Name: &settingName,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get setting %s", settingName)
+	}
+	if setting == nil {
+		return nil, errors.Errorf("cannot find setting %v", settingName)
+	}
+
+	payload := new(storepb.AppIMSetting)
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -86,7 +104,7 @@ func (s *Store) GetWorkspaceApprovalSetting(ctx context.Context) (*storepb.Works
 	}
 
 	payload := new(storepb.WorkspaceApprovalSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -106,7 +124,7 @@ func (s *Store) GetWorkspaceExternalApprovalSetting(ctx context.Context) (*store
 	}
 
 	payload := new(storepb.ExternalApprovalSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -126,7 +144,7 @@ func (s *Store) GetMaskingAlgorithmSetting(ctx context.Context) (*storepb.Maskin
 	}
 
 	payload := new(storepb.MaskingAlgorithmSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -146,7 +164,7 @@ func (s *Store) GetSemanticTypesSetting(ctx context.Context) (*storepb.SemanticT
 	}
 
 	payload := new(storepb.SemanticTypeSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -166,10 +184,24 @@ func (s *Store) GetDataClassificationSetting(ctx context.Context) (*storepb.Data
 	}
 
 	payload := new(storepb.DataClassificationSetting)
-	if err := protojson.Unmarshal([]byte(setting.Value), payload); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
+}
+
+// GetDataClassificationConfigByID gets the classification config by the id.
+func (s *Store) GetDataClassificationConfigByID(ctx context.Context, classificationConfigID string) (*storepb.DataClassificationSetting_DataClassificationConfig, error) {
+	setting, err := s.GetDataClassificationSetting(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, config := range setting.Configs {
+		if config.Id == classificationConfigID {
+			return config, nil
+		}
+	}
+	return &storepb.DataClassificationSetting_DataClassificationConfig{}, nil
 }
 
 // DeleteCache deletes the cache.

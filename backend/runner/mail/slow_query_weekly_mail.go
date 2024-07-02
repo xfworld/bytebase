@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
 	"github.com/bytebase/bytebase/backend/component/state"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -94,7 +94,7 @@ func (s *SlowQueryWeeklyMailSender) sendEmail(ctx context.Context, now time.Time
 	}
 
 	var storeValue storepb.SMTPMailDeliverySetting
-	if err := protojson.Unmarshal([]byte(mailSetting.Value), &storeValue); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(mailSetting.Value), &storeValue); err != nil {
 		slog.Error("Failed to unmarshal setting value", log.BBError(err))
 		return
 	}
@@ -109,7 +109,7 @@ func (s *SlowQueryWeeklyMailSender) sendEmail(ctx context.Context, now time.Time
 	}
 	if setting != nil {
 		settingValue := new(storepb.WorkspaceProfileSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), settingValue); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), settingValue); err != nil {
 			slog.Error("Failed to unmarshal setting value", log.BBError(err))
 			return
 		}
@@ -209,9 +209,11 @@ func (s *SlowQueryWeeklyMailSender) sendEmail(ctx context.Context, now time.Time
 			continue
 		}
 
-		// TODO(p0ny): renovate this function to respect allUsers and CEL.
 		users := utils.GetUsersByRoleInIAMPolicy(ctx, s.store, api.ProjectOwner, projectPolicy)
 		for _, user := range users {
+			if user.ID == api.SystemBotID {
+				continue
+			}
 			apiValue.SMTPTo = user.Email
 			subject := fmt.Sprintf("%s database slow query weekly report %s", project.Title, generateDateRange(now))
 			if err := send(apiValue, subject, body); err != nil {

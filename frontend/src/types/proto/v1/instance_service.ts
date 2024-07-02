@@ -552,6 +552,10 @@ export interface DataSource {
   directConnection: boolean;
   /** region is the location of where the DB is, works for AWS RDS. For example, us-east-1. */
   region: string;
+  /** account_id is used by Databricks. */
+  accountId: string;
+  /** warehouse_id is used by Databricks. */
+  warehouseId: string;
 }
 
 export enum DataSource_AuthenticationType {
@@ -636,7 +640,7 @@ export interface KerberosConfig {
   primary: string;
   instance: string;
   realm: string;
-  keytab: string;
+  keytab: Uint8Array;
   kdcHost: string;
   kdcPort: string;
   kdcTransportProtocol: string;
@@ -2468,6 +2472,8 @@ function createBaseDataSource(): DataSource {
     replicaSet: "",
     directConnection: false,
     region: "",
+    accountId: "",
+    warehouseId: "",
   };
 }
 
@@ -2553,6 +2559,12 @@ export const DataSource = {
     }
     if (message.region !== "") {
       writer.uint32(218).string(message.region);
+    }
+    if (message.accountId !== "") {
+      writer.uint32(226).string(message.accountId);
+    }
+    if (message.warehouseId !== "") {
+      writer.uint32(234).string(message.warehouseId);
     }
     return writer;
   },
@@ -2753,6 +2765,20 @@ export const DataSource = {
 
           message.region = reader.string();
           continue;
+        case 28:
+          if (tag !== 226) {
+            break;
+          }
+
+          message.accountId = reader.string();
+          continue;
+        case 29:
+          if (tag !== 234) {
+            break;
+          }
+
+          message.warehouseId = reader.string();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2801,6 +2827,8 @@ export const DataSource = {
       replicaSet: isSet(object.replicaSet) ? globalThis.String(object.replicaSet) : "",
       directConnection: isSet(object.directConnection) ? globalThis.Boolean(object.directConnection) : false,
       region: isSet(object.region) ? globalThis.String(object.region) : "",
+      accountId: isSet(object.accountId) ? globalThis.String(object.accountId) : "",
+      warehouseId: isSet(object.warehouseId) ? globalThis.String(object.warehouseId) : "",
     };
   },
 
@@ -2887,6 +2915,12 @@ export const DataSource = {
     if (message.region !== "") {
       obj.region = message.region;
     }
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    if (message.warehouseId !== "") {
+      obj.warehouseId = message.warehouseId;
+    }
     return obj;
   },
 
@@ -2926,6 +2960,8 @@ export const DataSource = {
     message.replicaSet = object.replicaSet ?? "";
     message.directConnection = object.directConnection ?? false;
     message.region = object.region ?? "";
+    message.accountId = object.accountId ?? "";
+    message.warehouseId = object.warehouseId ?? "";
     return message;
   },
 };
@@ -3185,7 +3221,15 @@ export const SASLConfig = {
 };
 
 function createBaseKerberosConfig(): KerberosConfig {
-  return { primary: "", instance: "", realm: "", keytab: "", kdcHost: "", kdcPort: "", kdcTransportProtocol: "" };
+  return {
+    primary: "",
+    instance: "",
+    realm: "",
+    keytab: new Uint8Array(0),
+    kdcHost: "",
+    kdcPort: "",
+    kdcTransportProtocol: "",
+  };
 }
 
 export const KerberosConfig = {
@@ -3199,8 +3243,8 @@ export const KerberosConfig = {
     if (message.realm !== "") {
       writer.uint32(26).string(message.realm);
     }
-    if (message.keytab !== "") {
-      writer.uint32(34).string(message.keytab);
+    if (message.keytab.length !== 0) {
+      writer.uint32(34).bytes(message.keytab);
     }
     if (message.kdcHost !== "") {
       writer.uint32(42).string(message.kdcHost);
@@ -3247,7 +3291,7 @@ export const KerberosConfig = {
             break;
           }
 
-          message.keytab = reader.string();
+          message.keytab = reader.bytes();
           continue;
         case 5:
           if (tag !== 42) {
@@ -3284,7 +3328,7 @@ export const KerberosConfig = {
       primary: isSet(object.primary) ? globalThis.String(object.primary) : "",
       instance: isSet(object.instance) ? globalThis.String(object.instance) : "",
       realm: isSet(object.realm) ? globalThis.String(object.realm) : "",
-      keytab: isSet(object.keytab) ? globalThis.String(object.keytab) : "",
+      keytab: isSet(object.keytab) ? bytesFromBase64(object.keytab) : new Uint8Array(0),
       kdcHost: isSet(object.kdcHost) ? globalThis.String(object.kdcHost) : "",
       kdcPort: isSet(object.kdcPort) ? globalThis.String(object.kdcPort) : "",
       kdcTransportProtocol: isSet(object.kdcTransportProtocol) ? globalThis.String(object.kdcTransportProtocol) : "",
@@ -3302,8 +3346,8 @@ export const KerberosConfig = {
     if (message.realm !== "") {
       obj.realm = message.realm;
     }
-    if (message.keytab !== "") {
-      obj.keytab = message.keytab;
+    if (message.keytab.length !== 0) {
+      obj.keytab = base64FromBytes(message.keytab);
     }
     if (message.kdcHost !== "") {
       obj.kdcHost = message.kdcHost;
@@ -3325,7 +3369,7 @@ export const KerberosConfig = {
     message.primary = object.primary ?? "";
     message.instance = object.instance ?? "";
     message.realm = object.realm ?? "";
-    message.keytab = object.keytab ?? "";
+    message.keytab = object.keytab ?? new Uint8Array(0);
     message.kdcHost = object.kdcHost ?? "";
     message.kdcPort = object.kdcPort ?? "";
     message.kdcTransportProtocol = object.kdcTransportProtocol ?? "";
@@ -4140,6 +4184,31 @@ export const InstanceServiceDefinition = {
     },
   },
 } as const;
+
+function bytesFromBase64(b64: string): Uint8Array {
+  if (globalThis.Buffer) {
+    return Uint8Array.from(globalThis.Buffer.from(b64, "base64"));
+  } else {
+    const bin = globalThis.atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; ++i) {
+      arr[i] = bin.charCodeAt(i);
+    }
+    return arr;
+  }
+}
+
+function base64FromBytes(arr: Uint8Array): string {
+  if (globalThis.Buffer) {
+    return globalThis.Buffer.from(arr).toString("base64");
+  } else {
+    const bin: string[] = [];
+    arr.forEach((byte) => {
+      bin.push(globalThis.String.fromCharCode(byte));
+    });
+    return globalThis.btoa(bin.join(""));
+  }
+}
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | undefined;
 

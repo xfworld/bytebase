@@ -19,10 +19,7 @@ import type {
 import { ParsedExpr } from "@/types/proto/google/api/expr/v1alpha1/syntax";
 import { Expr } from "@/types/proto/google/type/expr";
 import type { DatabaseGroup } from "@/types/proto/v1/project_service";
-import {
-  DatabaseGroupView,
-  TenantMode,
-} from "@/types/proto/v1/project_service";
+import { DatabaseGroupView } from "@/types/proto/v1/project_service";
 import {
   batchConvertParsedExprToCELString,
   batchConvertCELStringToParsedExpr,
@@ -80,6 +77,7 @@ const batchComposeDatabaseGroup = async (
 };
 
 export const useDBGroupStore = defineStore("db-group", () => {
+  // TODO(steven): update cache key with view.
   const dbGroupMapByName = ref<Map<string, ComposedDatabaseGroup>>(new Map());
   const cachedProjectNameSet = ref<Set<string>>(new Set());
 
@@ -101,13 +99,31 @@ export const useDBGroupStore = defineStore("db-group", () => {
     return Array.from(dbGroupMapByName.value.values());
   };
 
-  const getOrFetchDBGroupByName = async (name: string, silent = false) => {
-    const cached = dbGroupMapByName.value.get(name);
-    if (cached) return cached;
+  const getOrFetchDBGroupByName = async (
+    name: string,
+    options?: Partial<{
+      skipCache: boolean;
+      silent: boolean;
+      view: DatabaseGroupView;
+    }>
+  ) => {
+    const { skipCache, silent, view } = {
+      ...{
+        skipCache: false,
+        silent: false,
+        view: DatabaseGroupView.DATABASE_GROUP_VIEW_BASIC,
+      },
+      ...options,
+    };
+    if (!skipCache) {
+      const cached = dbGroupMapByName.value.get(name);
+      if (cached) return cached;
+    }
 
     const databaseGroup = await projectServiceClient.getDatabaseGroup(
       {
-        name: name,
+        name,
+        view,
       },
       { silent }
     );
@@ -300,10 +316,6 @@ export const useDatabaseInGroupFilter = (
 
   const databaseGroups = computedAsync(
     async () => {
-      if (unref(project).tenantMode !== TenantMode.TENANT_MODE_ENABLED) {
-        return [];
-      }
-
       const response = await projectServiceClient.listDatabaseGroups({
         parent: unref(project).name,
       });

@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -331,16 +330,13 @@ func (s *RolloutService) BatchRunTasks(ctx context.Context, request *v1pb.BatchR
 		return nil, status.Errorf(codes.InvalidArgument, "No tasks to run in the stage")
 	}
 
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
+	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
+		return nil, status.Errorf(codes.Internal, "user not found")
 	}
-	user, err := s.store.GetUserByID(ctx, principalID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to find user, error: %v", err)
-	}
-	if user == nil {
-		return nil, status.Errorf(codes.NotFound, "user %v not found", principalID)
+	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "role not found")
 	}
 
 	ok, err = canUserRunStageTasks(ctx, s.store, user, issue, stageToRun.EnvironmentID)
@@ -355,7 +351,7 @@ func (s *RolloutService) BatchRunTasks(ctx context.Context, request *v1pb.BatchR
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to check if the issue is approved, error: %v", err)
 	}
-	if !approved && !(user.Role == api.WorkspaceAdmin || user.Role == api.WorkspaceDBA) {
+	if !approved && !(role == api.WorkspaceAdmin || role == api.WorkspaceDBA) {
 		return nil, status.Errorf(codes.FailedPrecondition, "cannot run the tasks because the issue is not approved")
 	}
 
@@ -521,7 +517,6 @@ func (s *RolloutService) BatchSkipTasks(ctx context.Context, request *v1pb.Batch
 }
 
 // BatchCancelTaskRuns cancels a list of task runs.
-// TODO(p0ny): forbid cancel noncancellable task runs.
 func (s *RolloutService) BatchCancelTaskRuns(ctx context.Context, request *v1pb.BatchCancelTaskRunsRequest) (*v1pb.BatchCancelTaskRunsResponse, error) {
 	if len(request.TaskRuns) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "task runs cannot be empty")
@@ -759,9 +754,20 @@ func validateSteps(steps []*v1pb.Plan_Step) error {
 // GetPipelineCreate gets a pipeline create message from a plan.
 func GetPipelineCreate(ctx context.Context, s *store.Store, sheetManager *sheet.Manager, licenseService enterprise.LicenseService, dbFactory *dbfactory.DBFactory, steps []*storepb.PlanConfig_Step, project *store.ProjectMessage) (*store.PipelineMessage, error) {
 	transformedSteps := steps
-	if len(steps) == 1 && len(steps[0].Specs) == 1 {
-		spec := steps[0].Specs[0]
+	// Flatten all specs from steps.
+	var specs []*storepb.PlanConfig_Spec
+	for _, step := range steps {
+		specs = append(specs, step.Specs...)
+	}
+
+	// The following case should has only one spec.
+	// * ChangeDatabaseConfig with deploymentConfig/databaseGroup target;
+	// * CreateDatabaseConfig;
+	// * ExportDataConfig.
+	if len(specs) == 1 {
+		spec := specs[0]
 		if config := spec.GetChangeDatabaseConfig(); config != nil {
+			// TODO(steven): Remove me later.
 			if _, _, err := common.GetProjectIDDeploymentConfigID(config.Target); err == nil {
 				stepsFromDeploymentConfig, err := transformDeploymentConfigTargetToSteps(ctx, s, spec, config, project)
 				if err != nil {
@@ -770,9 +776,76 @@ func GetPipelineCreate(ctx context.Context, s *store.Store, sheetManager *sheet.
 				transformedSteps = stepsFromDeploymentConfig
 			}
 			if _, _, err := common.GetProjectIDDatabaseGroupID(config.Target); err == nil {
-				return getPipelineCreateFromDatabaseGroupTarget(ctx, s, spec, config, project)
+				stepsFromDatabaseGroup, err := transformDatabaseGroupTargetToSteps(ctx, s, spec, config, project)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to transform databaseGroup target to steps")
+				}
+				transformedSteps = stepsFromDatabaseGroup
 			}
 		}
+		// Skip to transform the spec if it's CreateDatabaseConfig or ExportDataConfig.
+	} else {
+		// For multiple specs, we will try to rebuild the steps based on the deployment config.
+		deploymentConfig, err := s.GetDeploymentConfigV2(ctx, project.UID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get deployment config")
+		}
+		if err := utils.ValidateDeploymentSchedule(deploymentConfig.Schedule); err != nil {
+			return nil, errors.Wrapf(err, "failed to validate and get deployment schedule")
+		}
+		// Get all databases from specs.
+		var databases []*store.DatabaseMessage
+		for _, spec := range specs {
+			if config := spec.GetChangeDatabaseConfig(); config != nil {
+				instanceID, databaseName, err := common.GetInstanceDatabaseID(config.Target)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, err.Error())
+				}
+				database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{
+					InstanceID:   &instanceID,
+					DatabaseName: &databaseName,
+				})
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, err.Error())
+				}
+				if database == nil {
+					return nil, status.Errorf(codes.NotFound, "database %v not found", config.Target)
+				}
+				databases = append(databases, database)
+			}
+		}
+		// Calculate the matrix of databases based on the deployment schedule.
+		matrix, err := utils.GetDatabaseMatrixFromDeploymentSchedule(deploymentConfig.Schedule, databases)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get database matrix from deployment schedule")
+		}
+
+		seenSpecID := map[string]bool{}
+		var steps []*storepb.PlanConfig_Step
+		for i, databases := range matrix {
+			if len(databases) == 0 {
+				continue
+			}
+
+			step := &storepb.PlanConfig_Step{
+				Title: deploymentConfig.Schedule.Deployments[i].Name,
+			}
+			for _, database := range databases {
+				for _, spec := range specs {
+					if seenSpecID[spec.Id] {
+						continue
+					}
+					if config := spec.GetChangeDatabaseConfig(); config != nil {
+						if common.FormatDatabase(database.InstanceID, database.DatabaseName) == config.Target {
+							seenSpecID[spec.Id] = true
+							step.Specs = append(step.Specs, spec)
+						}
+					}
+				}
+			}
+			steps = append(steps, step)
+		}
+		transformedSteps = steps
 	}
 
 	pipelineCreate := &store.PipelineMessage{
@@ -885,56 +958,6 @@ func (s *RolloutService) createPipeline(ctx context.Context, project *store.Proj
 			c.CreatorID = creatorID
 			c.PipelineID = pipelineCreated.ID
 			c.StageID = createdStage.ID
-
-			// HACK: statement is present because the task came from a database group target plan spec.
-			// we need to create the sheet and update payload.SheetID.
-			if c.Statement != "" {
-				instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{UID: &c.InstanceID})
-				if err != nil {
-					return nil, errors.Wrapf(err, "failed to get instance %v", c.InstanceID)
-				}
-				if instance == nil {
-					return nil, errors.Errorf("instance not found, id %v", c.InstanceID)
-				}
-				sheet, err := s.sheetManager.CreateSheet(ctx, &store.SheetMessage{
-					CreatorID:  api.SystemBotID,
-					ProjectUID: project.UID,
-					Title:      fmt.Sprintf("Sheet for task %v", c.Name),
-					Statement:  c.Statement,
-
-					Payload: &storepb.SheetPayload{
-						Engine: instance.Engine,
-					},
-				})
-				if err != nil {
-					return nil, errors.Wrapf(err, "failed to create sheet for task %v", c.Name)
-				}
-				switch c.Type {
-				case api.TaskDatabaseSchemaUpdate:
-					payload := &api.TaskDatabaseSchemaUpdatePayload{}
-					if err := json.Unmarshal([]byte(c.Payload), payload); err != nil {
-						return nil, errors.Wrapf(err, "failed to unmarshal payload for task %v", c.Name)
-					}
-					payload.SheetID = sheet.UID
-					payloadBytes, err := json.Marshal(payload)
-					if err != nil {
-						return nil, errors.Wrapf(err, "failed to marshal payload for task %v", c.Name)
-					}
-					c.Payload = string(payloadBytes)
-				case api.TaskDatabaseDataUpdate:
-					payload := &api.TaskDatabaseDataUpdatePayload{}
-					if err := json.Unmarshal([]byte(c.Payload), payload); err != nil {
-						return nil, errors.Wrapf(err, "failed to unmarshal payload for task %v", c.Name)
-					}
-					payload.SheetID = sheet.UID
-					payloadBytes, err := json.Marshal(payload)
-					if err != nil {
-						return nil, errors.Wrapf(err, "failed to marshal payload for task %v", c.Name)
-					}
-					c.Payload = string(payloadBytes)
-				}
-			}
-
 			taskCreateList = append(taskCreateList, c)
 		}
 		tasks, err := s.store.CreateTasksV2(ctx, taskCreateList...)

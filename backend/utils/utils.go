@@ -252,7 +252,7 @@ func ExecuteMigrationWithFunc(ctx context.Context, driverCtx context.Context, s 
 	// Don't record schema if the database hasn't existed yet or is schemaless, e.g. MongoDB.
 	// For baseline migration, we also record the live schema to detect the schema drift.
 	// See https://bytebase.com/blog/what-is-database-schema-drift
-	if _, err := driver.Dump(ctx, &prevSchemaBuf, true /* schemaOnly */); err != nil {
+	if _, err := driver.Dump(ctx, &prevSchemaBuf); err != nil {
 		opts.LogSchemaDumpEnd(err.Error())
 		return "", "", err
 	}
@@ -324,7 +324,7 @@ func ExecuteMigrationWithFunc(ctx context.Context, driverCtx context.Context, s 
 	opts.LogSchemaDumpStart()
 	// Phase 4 - Dump the schema after migration
 	var afterSchemaBuf bytes.Buffer
-	if _, err := driver.Dump(ctx, &afterSchemaBuf, true /* schemaOnly */); err != nil {
+	if _, err := driver.Dump(ctx, &afterSchemaBuf); err != nil {
 		// We will ignore the dump error if the database is dropped.
 		if strings.Contains(err.Error(), "not found") {
 			return insertedID, "", nil
@@ -671,7 +671,7 @@ func GetMatchedAndUnmatchedDatabasesInDatabaseGroup(ctx context.Context, databas
 		res, _, err := prog.ContextEval(ctx, map[string]any{
 			"resource": map[string]any{
 				"database_name":    database.DatabaseName,
-				"environment_name": fmt.Sprintf("%s%s", common.EnvironmentNamePrefix, database.EffectiveEnvironmentID),
+				"environment_name": common.FormatEnvironment(database.EffectiveEnvironmentID),
 				"instance_id":      database.InstanceID,
 			},
 		})
@@ -690,111 +690,6 @@ func GetMatchedAndUnmatchedDatabasesInDatabaseGroup(ctx context.Context, databas
 		}
 	}
 	return matches, unmatches, nil
-}
-
-// GetUserIAMPolicyBindings return the valid bindings for the user.
-func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *store.UserMessage, policy *storepb.ProjectIamPolicy) []*storepb.Binding {
-	userIDFullName := common.FormatUserUID(user.ID)
-	currentTime := time.Now()
-
-	var bindings []*storepb.Binding
-	for _, binding := range policy.Bindings {
-		ok, err := common.EvalBindingCondition(binding.Condition.GetExpression(), currentTime)
-		if err != nil {
-			slog.Error("failed to eval binding condition", slog.String("expression", binding.Condition.GetExpression()), log.BBError(err))
-			continue
-		}
-		if !ok {
-			continue
-		}
-
-		hasUser := false
-		for _, member := range binding.Members {
-			// TODO: only support AllUsers or users/{AllUsersID}
-			if member == api.AllUsers || member == common.FormatUserUID(api.AllUsersID) {
-				hasUser = true
-				break
-			}
-			if userIDFullName == member {
-				hasUser = true
-				break
-			}
-			if strings.HasPrefix(member, common.UserGroupPrefix) {
-				groupEmail, err := common.GetUserGroupEmail(member)
-				if err != nil {
-					slog.Error("failed to parse group email", slog.String("group", member), log.BBError(err))
-					continue
-				}
-				group, err := stores.GetUserGroup(ctx, groupEmail)
-				if err != nil {
-					slog.Error("failed to get group", slog.String("group", member), log.BBError(err))
-					continue
-				}
-				if group == nil {
-					slog.Error("cannot found group", slog.String("group", member))
-					continue
-				}
-				for _, member := range group.Payload.Members {
-					if userIDFullName == member.Member {
-						hasUser = true
-						break
-					}
-				}
-			}
-		}
-		if hasUser {
-			bindings = append(bindings, binding)
-		}
-	}
-	return bindings
-}
-
-// getUserRoles returns the `uniq`ed roles of a user, including workspace roles and the roles in the projects.
-// the condition of role binding is respected and evaluated with request.time=time.Now().
-// the returned role name should in the roles/{id} format.
-func getUserRoles(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) ([]string, error) {
-	var roles []string
-	for _, userRole := range user.Roles {
-		roles = append(roles, common.FormatRole(userRole.String()))
-	}
-
-	for _, projectPolicy := range projectPolicies {
-		bindings := GetUserIAMPolicyBindings(ctx, stores, user, projectPolicy)
-		for _, binding := range bindings {
-			roles = append(roles, binding.Role)
-		}
-	}
-	roles = uniq(roles)
-
-	return roles, nil
-}
-
-// See GetUserRoles.
-func GetUserRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) (map[api.Role]bool, error) {
-	roles, err := getUserRoles(ctx, stores, user, projectPolicies...)
-	if err != nil {
-		return nil, err
-	}
-
-	rolesMap := make(map[api.Role]bool)
-	for _, role := range roles {
-		rolesMap[api.Role(strings.TrimPrefix(role, "roles/"))] = true
-	}
-	return rolesMap, nil
-}
-
-// See GetUserRoles. The returned map key format is roles/{role}.
-func GetUserFormattedRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) (map[string]bool, error) {
-	roles, err := getUserRoles(ctx, stores, user, projectPolicies...)
-	if err != nil {
-		return nil, err
-	}
-
-	rolesMap := make(map[string]bool)
-	for _, role := range roles {
-		rolesMap[role] = true
-	}
-	return rolesMap, nil
 }
 
 func uniq[T comparable](array []T) []T {

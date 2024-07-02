@@ -55,83 +55,50 @@
         </NCheckbox>
       </div>
 
-      <div class="flex flex-col gap-y-2">
-        <label class="textlabel">
-          {{ $t("policy.rollout.name") }}
-        </label>
-        <span
-          v-show="!create && valueChanged('rolloutPolicy')"
-          class="textlabeltip !ml-0"
-          >{{ $t("policy.rollout.tip") }}</span
-        >
-        <div class="textinfolabel">
-          {{ $t("policy.rollout.info") }}
-          <a
-            class="inline-flex items-center text-blue-600 ml-1 hover:underline"
-            href="https://www.bytebase.com/docs/administration/environment-policy/rollout-policy"
-            target="_blank"
-            >{{ $t("common.learn-more")
-            }}<heroicons-outline:external-link class="w-4 h-4"
-          /></a>
-        </div>
-        <RolloutPolicyConfig
-          v-model:policy="state.rolloutPolicy"
-          :disabled="!allowEdit"
-        />
-      </div>
-
-      <div v-if="!create" class="flex flex-col gap-y-2">
-        <label class="textlabel">
-          {{ $t("sql-review.title") }}
-        </label>
-        <div>
-          <div v-if="sqlReviewPolicy" class="inline-flex items-center gap-x-2">
-            <Switch
-              v-if="allowEditSQLReviewPolicy"
-              :value="sqlReviewPolicy.enforce"
-              :text="true"
-              @update:value="toggleSQLReviewPolicy"
-            />
-            <span
-              class="textlabel normal-link !text-accent"
-              @click="onSQLReviewPolicyClick"
-              >{{ sqlReviewPolicy.name }}</span
-            >
-          </div>
-          <NButton
-            v-else-if="hasPermission('bb.policies.update')"
-            @click.prevent="onSQLReviewPolicyClick"
+      <template v-if="!simple">
+        <div class="flex flex-col gap-y-2">
+          <label class="textlabel">
+            {{ $t("policy.rollout.name") }}
+          </label>
+          <span
+            v-show="!create && valueChanged('rolloutPolicy')"
+            class="textlabeltip !ml-0"
+            >{{ $t("policy.rollout.tip") }}</span
           >
-            {{ $t("sql-review.configure-policy") }}
-          </NButton>
-          <span v-else class="textinfolabel">
-            {{ $t("sql-review.no-policy-set") }}
-          </span>
-        </div>
-      </div>
-
-      <div v-if="!create" class="flex flex-col gap-y-2">
-        <label class="textlabel flex items-center">
-          {{ $t("environment.access-control.title") }}
-          <FeatureBadge feature="bb.feature.access-control" />
-        </label>
-        <div>
-          <div class="inline-flex items-center gap-x-2">
-            <Switch
-              :value="disableCopyDataPolicy"
-              :text="true"
-              :disabled="!allowEditDisableCopyData"
-              @update:value="upsertPolicy"
-            />
-            <span class="textlabel">{{
-              $t("environment.access-control.disable-copy-data-from-sql-editor")
-            }}</span>
+          <div class="textinfolabel">
+            {{ $t("policy.rollout.info") }}
+            <a
+              class="inline-flex items-center text-blue-600 ml-1 hover:underline"
+              href="https://www.bytebase.com/docs/administration/environment-policy/rollout-policy"
+              target="_blank"
+              >{{ $t("common.learn-more")
+              }}<heroicons-outline:external-link class="w-4 h-4"
+            /></a>
           </div>
+          <RolloutPolicyConfig
+            v-model:policy="state.rolloutPolicy"
+            :disabled="!allowEdit"
+          />
         </div>
-      </div>
+
+        <SQLReviewForResource
+          v-if="!create"
+          :resource="environment.name"
+          :allow-edit="allowEdit"
+        />
+
+        <AccessControlConfigure
+          v-if="!create"
+          :resource="environment.name"
+          :allow-edit="allowEdit"
+        />
+      </template>
     </div>
 
-    <div v-if="!create" class="mt-6 flex justify-between items-center pt-5">
+    <div
+      v-if="!create && !hideArchiveRestore"
+      class="mt-6 flex justify-between items-center pt-5"
+    >
       <template v-if="state.environment.state === State.ACTIVE">
         <BBButtonConfirm
           v-if="allowArchive"
@@ -166,22 +133,14 @@
 </template>
 
 <script lang="ts" setup>
+import { NCheckbox } from "naive-ui";
 import { Status } from "nice-grpc-common";
 import { computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
 import {
-  WORKSPACE_ROUTE_SQL_REVIEW_CREATE,
-  WORKSPACE_ROUTE_SQL_REVIEW_DETAIL,
-} from "@/router/dashboard/workspaceRoutes";
-import {
-  hasFeature,
-  pushNotification,
   useEnvironmentV1List,
   useEnvironmentV1Store,
   usePolicyV1Store,
-  useReviewPolicyByEnvironmentName,
-  useSQLReviewStore,
 } from "@/store";
 import { environmentNamePrefix } from "@/store/modules/v1/common";
 import type { ResourceId, ValidatedMessage } from "@/types";
@@ -191,13 +150,16 @@ import {
   PolicyResourceType,
   PolicyType,
 } from "@/types/proto/v1/org_policy_service";
-import { extractEnvironmentResourceName, sqlReviewPolicySlug } from "@/utils";
+import { extractEnvironmentResourceName } from "@/utils";
 import { getErrorCode } from "@/utils/grpcweb";
 import { useEnvironmentFormContext } from "./context";
-import { NCheckbox } from "naive-ui";
+
+defineProps<{
+  simple?: boolean;
+  hideArchiveRestore?: boolean;
+}>();
 
 const { t } = useI18n();
-const router = useRouter();
 const {
   create,
   environment,
@@ -206,34 +168,10 @@ const {
   valueChanged,
   hasPermission,
   events,
+  resourceIdField,
 } = useEnvironmentFormContext();
 const policyStore = usePolicyV1Store();
 const environmentList = useEnvironmentV1List();
-
-const sqlReviewPolicy = useReviewPolicyByEnvironmentName(
-  computed(() => {
-    return create.value ? undefined : environment.value.name;
-  })
-);
-
-const allowEditSQLReviewPolicy = computed(() => {
-  return hasPermission("bb.policies.update");
-});
-
-const disableCopyDataPolicy = computed(() => {
-  const policies = policyStore.policyList.filter(
-    (policy) =>
-      policy.resourceType === PolicyResourceType.ENVIRONMENT &&
-      policy.type === PolicyType.DISABLE_COPY_DATA &&
-      policy.resourceUid === environment.value.uid &&
-      policy.disableCopyDataPolicy?.active
-  );
-  return policies.length > 0;
-});
-
-const allowEditDisableCopyData = computed(() => {
-  return hasPermission("bb.policies.update");
-});
 
 const allowArchive = computed(() => {
   return (
@@ -280,60 +218,6 @@ const validateResourceId = async (
     }
   }
   return [];
-};
-
-const toggleSQLReviewPolicy = async (on: boolean) => {
-  const policy = sqlReviewPolicy.value;
-  if (!policy) return;
-  const originalOn = policy.enforce;
-  if (on === originalOn) return;
-  await useSQLReviewStore().updateReviewPolicy({
-    id: policy.id,
-    enforce: on,
-  });
-  pushNotification({
-    module: "bytebase",
-    style: "SUCCESS",
-    title: t("sql-review.policy-updated"),
-  });
-};
-
-const onSQLReviewPolicyClick = () => {
-  if (sqlReviewPolicy.value) {
-    router.push({
-      name: WORKSPACE_ROUTE_SQL_REVIEW_DETAIL,
-      params: {
-        sqlReviewPolicySlug: sqlReviewPolicySlug(sqlReviewPolicy.value),
-      },
-    });
-  } else {
-    router.push({
-      name: WORKSPACE_ROUTE_SQL_REVIEW_CREATE,
-      query: {
-        environmentId: environment.value.uid,
-      },
-    });
-  }
-};
-
-const upsertPolicy = async (on: boolean) => {
-  if (!hasFeature("bb.feature.access-control")) {
-    state.value.missingRequiredFeature = "bb.feature.access-control";
-    return;
-  }
-
-  await policyStore.createPolicy(environment.value.name, {
-    type: PolicyType.DISABLE_COPY_DATA,
-    resourceType: PolicyResourceType.ENVIRONMENT,
-    disableCopyDataPolicy: {
-      active: on,
-    },
-  });
-  pushNotification({
-    module: "bytebase",
-    style: "SUCCESS",
-    title: t("common.updated"),
-  });
 };
 
 const archiveEnvironment = () => {

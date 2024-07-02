@@ -92,12 +92,11 @@
             {{ $t("settings.profile.email") }}
           </dt>
           <dd class="mt-1 text-sm text-main">
-            <NInput
+            <EmailInput
               v-if="state.editing"
+              v-model:value="state.editingUser!.email"
               size="large"
-              :value="state.editingUser?.email"
-              :input-props="{ autocomplete: 'off', type: 'email' }"
-              @update:value="updateUser('email', $event)"
+              :domain="workspaceDomain"
             />
             <template v-else>
               {{ user.email }}
@@ -166,7 +165,7 @@
 
     <!-- 2FA setting section -->
     <div
-      v-if="showMFAConfig"
+      v-if="allowEdit"
       class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 border-t mt-16 pt-8 pb-4"
     >
       <div class="w-full flex flex-row justify-between items-center">
@@ -241,12 +240,13 @@
 
 <script lang="ts" setup>
 import { useTitle } from "@vueuse/core";
-import { cloneDeep, isEmpty, isEqual } from "lodash-es";
+import { cloneDeep, head, isEmpty, isEqual } from "lodash-es";
 import type { DropdownOption } from "naive-ui";
 import { NButton, NInput, NDropdown } from "naive-ui";
 import { nextTick, computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import EmailInput from "@/components/EmailInput.vue";
 import LearnMoreLink from "@/components/LearnMoreLink.vue";
 import RegenerateRecoveryCodesView from "@/components/RegenerateRecoveryCodesView.vue";
 import UserAvatar from "@/components/User/UserAvatar.vue";
@@ -258,9 +258,14 @@ import {
   useActuatorV1Store,
   useAuthStore,
   useCurrentUserV1,
+  useSettingV1Store,
   useUserStore,
 } from "@/store";
-import { unknownUser } from "@/types";
+import {
+  unknownUser,
+  SYSTEM_BOT_USER_NAME,
+  ALL_USERS_USER_EMAIL,
+} from "@/types";
 import type { User } from "@/types/proto/v1/auth_service";
 import { UpdateUserRequest, UserType } from "@/types/proto/v1/auth_service";
 import { displayRoleTitle, hasWorkspacePermissionV2, sortRoles } from "@/utils";
@@ -281,6 +286,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const router = useRouter();
 const actuatorStore = useActuatorV1Store();
+const settingV1Store = useSettingV1Store();
 const authStore = useAuthStore();
 const currentUserV1 = useCurrentUserV1();
 const userStore = useUserStore();
@@ -293,6 +299,10 @@ const state = reactive<LocalState>({
 });
 
 const editNameTextField = ref<InstanceType<typeof NInput>>();
+
+const workspaceDomain = computed(() =>
+  head(settingV1Store.workspaceProfileSetting?.domains)
+);
 
 const keyboardHandler = (e: KeyboardEvent) => {
   if (state.editing) {
@@ -333,15 +343,6 @@ const user = computed(() => {
   return currentUserV1.value;
 });
 
-// User can change her MFA config.
-// Besides, owner can also change anyone's MFA config.
-const showMFAConfig = computed(() => {
-  return (
-    user.value.name === currentUserV1.value.name ||
-    hasWorkspacePermissionV2(currentUserV1.value, "bb.policies.update")
-  );
-});
-
 const passwordMismatch = computed(() => {
   return (
     !isEmpty(state.editingUser?.password) &&
@@ -352,6 +353,12 @@ const passwordMismatch = computed(() => {
 // User can change her own info.
 // Besides, owner can also change anyone's info. This is for resetting password in case user forgets.
 const allowEdit = computed(() => {
+  if (
+    user.value.name === SYSTEM_BOT_USER_NAME ||
+    user.value.email === ALL_USERS_USER_EMAIL
+  ) {
+    return false;
+  }
   return (
     currentUserV1.value.name === user.value.name ||
     hasWorkspacePermissionV2(currentUserV1.value, "bb.policies.update")

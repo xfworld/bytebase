@@ -220,8 +220,14 @@ func (s *BranchService) CreateBranch(ctx context.Context, request *v1pb.CreateBr
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to create branch: %v", err)
 		}
+
+		classificationConfig, err := s.store.GetDataClassificationConfigByID(ctx, project.DataClassificationConfigID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, `failed to get classification config by id "%s" with error: %v`, project.DataClassificationConfigID, err)
+		}
+
 		config := databaseSchema.GetConfig()
-		sanitizeCommentForSchemaMetadata(filteredBaseSchemaMetadata, model.NewDatabaseConfig(config))
+		sanitizeCommentForSchemaMetadata(filteredBaseSchemaMetadata, model.NewDatabaseConfig(config), classificationConfig.ClassificationFromConfig)
 		initializeBranchUpdaterInfoConfig(filteredBaseSchemaMetadata, config, common.FormatUserUID(user.ID))
 		created, err := s.store.CreateBranch(ctx, &store.BranchMessage{
 			ProjectID:  project.ResourceID,
@@ -317,7 +323,12 @@ func (s *BranchService) UpdateBranch(ctx context.Context, request *v1pb.UpdateBr
 		if err != nil {
 			return nil, err
 		}
-		sanitizeCommentForSchemaMetadata(metadata, model.NewDatabaseConfig(config))
+
+		classificationConfig, err := s.store.GetDataClassificationConfigByID(ctx, project.DataClassificationConfigID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, `failed to get classification config by id "%s" with error: %v`, project.DataClassificationConfigID, err)
+		}
+		sanitizeCommentForSchemaMetadata(metadata, model.NewDatabaseConfig(config), classificationConfig.ClassificationFromConfig)
 
 		reconcileMetadata(metadata, branch.Engine)
 		filteredMetadata := filterDatabaseMetadataByEngine(metadata, branch.Engine)
@@ -434,17 +445,22 @@ func (s *BranchService) MergeBranch(ctx context.Context, request *v1pb.MergeBran
 	// Restrict merging only when the head branch is not updated.
 	// Maybe we can support auto-merging in the future.
 
-	// The first crazy night in 2024.
-	sanitizeCommentForSchemaMetadata(headBranch.Base.Metadata, model.NewDatabaseConfig(headBranch.Base.DatabaseConfig))
-	sanitizeCommentForSchemaMetadata(headBranch.Head.Metadata, model.NewDatabaseConfig(headBranch.Head.DatabaseConfig))
-	sanitizeCommentForSchemaMetadata(baseBranch.Head.Metadata, model.NewDatabaseConfig(baseBranch.Head.DatabaseConfig))
+	classificationConfig, err := s.store.GetDataClassificationConfigByID(ctx, project.DataClassificationConfigID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, `failed to get classification config by id "%s" with error: %v`, project.DataClassificationConfigID, err)
+	}
 
-	adHead, err := tryMerge(headBranch.Base.Metadata, headBranch.Head.Metadata, baseBranch.Head.Metadata)
+	// The first crazy night in 2024.
+	sanitizeCommentForSchemaMetadata(headBranch.Base.Metadata, model.NewDatabaseConfig(headBranch.Base.DatabaseConfig), classificationConfig.ClassificationFromConfig)
+	sanitizeCommentForSchemaMetadata(headBranch.Head.Metadata, model.NewDatabaseConfig(headBranch.Head.DatabaseConfig), classificationConfig.ClassificationFromConfig)
+	sanitizeCommentForSchemaMetadata(baseBranch.Head.Metadata, model.NewDatabaseConfig(baseBranch.Head.DatabaseConfig), classificationConfig.ClassificationFromConfig)
+
+	adHead, err := tryMerge(headBranch.Base.Metadata, headBranch.Head.Metadata, baseBranch.Head.Metadata, baseBranch.Engine)
 	if err != nil {
 		slog.Info("cannot merge branches", log.BBError(err))
 		return nil, status.Errorf(codes.Aborted, "cannot merge branches without conflict, error: %v", err)
 	}
-	mergedMetadata, err := tryMerge(baseBranch.Head.Metadata, adHead, baseBranch.Head.Metadata)
+	mergedMetadata, err := tryMerge(baseBranch.Head.Metadata, adHead, baseBranch.Head.Metadata, baseBranch.Engine)
 	if err != nil {
 		slog.Info("cannot merge branches", log.BBError(err))
 		return nil, status.Errorf(codes.Aborted, "cannot merge branches without conflict, error: %v", err)
@@ -463,8 +479,8 @@ func (s *BranchService) MergeBranch(ctx context.Context, request *v1pb.MergeBran
 
 	mergedSchemaBytes := []byte(mergedSchema)
 
+	reconcileMetadata(mergedMetadata, baseBranch.Engine)
 	filteredMergedMetadata := filterDatabaseMetadataByEngine(mergedMetadata, baseBranch.Engine)
-	reconcileMetadata(filteredMergedMetadata, baseBranch.Engine)
 	updateConfigBranchUpdateInfo(baseBranch.Base.Metadata, filteredMergedMetadata, mergedConfig, common.FormatUserUID(user.ID))
 	baseBranchNewHead := &storepb.BranchSnapshot{
 		Metadata:       filteredMergedMetadata,
@@ -539,18 +555,15 @@ func (s *BranchService) RebaseBranch(ctx context.Context, request *v1pb.RebaseBr
 		return nil, err
 	}
 
-	newBaseMetadata, newBaseSchema, newBaseConfig, err := s.getNewBaseFromRebaseRequest(ctx, request)
+	filteredNewBaseMetadata, newBaseSchema, newBaseConfig, err := s.getFilteredNewBaseFromRebaseRequest(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	filteredNewBaseMetadata := filterDatabaseMetadataByEngine(newBaseMetadata, baseBranch.Engine)
 
-	var newHeadSchema string
 	var newHeadMetadata *storepb.DatabaseSchemaMetadata
 	var newHeadConfig *storepb.DatabaseConfig
 	if request.MergedSchema != "" {
-		newHeadSchema = request.MergedSchema
-		newHeadMetadata, err = schema.ParseToMetadata(storepb.Engine(baseBranch.Engine), "" /* defaultSchemaName */, newHeadSchema)
+		newHeadMetadata, err = schema.ParseToMetadata(storepb.Engine(baseBranch.Engine), "" /* defaultSchemaName */, request.MergedSchema)
 		if err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "failed to convert merged schema to metadata, %v", err)
 		}
@@ -558,11 +571,16 @@ func (s *BranchService) RebaseBranch(ctx context.Context, request *v1pb.RebaseBr
 		// String-based rebase operation do not include the structural information, such as classification, so we need to sanitize the user comment,
 		// trim the classification in user comment if the classification is not from the config.
 		modelNewHeadConfig := model.NewDatabaseConfig(newHeadConfig)
-		trimClassificationIDFromCommentIfNeeded(newHeadMetadata, modelNewHeadConfig)
-		sanitizeCommentForSchemaMetadata(newHeadMetadata, modelNewHeadConfig)
-		reconcileMetadata(newHeadMetadata, baseBranch.Engine)
+
+		classificationConfig, err := s.store.GetDataClassificationConfigByID(ctx, baseProject.DataClassificationConfigID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, `failed to get classification config by id "%s" with error: %v`, baseProject.DataClassificationConfigID, err)
+		}
+
+		trimClassificationIDFromCommentIfNeeded(newHeadMetadata, classificationConfig.ClassificationFromConfig)
+		sanitizeCommentForSchemaMetadata(newHeadMetadata, modelNewHeadConfig, classificationConfig.ClassificationFromConfig)
 	} else {
-		newHeadMetadata, err = tryMerge(baseBranch.Base.Metadata, baseBranch.Head.Metadata, filteredNewBaseMetadata)
+		newHeadMetadata, err = tryMerge(baseBranch.Base.Metadata, baseBranch.Head.Metadata, filteredNewBaseMetadata, baseBranch.Engine)
 		if err != nil {
 			slog.Info("cannot rebase branches", log.BBError(err))
 			conflictSchema, err := diff3.Merge(
@@ -589,22 +607,22 @@ func (s *BranchService) RebaseBranch(ctx context.Context, request *v1pb.RebaseBr
 		if newHeadMetadata == nil {
 			return nil, status.Errorf(codes.Internal, "merged metadata should not be nil if there is no error while merging (%+v, %+v, %+v)", baseBranch.Base.Metadata, baseBranch.Head.Metadata, filteredNewBaseMetadata)
 		}
-		filterDatabaseMetadataByEngine(newHeadMetadata, baseBranch.Engine)
 		// XXX(zp): We only try to merge the schema config while the schema could be merged successfully. Otherwise, users manually merge the
 		// metadata in the frontend, and config would be ignored.
 		newHeadConfig = utils.MergeDatabaseConfig(baseBranch.Base.GetDatabaseConfig(), baseBranch.Head.GetDatabaseConfig(), newBaseConfig)
+	}
 
-		defaultSchema := extractDefaultSchemaForOracleBranch(storepb.Engine(baseBranch.Engine), newHeadMetadata)
-		newHeadSchema, err = schema.GetDesignSchema(storepb.Engine(baseBranch.Engine), defaultSchema, "", newHeadMetadata)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to convert merged metadata to schema string, %v", err)
-		}
+	reconcileMetadata(newHeadMetadata, baseBranch.Engine)
+	filteredNewHeadMetadata := filterDatabaseMetadataByEngine(newHeadMetadata, baseBranch.Engine)
+	defaultSchema := extractDefaultSchemaForOracleBranch(storepb.Engine(baseBranch.Engine), newHeadMetadata)
+	newHeadSchema, err := schema.GetDesignSchema(storepb.Engine(baseBranch.Engine), defaultSchema, "", filteredNewHeadMetadata)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to convert new head metadata to schema string, %v", err)
 	}
 
 	newBaseSchemaBytes := []byte(newBaseSchema)
 	newHeadSchemaBytes := []byte(newHeadSchema)
-	filteredNewHeadMetadata := filterDatabaseMetadataByEngine(newHeadMetadata, baseBranch.Engine)
-	updateConfigBranchUpdateInfo(newBaseMetadata, filteredNewHeadMetadata, newHeadConfig, common.FormatUserUID(user.ID))
+	updateConfigBranchUpdateInfo(filteredNewBaseMetadata, filteredNewHeadMetadata, newHeadConfig, common.FormatUserUID(user.ID))
 	if request.ValidateOnly {
 		baseBranch.Base = &storepb.BranchSnapshot{
 			Metadata:       filteredNewBaseMetadata,
@@ -647,7 +665,7 @@ func (s *BranchService) RebaseBranch(ctx context.Context, request *v1pb.RebaseBr
 	return &v1pb.RebaseBranchResponse{Result: &v1pb.RebaseBranchResponse_Branch{Branch: v1Branch}}, nil
 }
 
-func (s *BranchService) getNewBaseFromRebaseRequest(ctx context.Context, request *v1pb.RebaseBranchRequest) (*storepb.DatabaseSchemaMetadata, string, *storepb.DatabaseConfig, error) {
+func (s *BranchService) getFilteredNewBaseFromRebaseRequest(ctx context.Context, request *v1pb.RebaseBranchRequest) (*storepb.DatabaseSchemaMetadata, string, *storepb.DatabaseConfig, error) {
 	if request.SourceDatabase != "" {
 		instanceID, databaseName, err := common.GetInstanceDatabaseID(request.SourceDatabase)
 		if err != nil {
@@ -678,7 +696,15 @@ func (s *BranchService) getNewBaseFromRebaseRequest(ctx context.Context, request
 		if databaseSchema == nil {
 			return nil, "", nil, status.Errorf(codes.NotFound, "database schema %q not found", databaseName)
 		}
-		return databaseSchema.GetMetadata(), string(databaseSchema.GetSchema()), databaseSchema.GetConfig(), nil
+		databaseMetadata := databaseSchema.GetMetadata()
+		filteredNewBaseMetadata := filterDatabaseMetadataByEngine(databaseMetadata, instance.Engine)
+		defaultStoreSourceSchema := extractDefaultSchemaForOracleBranch(instance.Engine, filteredNewBaseMetadata)
+		sourceSchema, err := schema.GetDesignSchema(instance.Engine, defaultStoreSourceSchema, "" /* baseline*/, filteredNewBaseMetadata)
+		if err != nil {
+			return nil, "", nil, status.Errorf(codes.Internal, err.Error())
+		}
+
+		return filteredNewBaseMetadata, sourceSchema, databaseSchema.GetConfig(), nil
 	}
 
 	if request.SourceBranch != "" {
@@ -770,7 +796,7 @@ func (*BranchService) DiffMetadata(ctx context.Context, request *v1pb.DiffMetada
 	if err != nil {
 		return nil, err
 	}
-	sanitizeCommentForSchemaMetadata(storeSourceMetadata, model.NewDatabaseConfig(sourceConfig))
+	sanitizeCommentForSchemaMetadata(storeSourceMetadata, model.NewDatabaseConfig(sourceConfig), request.ClassificationFromConfig)
 
 	storeTargetMetadata, targetConfig, err := convertV1DatabaseMetadata(ctx, request.TargetMetadata, nil /* optionalStores */)
 	if err != nil {
@@ -779,7 +805,7 @@ func (*BranchService) DiffMetadata(ctx context.Context, request *v1pb.DiffMetada
 	if err := checkDatabaseMetadata(storepb.Engine(request.Engine), storeTargetMetadata); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid target metadata: %v", err)
 	}
-	sanitizeCommentForSchemaMetadata(storeTargetMetadata, model.NewDatabaseConfig(targetConfig))
+	sanitizeCommentForSchemaMetadata(storeTargetMetadata, model.NewDatabaseConfig(targetConfig), request.ClassificationFromConfig)
 
 	storeSourceMetadata, storeTargetMetadata = trimDatabaseMetadata(storeSourceMetadata, storeTargetMetadata)
 	if err := checkDatabaseMetadataColumnType(storepb.Engine(request.Engine), storeTargetMetadata); err != nil {
@@ -939,20 +965,20 @@ func (s *BranchService) convertBranchToBranch(ctx context.Context, project *stor
 	return v1Branch, nil
 }
 
-func sanitizeCommentForSchemaMetadata(dbSchema *storepb.DatabaseSchemaMetadata, dbModelConfig *model.DatabaseConfig) {
+func sanitizeCommentForSchemaMetadata(dbSchema *storepb.DatabaseSchemaMetadata, dbModelConfig *model.DatabaseConfig, classificationFromConfig bool) {
 	for _, schema := range dbSchema.Schemas {
 		schemaConfig := dbModelConfig.CreateOrGetSchemaConfig(schema.Name)
 		for _, table := range schema.Tables {
 			tableConfig := schemaConfig.CreateOrGetTableConfig(table.Name)
 			classificationID := ""
-			if !dbModelConfig.ClassificationFromConfig {
+			if !classificationFromConfig {
 				classificationID = tableConfig.ClassificationID
 			}
 			table.Comment = common.GetCommentFromClassificationAndUserComment(classificationID, table.UserComment)
 			for _, col := range table.Columns {
 				columnConfig := tableConfig.CreateOrGetColumnConfig(col.Name)
 				classificationID := ""
-				if !dbModelConfig.ClassificationFromConfig {
+				if !classificationFromConfig {
 					classificationID = columnConfig.ClassificationId
 				}
 				col.Comment = common.GetCommentFromClassificationAndUserComment(classificationID, col.UserComment)
@@ -1269,6 +1295,16 @@ func reconcileMetadata(metadata *storepb.DatabaseSchemaMetadata, engine storepb.
 			if engine == storepb.Engine_MYSQL {
 				reconcileMySQLPartitionMetadata(table.Partitions, "")
 			}
+			if engine == storepb.Engine_MYSQL || engine == storepb.Engine_TIDB {
+				for _, column := range table.Columns {
+					// If the column can take NULL as a value, the column is defined with an explicit DEFAULT NULL clause.
+					if column.Nullable && column.DefaultValue == nil {
+						column.DefaultValue = &storepb.ColumnMetadata_DefaultNull{
+							DefaultNull: true,
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -1576,17 +1612,17 @@ func initializeBranchUpdaterInfoConfig(metadata *storepb.DatabaseSchemaMetadata,
 	}
 }
 
-func trimClassificationIDFromCommentIfNeeded(dbSchema *storepb.DatabaseSchemaMetadata, dbModelConfig *model.DatabaseConfig) {
-	if dbModelConfig.ClassificationFromConfig {
+func trimClassificationIDFromCommentIfNeeded(dbSchema *storepb.DatabaseSchemaMetadata, classificationFromConfig bool) {
+	if classificationFromConfig {
 		return
 	}
 	for _, schema := range dbSchema.Schemas {
 		for _, table := range schema.Tables {
-			if !dbModelConfig.ClassificationFromConfig {
+			if !classificationFromConfig {
 				_, table.UserComment = common.GetClassificationAndUserComment(table.UserComment)
 			}
 			for _, col := range table.Columns {
-				if !dbModelConfig.ClassificationFromConfig {
+				if !classificationFromConfig {
 					_, col.UserComment = common.GetClassificationAndUserComment(col.UserComment)
 				}
 			}

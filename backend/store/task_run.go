@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/bytebase/bytebase/backend/common"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -153,8 +152,7 @@ func (s *Store) ListTaskRunsV2(ctx context.Context, find *FindTaskRunMessage) ([
 		}
 
 		var resultProto storepb.TaskRunResult
-		decoder := protojson.UnmarshalOptions{DiscardUnknown: true}
-		if err := decoder.Unmarshal([]byte(taskRun.Result), &resultProto); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(taskRun.Result), &resultProto); err != nil {
 			return nil, errors.Wrapf(err, "failed to unmarshal task run result: %s", taskRun.Result)
 		}
 		taskRun.ResultProto = &resultProto
@@ -222,17 +220,17 @@ func (s *Store) CreatePendingTaskRuns(ctx context.Context, creates ...*TaskRunMe
 	}
 	defer tx.Rollback()
 
+	attempts, err := s.getTaskNextAttempt(ctx, tx, taskIDs)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get task next attempt")
+	}
+
 	exist, err := s.checkTaskRunsExist(ctx, tx, taskIDs, []api.TaskRunStatus{api.TaskRunPending, api.TaskRunRunning, api.TaskRunDone})
 	if err != nil {
 		return errors.Wrapf(err, "failed to check if task runs exist")
 	}
 	if exist {
 		return errors.Errorf("cannot create pending task runs because there are pending/running/done task runs")
-	}
-
-	attempts, err := s.getTaskNextAttempt(ctx, tx, taskIDs)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get task next attempt")
 	}
 
 	if err := s.createPendingTaskRunsTx(ctx, tx, attempts, creates); err != nil {

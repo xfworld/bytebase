@@ -139,7 +139,6 @@ func convertStoreDatabaseMetadata(ctx context.Context, metadata *storepb.Databas
 	databaseConfig := convertStoreDatabaseConfig(ctx, config, filter, optionalStores)
 	if databaseConfig != nil {
 		m.SchemaConfigs = databaseConfig.SchemaConfigs
-		m.ClassificationFromConfig = databaseConfig.ClassificationFromConfig
 	}
 	return m, nil
 }
@@ -156,6 +155,7 @@ func convertStoreTableMetadata(table *storepb.TableMetadata) *v1pb.TableMetadata
 		CreateOptions: table.CreateOptions,
 		Comment:       table.Comment,
 		UserComment:   table.UserComment,
+		Charset:       table.Charset,
 	}
 	for _, partition := range table.Partitions {
 		if partition == nil {
@@ -178,6 +178,7 @@ func convertStoreTableMetadata(table *storepb.TableMetadata) *v1pb.TableMetadata
 			Name:        index.Name,
 			Expressions: index.Expressions,
 			KeyLength:   index.KeyLength,
+			Descending:  index.Descending,
 			Type:        index.Type,
 			Unique:      index.Unique,
 			Primary:     index.Primary,
@@ -199,6 +200,15 @@ func convertStoreTableMetadata(table *storepb.TableMetadata) *v1pb.TableMetadata
 			OnDelete:          foreignKey.OnDelete,
 			OnUpdate:          foreignKey.OnUpdate,
 			MatchType:         foreignKey.MatchType,
+		})
+	}
+	for _, check := range table.CheckConstraints {
+		if check == nil {
+			continue
+		}
+		t.CheckConstraints = append(t.CheckConstraints, &v1pb.CheckConstraintMetadata{
+			Name:       check.Name,
+			Expression: check.Expression,
 		})
 	}
 	return t
@@ -268,6 +278,7 @@ func convertStoreColumnMetadata(column *storepb.ColumnMetadata) *v1pb.ColumnMeta
 		Collation:    column.Collation,
 		Comment:      column.Comment,
 		UserComment:  column.UserComment,
+		Generation:   convertStoreGenerationMetadata(column.Generation),
 	}
 	if metadata.HasDefault {
 		switch value := column.DefaultValue.(type) {
@@ -286,10 +297,27 @@ func convertStoreColumnMetadata(column *storepb.ColumnMetadata) *v1pb.ColumnMeta
 	return metadata
 }
 
+func convertStoreGenerationMetadata(generation *storepb.GenerationMetadata) *v1pb.GenerationMetadata {
+	if generation == nil {
+		return nil
+	}
+	meta := &v1pb.GenerationMetadata{
+		Expression: generation.Expression,
+	}
+	switch generation.Type {
+	case storepb.GenerationMetadata_TYPE_VIRTUAL:
+		meta.Type = v1pb.GenerationMetadata_TYPE_VIRTUAL
+	case storepb.GenerationMetadata_TYPE_STORED:
+		meta.Type = v1pb.GenerationMetadata_TYPE_STORED
+	default:
+		meta.Type = v1pb.GenerationMetadata_TYPE_UNSPECIFIED
+	}
+	return meta
+}
+
 func convertStoreDatabaseConfig(ctx context.Context, config *storepb.DatabaseConfig, filter *metadataFilter, optionalStores *store.Store) *v1pb.DatabaseConfig {
 	databaseConfig := &v1pb.DatabaseConfig{
-		Name:                     config.Name,
-		ClassificationFromConfig: config.ClassificationFromConfig,
+		Name: config.Name,
 	}
 	for _, schema := range config.SchemaConfigs {
 		if schema == nil {
@@ -515,9 +543,8 @@ func convertV1DatabaseMetadata(ctx context.Context, metadata *v1pb.DatabaseMetad
 	databaseConfig := convertV1DatabaseConfig(
 		ctx,
 		&v1pb.DatabaseConfig{
-			Name:                     metadata.Name,
-			SchemaConfigs:            metadata.SchemaConfigs,
-			ClassificationFromConfig: metadata.ClassificationFromConfig,
+			Name:          metadata.Name,
+			SchemaConfigs: metadata.SchemaConfigs,
 		},
 		optionalStores,
 	)
@@ -536,6 +563,7 @@ func convertV1TableMetadata(table *v1pb.TableMetadata) *storepb.TableMetadata {
 		CreateOptions: table.CreateOptions,
 		Comment:       table.Comment,
 		UserComment:   table.UserComment,
+		Charset:       table.Charset,
 	}
 	for _, column := range table.Columns {
 		if column == nil {
@@ -551,6 +579,7 @@ func convertV1TableMetadata(table *v1pb.TableMetadata) *storepb.TableMetadata {
 			Name:        index.Name,
 			Expressions: index.Expressions,
 			KeyLength:   index.KeyLength,
+			Descending:  index.Descending,
 			Type:        index.Type,
 			Unique:      index.Unique,
 			Primary:     index.Primary,
@@ -579,6 +608,15 @@ func convertV1TableMetadata(table *v1pb.TableMetadata) *storepb.TableMetadata {
 			continue
 		}
 		t.Partitions = append(t.Partitions, convertV1TablePartitionMetadata(partition))
+	}
+	for _, check := range table.CheckConstraints {
+		if check == nil {
+			continue
+		}
+		t.CheckConstraints = append(t.CheckConstraints, &storepb.CheckConstraintMetadata{
+			Name:       check.Name,
+			Expression: check.Expression,
+		})
 	}
 	return t
 }
@@ -630,6 +668,7 @@ func convertV1ColumnMetadata(column *v1pb.ColumnMetadata) *storepb.ColumnMetadat
 		Comment:      column.Comment,
 		UserComment:  column.UserComment,
 		OnUpdate:     column.OnUpdate,
+		Generation:   convertV1GenerationMetadata(column.Generation),
 	}
 
 	if column.HasDefault {
@@ -645,10 +684,27 @@ func convertV1ColumnMetadata(column *v1pb.ColumnMetadata) *storepb.ColumnMetadat
 	return metadata
 }
 
+func convertV1GenerationMetadata(generation *v1pb.GenerationMetadata) *storepb.GenerationMetadata {
+	if generation == nil {
+		return nil
+	}
+	meta := &storepb.GenerationMetadata{
+		Expression: generation.Expression,
+	}
+	switch generation.Type {
+	case v1pb.GenerationMetadata_TYPE_VIRTUAL:
+		meta.Type = storepb.GenerationMetadata_TYPE_VIRTUAL
+	case v1pb.GenerationMetadata_TYPE_STORED:
+		meta.Type = storepb.GenerationMetadata_TYPE_STORED
+	default:
+		meta.Type = storepb.GenerationMetadata_TYPE_UNSPECIFIED
+	}
+	return meta
+}
+
 func convertV1DatabaseConfig(ctx context.Context, databaseConfig *v1pb.DatabaseConfig, optionalStores *store.Store) *storepb.DatabaseConfig {
 	config := &storepb.DatabaseConfig{
-		Name:                     databaseConfig.Name,
-		ClassificationFromConfig: databaseConfig.ClassificationFromConfig,
+		Name: databaseConfig.Name,
 	}
 	for _, schema := range databaseConfig.SchemaConfigs {
 		if schema == nil {

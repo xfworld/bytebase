@@ -21,6 +21,7 @@ import { IssueServiceDefinition } from "@/types/proto/v1/issue_service";
 import { OrgPolicyServiceDefinition } from "@/types/proto/v1/org_policy_service";
 import { PlanServiceDefinition } from "@/types/proto/v1/plan_service";
 import { ProjectServiceDefinition } from "@/types/proto/v1/project_service";
+import { ReviewConfigServiceDefinition } from "@/types/proto/v1/review_config_service";
 import { RiskServiceDefinition } from "@/types/proto/v1/risk_service";
 import { RoleServiceDefinition } from "@/types/proto/v1/role_service";
 import { RolloutServiceDefinition } from "@/types/proto/v1/rollout_service";
@@ -35,6 +36,7 @@ import { WorksheetServiceDefinition } from "@/types/proto/v1/worksheet_service";
 import {
   authInterceptorMiddleware,
   errorNotificationMiddleware,
+  simulateLatencyMiddleware,
 } from "./middlewares";
 
 // Create each grpc service client.
@@ -57,7 +59,8 @@ const clientFactory = createClientFactory()
   // A middleware that is attached first, will be invoked last.
   .use(authInterceptorMiddleware)
   .use(errorDetailsClientMiddleware)
-  .use(errorNotificationMiddleware);
+  .use(errorNotificationMiddleware)
+  .use(simulateLatencyMiddleware);
 /**
  * Example to use error notification middleware.
  * Errors occurs during all requests will cause UI notifications automatically.
@@ -203,6 +206,10 @@ export const auditLogServiceClient = clientFactory.create(
 
 export const userGroupServiceClient = clientFactory.create(
   UserGroupServiceDefinition,
+  channel
+);
+export const reviewConfigServiceClient = clientFactory.create(
+  ReviewConfigServiceDefinition,
   channel
 );
 

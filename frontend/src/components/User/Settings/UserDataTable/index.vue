@@ -4,6 +4,8 @@
     :data="userList"
     :striped="true"
     :bordered="true"
+    :max-height="'calc(100vh - 20rem)'"
+    virtual-scroll
   />
 
   <BBAlert
@@ -71,7 +73,7 @@ const columns = computed(() => {
       resizable: true,
       render: (user: User) => {
         return h(UserRolesCell, {
-          user,
+          roles: user.roles,
         });
       },
     },

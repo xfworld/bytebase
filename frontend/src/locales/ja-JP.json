@@ -273,7 +273,9 @@
     "leave-without-saving": "変更を保存していませんか?",
     "configure-now": "今すぐ設定する",
     "connection": "接続する",
-    "permission-denied": "許可が拒否されました"
+    "permission-denied": "許可が拒否されました",
+    "resource": "リソース",
+    "closed": "閉まっている"
   },
   "error-page": {
     "go-back-home": "ホームページに戻る"
@@ -513,7 +515,8 @@
         "n-members": "{n} 人のメンバー",
         "group-members": "チームメンバー",
         "group-roles": "グループの役割",
-        "edit-group": "グループの編集"
+        "edit-group": "グループの編集",
+        "workspace-domain-required": "まずワークスペースドメインを設定してください。"
       },
       "action": {
         "deactivate": "無効にする",
@@ -549,9 +552,7 @@
       "workspace-role-at-least-one": "少なくとも 1 つのワークスペースレベルの役割を選択してください"
     },
     "im-integration": {
-      "enable": "有効にする",
-      "description": "ユーザーが IM で作業指示書を直接承認できるようにします。",
-      "feishu-updated-tip": "フェイシュの設定が正常に更新されました"
+      "description": "特定の作業指示イベントについて、プライベート メッセージをユーザーにプッシュします。プロジェクト Webhook で使用する必要があります。"
     },
     "sso": {
       "create": "SSOの作成",
@@ -655,6 +656,15 @@
           "days": "日々）",
           "never-expires": "期限切れなし"
         },
+        "domain-restriction": {
+          "self": "ワークスペースドメイン",
+          "description": "ワークスペース メンバーの電子メール ドメインとして使用できるドメインを指定します。",
+          "domain-input-placeholder": "ドメインを入力してください。例: example.com",
+          "members-restriction": {
+            "self": "メンバー制限",
+            "description": "指定されたドメインの電子メール アドレスを持つユーザーのみにサインインを制限します。"
+          }
+        },
         "config-updated": "構成が更新されました。",
         "plugin": {
           "openai": {
@@ -697,6 +707,16 @@
         "restrict-issue-creation-for-sql-review": {
           "title": "エラーアラートを含む作業指示書の提出は禁止されています",
           "description": "有効にすると、プレビュー段階で「エラー」レベルのアラームを含まない作業指示のみを送信できます。"
+        },
+        "database-change-mode": {
+          "self": "データベース変更モード",
+          "description": "ユーザーがデータベース スキーマの移行を実行する方法を制御します。問題モードでは、構造化されたプロセスにカスタム承認を使用した問題/タスク ワークフローを使用します。SQL エディター モードでは、SQL エディターで直接 SQL を実行して、すばやく簡単に変更できます。",
+          "issue-mode": {
+            "self": "発行モード"
+          },
+          "sql-editor-mode": {
+            "self": "SQL エディター モード"
+          }
         }
       }
     },
@@ -964,12 +984,14 @@
         "cancel": "作業指示全体をキャンセルしますか?",
         "reopen": "作業指示を再開しますか?",
         "title": "{action}{type} [{name}]?",
-        "action-to-stage": "{action} ステージ ({n} 個のタスク)"
+        "action-to-stage": "{action} ステージ ({n} 個のタスク)",
+        "close": "問題を閉じますか?"
       },
       "dropdown": {
         "resolve": "作業指示を完了する",
         "cancel": "作業指示をキャンセルする",
-        "reopen": "再開"
+        "reopen": "再開",
+        "close": "問題を閉じる"
       },
       "form": {
         "note": "ノート",
@@ -1115,7 +1137,9 @@
       "reopen": "再開",
       "reopened": "再開",
       "action-n-issues": "{action} {n} 枚のチケット",
-      "successfully-updated-n-issues": "{n} 個のチケットが正常に更新されました"
+      "successfully-updated-n-issues": "{n} 個のチケットが正常に更新されました",
+      "closed": "閉まっている",
+      "close": "近い"
     },
     "sql-hint": {
       "change-will-apply-to-all-tasks-in-tenant-mode": "変更は他のすべてのタスクに適用されます",
@@ -1199,7 +1223,7 @@
     "unfinished-resolved-issue-tips": "作業指示書は「完了」とマークされましたが、一部のタスクは正常に実行されませんでした。",
     "some-tasks-are-not-executed-successfully": "(一部のタスクは正常に実行されませんでした)",
     "preview": "作業指示のプレビュー",
-    "missing-sql-statement": "SQL ステートメントが欠落しています。この変更をすべてのタスクに適用するには、「@:{'issue.apply-to-other-tasks'}」ボタンをクリックします。",
+    "missing-sql-statement": "SQL ステートメントが欠落しています。",
     "task-summary-tooltip": "{failed} 個のタスクが失敗しました",
     "data-export": {
       "options": "設定項目",
@@ -1225,7 +1249,8 @@
       "statement-type": "ステートメントタイプ"
     },
     "sql-review-only": "SQLレビューのみ",
-    "create-issue": "問題を作成"
+    "create-issue": "問題を作成",
+    "this-plan-will-be-converted-to-a-new-issue": "この計画は新しい問題に変換されます"
   },
   "alter-schema": {
     "vcs-enabled": "このプロジェクトでは、VCS ベースのバージョン管理が有効になっています。以下のデータベースを選択すると、対応する Git リポジトリに移動して、変更プロセスを開始します。",
@@ -1460,7 +1485,7 @@
     "create-gcp-credentials": "認証情報の作成方法については、を参照してください",
     "used-for-testing-connection": "テスト接続のみ",
     "all": "すべてのインスタンス",
-    "force-archive-description": "アーカイブを強制します。関連するすべての作業指示書は完了としてマークされ、関連するすべてのワークシートが削除されます。",
+    "force-archive-description": "アーカイブを強制します。すべてのデータベースの割り当てが解除されます。",
     "sync-mode": {
       "self": "同期モード",
       "database": {
@@ -1498,7 +1523,7 @@
     "production-environment": "本番環境",
     "access-control": {
       "title": "アクセス制御",
-      "disable-copy-data-from-sql-editor": "SQLエディタからのデータのコピーを無効にする"
+      "disable-copy-data-from-sql-editor": "SQL エディタにおけるデータコピーの制限 (管理者/DBA はコピー可能)"
     }
   },
   "quick-start": {
@@ -1614,6 +1639,7 @@
     "need-to-select-first": "最初に変更履歴を選択する必要があります",
     "all-tables": "すべてのテーブル",
     "affected-tables": "影響を受けるテーブル",
+    "select-affection-tables": "影響を受けるテーブルを選択",
     "view-full": "すべて見る"
   },
   "database": {
@@ -1895,6 +1921,11 @@
         "btn-text": "この Webhook を削除します",
         "confirm-title": "Webhook '{title}' とすべての実行履歴を削除しますか?"
       },
+      "direct-messages": "プライベートメッセージ通知",
+      "enable-direct-messages": "プライベートメッセージ通知を有効にする",
+      "direct-messages-tip": "有効にすると、Bytebase は関連ユーザー (電子メールで一致) にダイレクト メッセージを送信します。",
+      "direct-messages-warning": "これを機能させるには、{im} を構成する必要があります。",
+      "activity-support-direct-message": "関連するユーザーへのプライベート メッセージ通知の送信のサポート",
       "activity-item": {
         "issue-creation": {
           "title": "@:common.issue を作成する",
@@ -1971,10 +2002,24 @@
         "no-protection-rule-configured": "ブランチ保護ルールは構成されていません。",
         "only-apply-to-main-branches": "メインブランチでのみ有効です"
       },
-      "labels": {
-        "issue-labels": "作業指示タグ",
-        "configure-labels": "タグを構成する",
-        "force-issue-labels": "すべての作業命令にラベルを付けることを要求する"
+      "issue-related": {
+        "self": "問題関連",
+        "labels": {
+          "self": "ラベル",
+          "configure-labels": "ラベルを設定する",
+          "force-issue-labels": {
+            "self": "すべての問題にラベルが必要",
+            "description": "問題を作成するときは、少なくとも 1 つのラベルが必要です。"
+          }
+        },
+        "allow-modify-statement": {
+          "self": "ステートメントの変更を許可する",
+          "description": "ユーザーが作成後に問題の説明を変更できるようにします。"
+        },
+        "auto-resolve-issue": {
+          "self": "自動解決の問題",
+          "description": "すべてのタスクが完了すると、問題が自動的に解決されます。"
+        }
       }
     },
     "members": {
@@ -2258,7 +2303,12 @@
     "rows-upper-limit": "クエリ結果の数が上限に達しました",
     "tab-mode": {
       "readonly": "読み取り専用",
-      "admin": "管理者"
+      "admin": "管理者",
+      "standard": "標準",
+      "description": {
+        "standard": "DDL および DML ステートメントを許可します。",
+        "readonly": "SELECT、SHOW、SET ステートメントを許可します。"
+      }
     },
     "close-sheet": "ワークシートを閉じる",
     "connect": "接続する",
@@ -2292,9 +2342,11 @@
     "batch-query": {
       "batch": "バッチ",
       "select-database": "以下のデータベースを選択してください",
-      "description": "{project} の下にある {count} データベースをバッチクエリします。"
+      "description": "{project} の下にある {count} データベースをバッチクエリします。",
+      "show-or-hide-empty-query-results": "空のクエリ結果の表示/非表示"
     },
     "executing-query": "クエリの実行",
+    "request-query": "リクエストクエリ",
     "grouping": "グループ",
     "previous-row": "前の行",
     "next-row": "次の行",
@@ -2320,7 +2372,13 @@
       "rows": "行"
     },
     "n-per-page": "{n} / ページ",
-    "customize-tree-structure": "ツリー構造をカスタマイズする"
+    "customize-tree-structure": "ツリー構造をカスタマイズする",
+    "will-override-current-editing-statement": "現在の編集ステートメントをオーバーライドします。",
+    "standard-mode": {
+      "self": "標準モード"
+    },
+    "to-enable-standard-mode": "標準モードを有効にするには",
+    "add-a-new-instance": "新しいインスタンスを追加する"
   },
   "schema-editor": {
     "self": "スキーマエディタ",
@@ -2731,6 +2789,7 @@
     "configure-policy": "監査ポリシーを構成する",
     "policy-removed": "監査ポリシーが削除されました",
     "policy-created": "監査ポリシーが作成されました",
+    "policy-create-failed": "監査ポリシーの作成に失敗しました",
     "policy-updated": "監査ポリシーが更新されました",
     "policy-duplicated": "監査ポリシーがコピーされました",
     "rules": "ルール",
@@ -2742,6 +2801,8 @@
     "input-then-press-enter": "入力後、Enterを押して追加します",
     "not-available-for-free": "{plan}定期購入ではこのルールを使用できません",
     "unlock-full-feature": "100 を超える SQL レビュー ルールのロックを解除する",
+    "search-by-name": "名前で検索",
+    "no-linked-resources": "リンクされたリソースはありません",
     "create": {
       "breadcrumb": "監査ポリシーを作成する",
       "basic-info": {
@@ -2750,12 +2811,10 @@
         "display-name-placeholder": "監査ポリシー名",
         "display-name-default": "SQL監査ポリシー",
         "display-name-label": "さまざまな監査ポリシーを区別するために使用される名前。",
-        "environments": "環境",
-        "environments-label": "この監査ポリシーが適用される環境。 1 つの環境に関連付けることができる監査ポリシーは 1 つだけです。",
-        "environments-select": "環境を選ぶ",
-        "no-linked-environments": "環境が選択されていません",
-        "no-available-environment": "代わりの環境がない",
-        "no-available-environment-desc": "代わりの環境はありません。 1 つの環境に関連付けることができる監査ポリシーは 1 つだけです。",
+        "attach-resource": "リソースにアタッチする",
+        "attach-resource-label": "選択したリソースに監査ポリシーを適用します。リソースは 1 つのポリシーにのみ関連付けることができます。データベースはプロジェクトに添付された SQL 監査ポリシーを使用します。それ以外の場合は、環境ポリシーにフォールバックします。",
+        "attach-resource-info-environment": "SQL 監査ポリシーは、選択した環境に属するすべてのデータベースに影響します。",
+        "attach-resource-info-project": "SQL 監査ポリシーは、選択したプロジェクト内のすべてのデータベースに影響します。環境の SQL 監査ポリシーは無視されます。",
         "choose-template": "テンプレートを選択"
       },
       "configure-rule": {
@@ -2898,7 +2957,8 @@
     "schema-group": "テーブルのグループ化",
     "changelist": "変更リスト",
     "vcs-provider": "GitOpsプロバイダー",
-    "vcs-connector": "GitOps接続"
+    "vcs-connector": "GitOps接続",
+    "review-config": "構成を確認する"
   },
   "resource-id": {
     "self": "{resource} ID",
@@ -3253,10 +3313,13 @@
         "pattern": "{resource} には小文字、数字、ハイフンのみを含めることができ、小文字で始まります。",
         "max-length": "{resource} には最大で {length} 文字が含まれます"
       },
-      "delete": "役割の削除"
+      "delete": "役割の削除",
+      "delete-warning": "ロール「{name}」は削除されます。この操作は元に戻すことができません。",
+      "delete-warning-with-resources": "ロール「{name}」は次のユーザーに割り当てられています:"
     },
     "select": "役割の選択",
     "select-roles": "役割の選択",
+    "default-workspace-role": "ユーザーにはデフォルトで「ワークスペースメンバー」の役割が与えられます",
     "title": "タイトル",
     "select-role": "役割の選択",
     "expired-tip": "役割の有効期限が切れている可能性があります。",

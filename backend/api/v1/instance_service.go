@@ -230,8 +230,7 @@ func (s *InstanceService) CreateInstance(ctx context.Context, request *v1pb.Crea
 			instance = updatedInstance
 		}
 		// Sync all databases in the instance asynchronously.
-		s.stateCfg.InstanceSyncs.Store(instance.UID, instance)
-		s.stateCfg.InstanceSyncTickleChan <- 0
+		s.schemaSyncer.SyncAllDatabases(ctx, instance)
 	}
 
 	s.metricReporter.Report(ctx, &metric.Metric{
@@ -631,8 +630,7 @@ func (s *InstanceService) SyncInstance(ctx context.Context, request *v1pb.SyncIn
 		return nil, err
 	}
 	// Sync all databases in the instance asynchronously.
-	s.stateCfg.InstanceSyncs.Store(instance.UID, updatedInstance)
-	s.stateCfg.InstanceSyncTickleChan <- 0
+	s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
 
 	return &v1pb.SyncInstanceResponse{}, nil
 }
@@ -647,10 +645,14 @@ func (s *InstanceService) BatchSyncInstance(ctx context.Context, request *v1pb.B
 		if instance.Deleted {
 			return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", r.Name)
 		}
+
+		updatedInstance, err := s.schemaSyncer.SyncInstance(ctx, instance)
+		if err != nil {
+			return nil, err
+		}
 		// Sync all databases in the instance asynchronously.
-		s.stateCfg.InstanceSyncs.Store(instance.UID, instance)
+		s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
 	}
-	s.stateCfg.InstanceSyncTickleChan <- 0
 
 	return &v1pb.BatchSyncInstanceResponse{}, nil
 }
@@ -863,6 +865,12 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, request *v1pb.Up
 			dataSource.DirectConnection = request.DataSource.DirectConnection
 		case "region":
 			dataSource.Region = request.DataSource.Region
+		case "account_id":
+			dataSource.AccountID = request.DataSource.AccountId
+			patch.AccountID = &request.DataSource.AccountId
+		case "warehouse_id":
+			dataSource.WarehouseID = request.DataSource.WarehouseId
+			patch.WarehouseID = &request.DataSource.WarehouseId
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, `unsupport update_mask "%s"`, path)
 		}
@@ -1171,6 +1179,7 @@ func convertToV1DataSources(dataSources []*store.DataSourceMessage) ([]*v1pb.Dat
 			ReplicaSet:             ds.ReplicaSet,
 			DirectConnection:       ds.DirectConnection,
 			Region:                 ds.Region,
+			WarehouseId:            ds.WarehouseID,
 		})
 	}
 
@@ -1342,6 +1351,8 @@ func (s *InstanceService) convertToDataSourceMessage(dataSource *v1pb.DataSource
 		ReplicaSet:                         dataSource.ReplicaSet,
 		DirectConnection:                   dataSource.DirectConnection,
 		Region:                             dataSource.Region,
+		AccountID:                          dataSource.AccountId,
+		WarehouseID:                        dataSource.WarehouseId,
 	}, nil
 }
 

@@ -414,7 +414,7 @@ func (s *Store) UpdateDatabase(ctx context.Context, patch *UpdateDatabaseMessage
 	// Invalidate and update database cache.
 	s.databaseCache.Remove(getDatabaseCacheKey(patch.InstanceID, patch.DatabaseName))
 	s.databaseIDCache.Remove(databaseUID)
-	return s.GetDatabaseV2(ctx, &FindDatabaseMessage{UID: &databaseUID})
+	return s.GetDatabaseV2(ctx, &FindDatabaseMessage{UID: &databaseUID, ShowDeleted: true})
 }
 
 // BatchUpdateDatabaseProject updates the project for databases in batch.
@@ -585,12 +585,12 @@ func (*Store) listDatabaseImplV2(ctx context.Context, tx *Tx, find *FindDatabase
 		databaseMessage.SchemaVersion = version
 
 		var secret storepb.Secrets
-		if err := protojson.Unmarshal([]byte(secretsString), &secret); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(secretsString), &secret); err != nil {
 			return nil, err
 		}
 		databaseMessage.Secrets = &secret
 		var metadata storepb.DatabaseMetadata
-		if err := protojson.Unmarshal([]byte(metadataString), &metadata); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(metadataString), &metadata); err != nil {
 			return nil, err
 		}
 		databaseMessage.Metadata = &metadata

@@ -52,7 +52,7 @@ func configureGrpcRouters(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	v1pb.RegisterAuditLogServiceServer(grpcServer, apiv1.NewAuditLogService(stores, iamManager))
+	v1pb.RegisterAuditLogServiceServer(grpcServer, apiv1.NewAuditLogService(stores, iamManager, licenseService))
 	v1pb.RegisterAuthServiceServer(grpcServer, authService)
 	v1pb.RegisterActuatorServiceServer(grpcServer, apiv1.NewActuatorService(stores, profile, errorRecordRing, licenseService))
 	v1pb.RegisterSubscriptionServiceServer(grpcServer, apiv1.NewSubscriptionService(
@@ -77,7 +77,7 @@ func configureGrpcRouters(
 	v1pb.RegisterIdentityProviderServiceServer(grpcServer, apiv1.NewIdentityProviderService(stores, licenseService))
 	v1pb.RegisterSettingServiceServer(grpcServer, apiv1.NewSettingService(stores, profile, licenseService, stateCfg))
 	v1pb.RegisterAnomalyServiceServer(grpcServer, apiv1.NewAnomalyService(stores))
-	v1pb.RegisterSQLServiceServer(grpcServer, apiv1.NewSQLService(stores, schemaSyncer, dbFactory, licenseService, profile, iamManager))
+	v1pb.RegisterSQLServiceServer(grpcServer, apiv1.NewSQLService(stores, sheetManager, schemaSyncer, dbFactory, licenseService, profile, iamManager))
 	v1pb.RegisterVCSProviderServiceServer(grpcServer, apiv1.NewVCSProviderService(stores))
 	v1pb.RegisterRiskServiceServer(grpcServer, apiv1.NewRiskService(stores, licenseService))
 	planService := apiv1.NewPlanService(stores, sheetManager, licenseService, dbFactory, planCheckScheduler, stateCfg, profile, iamManager)
@@ -94,6 +94,7 @@ func configureGrpcRouters(
 	v1pb.RegisterChangelistServiceServer(grpcServer, apiv1.NewChangelistService(stores, profile, iamManager))
 	v1pb.RegisterVCSConnectorServiceServer(grpcServer, apiv1.NewVCSConnectorService(stores))
 	v1pb.RegisterUserGroupServiceServer(grpcServer, apiv1.NewUserGroupService(stores, iamManager))
+	v1pb.RegisterReviewConfigServiceServer(grpcServer, apiv1.NewReviewConfigService(stores, licenseService))
 
 	// REST gateway proxy.
 	grpcEndpoint := fmt.Sprintf(":%d", profile.Port)
@@ -175,6 +176,9 @@ func configureGrpcRouters(
 		return nil, nil, nil, err
 	}
 	if err := v1pb.RegisterUserGroupServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := v1pb.RegisterReviewConfigServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, nil, nil, err
 	}
 	return planService, rolloutService, issueService, nil

@@ -189,6 +189,7 @@ func (d *DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.Ins
 				KDCPort:              t.KrbConfig.KdcPort,
 				KDCTransportProtocol: t.KrbConfig.KdcTransportProtocol,
 			},
+			Keytab: t.KrbConfig.Keytab,
 		}
 	default:
 		dbSaslConfig = nil
@@ -227,6 +228,8 @@ func (d *DBFactory) GetDataSourceDriver(ctx context.Context, instance *store.Ins
 			ReplicaSet:               dataSource.ReplicaSet,
 			DirectConnection:         dataSource.DirectConnection,
 			Region:                   dataSource.Region,
+			AccountID:                dataSource.AccountID,
+			WarehouseID:              dataSource.WarehouseID,
 		},
 	)
 	if err != nil {

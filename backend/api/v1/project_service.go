@@ -110,6 +110,12 @@ func (s *ProjectService) CreateProject(ctx context.Context, request *v1pb.Create
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
+	if projectMessage.TenantMode == api.TenantModeTenant {
+		if err := s.licenseService.IsFeatureEnabled(api.FeatureMultiTenancy); err != nil {
+			return nil, status.Errorf(codes.PermissionDenied, err.Error())
+		}
+	}
+
 	setting, err := s.store.GetDataClassificationSetting(ctx)
 	if err != nil {
 		slog.Error("failed to find classification setting", log.BBError(err))
@@ -169,6 +175,11 @@ func (s *ProjectService) UpdateProject(ctx context.Context, request *v1pb.Update
 			patch.Key = &request.Project.Key
 		case "tenant_mode":
 			tenantMode := convertToProjectTenantMode(request.Project.TenantMode)
+			if tenantMode == api.TenantModeTenant {
+				if err := s.licenseService.IsFeatureEnabled(api.FeatureMultiTenancy); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, err.Error())
+				}
+			}
 			patch.TenantMode = &tenantMode
 		case "data_classification_config_id":
 			setting, err := s.store.GetDataClassificationSetting(ctx)
@@ -201,6 +212,14 @@ func (s *ProjectService) UpdateProject(ctx context.Context, request *v1pb.Update
 		case "force_issue_labels":
 			projectSettings := project.Setting
 			projectSettings.ForceIssueLabels = request.Project.ForceIssueLabels
+			patch.Setting = projectSettings
+		case "allow_modify_statement":
+			projectSettings := project.Setting
+			projectSettings.AllowModifyStatement = request.Project.AllowModifyStatement
+			patch.Setting = projectSettings
+		case "auto_resolve_issue":
+			projectSettings := project.Setting
+			projectSettings.AutoResolveIssue = request.Project.AutoResolveIssue
 			patch.Setting = projectSettings
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, `unsupport update_mask "%s"`, path)
@@ -694,7 +713,7 @@ func (s *ProjectService) TestWebhook(ctx context.Context, request *v1pb.TestWebh
 			Link:         fmt.Sprintf("%s/project/%s/webhook/%s", setting.ExternalUrl, fmt.Sprintf("%s-%d", slug.Make(project.Title), project.UID), fmt.Sprintf("%s-%d", slug.Make(webhook.Title), webhook.ID)),
 			CreatorID:    api.SystemBotID,
 			CreatorName:  "Bytebase",
-			CreatorEmail: api.SystemBotEmail,
+			CreatorEmail: s.store.GetSystemBotUser(ctx).Email,
 			CreatedTs:    time.Now().Unix(),
 			Issue: &webhookplugin.Issue{
 				ID:          1,
@@ -1367,6 +1386,7 @@ func (s *ProjectService) convertToV1IamPolicy(ctx context.Context, iamPolicy *st
 				}
 				members = append(members, fmt.Sprintf("group:%s", email))
 			} else {
+				// handle allUsers.
 				members = append(members, member)
 			}
 		}
@@ -1407,7 +1427,7 @@ func (s *ProjectService) convertToStoreIamPolicy(ctx context.Context, iamPolicy 
 	for _, binding := range iamPolicy.Bindings {
 		var members []string
 		for _, member := range binding.Members {
-			if strings.HasPrefix(member, "user:") || member == api.AllUsers {
+			if strings.HasPrefix(member, "user:") {
 				email := strings.TrimPrefix(member, "user:")
 				user, err := s.store.GetUserByEmail(ctx, email)
 				if err != nil {
@@ -1420,6 +1440,8 @@ func (s *ProjectService) convertToStoreIamPolicy(ctx context.Context, iamPolicy 
 			} else if strings.HasPrefix(member, "group:") {
 				email := strings.TrimPrefix(member, "group:")
 				members = append(members, common.FormatGroupEmail(email))
+			} else if member == api.AllUsers {
+				members = append(members, member)
 			} else {
 				return nil, status.Errorf(codes.InvalidArgument, "unsupport member %s", member)
 			}
@@ -1486,6 +1508,8 @@ func convertToProject(projectMessage *store.ProjectMessage) *v1pb.Project {
 		DataClassificationConfigId: projectMessage.DataClassificationConfigID,
 		IssueLabels:                issueLabels,
 		ForceIssueLabels:           projectMessage.Setting.ForceIssueLabels,
+		AllowModifyStatement:       projectMessage.Setting.AllowModifyStatement,
+		AutoResolveIssue:           projectMessage.Setting.AutoResolveIssue,
 	}
 }
 

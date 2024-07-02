@@ -155,7 +155,7 @@ func (driver *Driver) Execute(ctx context.Context, statement string, _ db.Execut
 }
 
 // Dump dumps the database.
-func (*Driver) Dump(_ context.Context, _ io.Writer, _ bool) (string, error) {
+func (*Driver) Dump(_ context.Context, _ io.Writer) (string, error) {
 	return "", nil
 }
 
@@ -198,6 +198,7 @@ func getBasicMongoDBConnectionURI(connConfig db.ConnectionConfig) string {
 	if connConfig.ReplicaSet != "" {
 		values.Add("replicaSet", connConfig.ReplicaSet)
 	}
+	values.Add("appName", "bytebase")
 	// Add SSL options if provided
 	if connConfig.TLSConfig.SslCA != "" {
 		values.Add("tlsCAFile", connConfig.TLSConfig.SslCA)
@@ -217,7 +218,7 @@ func getBasicMongoDBConnectionURI(connConfig db.ConnectionConfig) string {
 
 // QueryConn queries a SQL statement in a given connection.
 func (driver *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, queryContext *db.QueryContext) ([]*v1pb.QueryResult, error) {
-	if queryContext.Explain {
+	if queryContext != nil && queryContext.Explain {
 		return nil, errors.New("MongoDB does not support EXPLAIN")
 	}
 

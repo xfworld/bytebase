@@ -51,7 +51,7 @@ func CreateHiveConnPool(
 	switch t := config.SASLConfig.(type) {
 	case *db.KerberosConfig:
 		// Kerberos.
-		hiveConfig.Hostname = config.Host
+		hiveConfig.Hostname = t.Instance
 		hiveConfig.Service = t.Primary
 	case *db.PlainSASLConfig:
 		// Plain.
@@ -63,8 +63,24 @@ func CreateHiveConnPool(
 
 	for i := 0; i < numMaxConn; i++ {
 		conn, err := gohive.Connect(config.Host, port, config.SASLConfig.GetTypeName(), hiveConfig)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create Hive connection")
+		// release resources if err.
+		if err != nil || conn == nil {
+			if err == nil {
+				err = errors.New("failed to create Hive connection pool")
+			} else {
+				err = errors.Wrapf(err, "failed to create Hive connection pool")
+			}
+			var errWhenClose error
+			close(conns)
+			for conn := range conns {
+				if err := conn.Close(); err != nil {
+					errWhenClose = err
+				}
+			}
+			if errWhenClose != nil {
+				err = errors.Wrapf(err, "failed to release Hive connection")
+			}
+			return nil, err
 		}
 		conns <- conn
 	}
@@ -85,6 +101,7 @@ func CreateHiveConnPool(
 func (pool *FixedConnPool) Get(dbName string) (*gohive.Connection, error) {
 	pool.RWMutex.RLock()
 	if !pool.IsActivated {
+		pool.RWMutex.RUnlock()
 		return nil, errors.New("connection pool has been closed")
 	}
 	pool.RWMutex.RUnlock()
@@ -98,7 +115,7 @@ func (pool *FixedConnPool) Get(dbName string) (*gohive.Connection, error) {
 		var err error
 		conn, err = gohive.Connect(pool.Host, pool.Port, pool.SASLConfig.GetTypeName(), pool.HiveConfig)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create Hive connection")
+			return nil, errors.Wrapf(err, "failed to get Hive connection")
 		}
 	}
 
@@ -117,6 +134,7 @@ func (pool *FixedConnPool) Put(conn *gohive.Connection) {
 	pool.RWMutex.RLock()
 	if !pool.IsActivated {
 		conn.Close()
+		pool.RWMutex.RUnlock()
 		return
 	}
 	pool.RWMutex.RUnlock()
@@ -130,10 +148,12 @@ func (pool *FixedConnPool) Put(conn *gohive.Connection) {
 
 func (pool *FixedConnPool) Destroy() error {
 	pool.RWMutex.Lock()
+
 	if pool.IsActivated {
 		pool.IsActivated = false
 		close(pool.Connections)
 	} else {
+		pool.RWMutex.Unlock()
 		return errors.New("connection pool has been closed already")
 	}
 	pool.RWMutex.Unlock()

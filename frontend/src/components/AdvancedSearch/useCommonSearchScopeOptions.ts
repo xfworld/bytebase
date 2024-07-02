@@ -1,6 +1,7 @@
 import type { Ref, VNode } from "vue";
 import { computed, h, unref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import GitIcon from "@/components/GitIcon.vue";
 import {
   InstanceV1Name,
@@ -11,7 +12,7 @@ import {
 import {
   useDatabaseV1Store,
   useInstanceV1List,
-  useSearchDatabaseV1List,
+  useDatabaseV1ListByProject,
   useEnvironmentV1List,
   useProjectV1List,
 } from "@/store";
@@ -32,13 +33,24 @@ export const useCommonSearchScopeOptions = (
   supportOptionIdList: MaybeRef<SearchScopeId[]>
 ) => {
   const { t } = useI18n();
+  const route = useRoute();
   const databaseV1Store = useDatabaseV1Store();
   const environmentList = useEnvironmentV1List(false /* !showDeleted */);
   const { projectList } = useProjectV1List();
-  const { instanceList } = useInstanceV1List(false /* !showDeleted */);
-  const { databaseList } = useSearchDatabaseV1List({
-    filter: "instance = instances/-",
+
+  const project = computed(() => {
+    const { projectId } = route.params;
+    if (projectId && typeof projectId === "string") {
+      return `projects/${projectId}`;
+    }
+    return undefined;
   });
+  const { instanceList } = useInstanceV1List(
+    /* !showDeleted */ false,
+    /* !forceUpdate */ false,
+    /* parent */ project
+  );
+  const { databaseList } = useDatabaseV1ListByProject(project);
 
   // fullScopeOptions provides full search scopes and options.
   // we need this as the source of truth.

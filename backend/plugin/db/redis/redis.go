@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/shlex"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/multierr"
@@ -20,7 +20,6 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/bytebase/bytebase/backend/common"
-	"github.com/bytebase/bytebase/backend/common/log"
 	"github.com/bytebase/bytebase/backend/plugin/db"
 	"github.com/bytebase/bytebase/backend/plugin/db/util"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
@@ -47,7 +46,7 @@ func newDriver(_ db.DriverConfig) db.Driver {
 }
 
 // Open opens the redis driver.
-func (d *Driver) Open(ctx context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
+func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionConfig) (db.Driver, error) {
 	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
 	tlsConfig, err := config.TLSConfig.GetSslConfig()
 	if err != nil {
@@ -89,25 +88,6 @@ func (d *Driver) Open(ctx context.Context, _ storepb.Engine, config db.Connectio
 		}
 	}
 	d.rdb = redis.NewUniversalClient(options)
-
-	clusterEnabled, err := d.getClusterEnabled(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// switch to cluster if cluster is enabled.
-	if clusterEnabled {
-		if err := d.rdb.Close(); err != nil {
-			slog.Warn("failed to close redis driver when switching to redis cluster driver", log.BBError(err))
-		}
-		d.rdb = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:     []string{addr},
-			Username:  config.Username,
-			Password:  config.Password,
-			TLSConfig: tlsConfig,
-			ReadOnly:  config.ReadOnly,
-		})
-	}
 
 	return d, nil
 }
@@ -151,18 +131,18 @@ func (d *Driver) Execute(ctx context.Context, statement string, opts db.ExecuteO
 	}
 
 	lines := strings.Split(statement, "\n")
-	for i := range lines {
-		lines[i] = strings.Trim(lines[i], " \n\t\r")
-	}
-
 	if _, err := d.rdb.Pipelined(ctx, func(p redis.Pipeliner) error {
 		for _, line := range lines {
-			if line == "" {
+			fields, err := shlex.Split(line)
+			if err != nil {
+				return errors.Wrapf(err, "failed to split command %s", line)
+			}
+			if len(fields) == 0 {
 				continue
 			}
 			var input []any
-			for _, s := range strings.Split(line, " ") {
-				input = append(input, s)
+			for _, v := range fields {
+				input = append(input, v)
 			}
 			_ = p.Do(ctx, input...)
 		}
@@ -177,38 +157,31 @@ func (d *Driver) Execute(ctx context.Context, statement string, opts db.ExecuteO
 // Dump and restore
 // Dump the database, if dbName is empty, then dump all databases.
 // Redis is schemaless, we don't support dump Redis data currently.
-func (*Driver) Dump(_ context.Context, _ io.Writer, schemaOnly bool) (string, error) {
-	if !schemaOnly {
-		return "", errors.New("redis: not supported")
-	}
+func (*Driver) Dump(_ context.Context, _ io.Writer) (string, error) {
 	return "", nil
 }
 
 // QueryConn queries a SQL statement in a given connection.
 func (d *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, queryContext *db.QueryContext) ([]*v1pb.QueryResult, error) {
-	if queryContext.Explain {
+	if queryContext != nil && queryContext.Explain {
 		return nil, errors.New("MongoDB does not support EXPLAIN")
 	}
 
 	startTime := time.Now()
-	l := strings.Split(statement, "\n")
-	for i := range l {
-		l[i] = strings.Trim(l[i], " \n\t\r")
-	}
-	var lines []string
-	for _, v := range l {
-		if v == "" {
-			continue
-		}
-		lines = append(lines, v)
-	}
-
+	lines := strings.Split(statement, "\n")
 	var cmds []*redis.Cmd
 	if _, err := d.rdb.Pipelined(ctx, func(p redis.Pipeliner) error {
 		for _, line := range lines {
+			fields, err := shlex.Split(line)
+			if err != nil {
+				return errors.Wrapf(err, "failed to split command %s", line)
+			}
+			if len(fields) == 0 {
+				continue
+			}
 			var input []any
-			for _, s := range strings.Split(line, " ") {
-				input = append(input, s)
+			for _, v := range fields {
+				input = append(input, v)
 			}
 			cmd := p.Do(ctx, input...)
 			cmds = append(cmds, cmd)

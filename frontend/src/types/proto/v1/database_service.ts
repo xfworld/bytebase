@@ -167,7 +167,7 @@ export interface ListDatabasesRequest {
   pageToken: string;
   /**
    * Filter is used to filter databases returned in the list.
-   * For example, "project = projects/{project}" can be used to list databases in a project.
+   * For example, `project == "projects/{project}"` can be used to list databases in a project.
    * Note: the project filter will be moved to parent.
    */
   filter: string;
@@ -407,7 +407,6 @@ export interface DatabaseMetadata {
   extensions: ExtensionMetadata[];
   /** The schema_configs is the list of configs for schemas in a database. */
   schemaConfigs: SchemaConfig[];
-  classificationFromConfig: boolean;
 }
 
 /**
@@ -461,6 +460,8 @@ export interface TableMetadata {
   engine: string;
   /** The collation is the collation of a table. */
   collation: string;
+  /** The character set of table. */
+  charset: string;
   /** The row_count is the estimated number of rows of a table. */
   rowCount: Long;
   /** The data_size is the estimated data size of a table. */
@@ -482,6 +483,16 @@ export interface TableMetadata {
   foreignKeys: ForeignKeyMetadata[];
   /** The partitions is the list of partitions in a table. */
   partitions: TablePartitionMetadata[];
+  /** The check_constraints is the list of check constraints in a table. */
+  checkConstraints: CheckConstraintMetadata[];
+}
+
+/** CheckConstraintMetadata is the metadata for check constraints. */
+export interface CheckConstraintMetadata {
+  /** The name is the name of a check constraint. */
+  name: string;
+  /** The expression is the expression of a check constraint. */
+  expression: string;
 }
 
 /** TablePartitionMetadata is the metadata for table partitions. */
@@ -663,6 +674,66 @@ export interface ColumnMetadata {
    * column masking data and global masking rules.
    */
   effectiveMaskingLevel: MaskingLevel;
+  /** The generation is the generation of a column. */
+  generation: GenerationMetadata | undefined;
+}
+
+export interface GenerationMetadata {
+  type: GenerationMetadata_Type;
+  expression: string;
+}
+
+export enum GenerationMetadata_Type {
+  TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED",
+  TYPE_VIRTUAL = "TYPE_VIRTUAL",
+  TYPE_STORED = "TYPE_STORED",
+  UNRECOGNIZED = "UNRECOGNIZED",
+}
+
+export function generationMetadata_TypeFromJSON(object: any): GenerationMetadata_Type {
+  switch (object) {
+    case 0:
+    case "TYPE_UNSPECIFIED":
+      return GenerationMetadata_Type.TYPE_UNSPECIFIED;
+    case 1:
+    case "TYPE_VIRTUAL":
+      return GenerationMetadata_Type.TYPE_VIRTUAL;
+    case 2:
+    case "TYPE_STORED":
+      return GenerationMetadata_Type.TYPE_STORED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return GenerationMetadata_Type.UNRECOGNIZED;
+  }
+}
+
+export function generationMetadata_TypeToJSON(object: GenerationMetadata_Type): string {
+  switch (object) {
+    case GenerationMetadata_Type.TYPE_UNSPECIFIED:
+      return "TYPE_UNSPECIFIED";
+    case GenerationMetadata_Type.TYPE_VIRTUAL:
+      return "TYPE_VIRTUAL";
+    case GenerationMetadata_Type.TYPE_STORED:
+      return "TYPE_STORED";
+    case GenerationMetadata_Type.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export function generationMetadata_TypeToNumber(object: GenerationMetadata_Type): number {
+  switch (object) {
+    case GenerationMetadata_Type.TYPE_UNSPECIFIED:
+      return 0;
+    case GenerationMetadata_Type.TYPE_VIRTUAL:
+      return 1;
+    case GenerationMetadata_Type.TYPE_STORED:
+      return 2;
+    case GenerationMetadata_Type.UNRECOGNIZED:
+    default:
+      return -1;
+  }
 }
 
 /** ViewMetadata is the metadata for views. */
@@ -933,6 +1004,8 @@ export interface IndexMetadata {
    * If the key length is not specified, it's -1.
    */
   keyLength: Long[];
+  /** The descending is the ordered descending of an index. */
+  descending: boolean[];
   /** The type is the type of an index. */
   type: string;
   /** The unique is whether the index is unique. */
@@ -990,12 +1063,6 @@ export interface DatabaseConfig {
   name: string;
   /** The schema_configs is the list of configs for schemas in a database. */
   schemaConfigs: SchemaConfig[];
-  /**
-   * If true, we will only store the classification in the config.
-   * Otherwise we will get the classification from table/column comment,
-   * and write back to the schema metadata.
-   */
-  classificationFromConfig: boolean;
 }
 
 export interface SchemaConfig {
@@ -3074,15 +3141,7 @@ export const Database_LabelsEntry = {
 };
 
 function createBaseDatabaseMetadata(): DatabaseMetadata {
-  return {
-    name: "",
-    schemas: [],
-    characterSet: "",
-    collation: "",
-    extensions: [],
-    schemaConfigs: [],
-    classificationFromConfig: false,
-  };
+  return { name: "", schemas: [], characterSet: "", collation: "", extensions: [], schemaConfigs: [] };
 }
 
 export const DatabaseMetadata = {
@@ -3104,9 +3163,6 @@ export const DatabaseMetadata = {
     }
     for (const v of message.schemaConfigs) {
       SchemaConfig.encode(v!, writer.uint32(50).fork()).ldelim();
-    }
-    if (message.classificationFromConfig === true) {
-      writer.uint32(56).bool(message.classificationFromConfig);
     }
     return writer;
   },
@@ -3160,13 +3216,6 @@ export const DatabaseMetadata = {
 
           message.schemaConfigs.push(SchemaConfig.decode(reader, reader.uint32()));
           continue;
-        case 7:
-          if (tag !== 56) {
-            break;
-          }
-
-          message.classificationFromConfig = reader.bool();
-          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3190,9 +3239,6 @@ export const DatabaseMetadata = {
       schemaConfigs: globalThis.Array.isArray(object?.schemaConfigs)
         ? object.schemaConfigs.map((e: any) => SchemaConfig.fromJSON(e))
         : [],
-      classificationFromConfig: isSet(object.classificationFromConfig)
-        ? globalThis.Boolean(object.classificationFromConfig)
-        : false,
     };
   },
 
@@ -3216,9 +3262,6 @@ export const DatabaseMetadata = {
     if (message.schemaConfigs?.length) {
       obj.schemaConfigs = message.schemaConfigs.map((e) => SchemaConfig.toJSON(e));
     }
-    if (message.classificationFromConfig === true) {
-      obj.classificationFromConfig = message.classificationFromConfig;
-    }
     return obj;
   },
 
@@ -3233,7 +3276,6 @@ export const DatabaseMetadata = {
     message.collation = object.collation ?? "";
     message.extensions = object.extensions?.map((e) => ExtensionMetadata.fromPartial(e)) || [];
     message.schemaConfigs = object.schemaConfigs?.map((e) => SchemaConfig.fromPartial(e)) || [];
-    message.classificationFromConfig = object.classificationFromConfig ?? false;
     return message;
   },
 };
@@ -3550,6 +3592,7 @@ function createBaseTableMetadata(): TableMetadata {
     indexes: [],
     engine: "",
     collation: "",
+    charset: "",
     rowCount: Long.ZERO,
     dataSize: Long.ZERO,
     indexSize: Long.ZERO,
@@ -3559,6 +3602,7 @@ function createBaseTableMetadata(): TableMetadata {
     userComment: "",
     foreignKeys: [],
     partitions: [],
+    checkConstraints: [],
   };
 }
 
@@ -3578,6 +3622,9 @@ export const TableMetadata = {
     }
     if (message.collation !== "") {
       writer.uint32(42).string(message.collation);
+    }
+    if (message.charset !== "") {
+      writer.uint32(138).string(message.charset);
     }
     if (!message.rowCount.isZero()) {
       writer.uint32(48).int64(message.rowCount);
@@ -3605,6 +3652,9 @@ export const TableMetadata = {
     }
     for (const v of message.partitions) {
       TablePartitionMetadata.encode(v!, writer.uint32(122).fork()).ldelim();
+    }
+    for (const v of message.checkConstraints) {
+      CheckConstraintMetadata.encode(v!, writer.uint32(130).fork()).ldelim();
     }
     return writer;
   },
@@ -3650,6 +3700,13 @@ export const TableMetadata = {
           }
 
           message.collation = reader.string();
+          continue;
+        case 17:
+          if (tag !== 138) {
+            break;
+          }
+
+          message.charset = reader.string();
           continue;
         case 6:
           if (tag !== 48) {
@@ -3714,6 +3771,13 @@ export const TableMetadata = {
 
           message.partitions.push(TablePartitionMetadata.decode(reader, reader.uint32()));
           continue;
+        case 16:
+          if (tag !== 130) {
+            break;
+          }
+
+          message.checkConstraints.push(CheckConstraintMetadata.decode(reader, reader.uint32()));
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3734,6 +3798,7 @@ export const TableMetadata = {
         : [],
       engine: isSet(object.engine) ? globalThis.String(object.engine) : "",
       collation: isSet(object.collation) ? globalThis.String(object.collation) : "",
+      charset: isSet(object.charset) ? globalThis.String(object.charset) : "",
       rowCount: isSet(object.rowCount) ? Long.fromValue(object.rowCount) : Long.ZERO,
       dataSize: isSet(object.dataSize) ? Long.fromValue(object.dataSize) : Long.ZERO,
       indexSize: isSet(object.indexSize) ? Long.fromValue(object.indexSize) : Long.ZERO,
@@ -3746,6 +3811,9 @@ export const TableMetadata = {
         : [],
       partitions: globalThis.Array.isArray(object?.partitions)
         ? object.partitions.map((e: any) => TablePartitionMetadata.fromJSON(e))
+        : [],
+      checkConstraints: globalThis.Array.isArray(object?.checkConstraints)
+        ? object.checkConstraints.map((e: any) => CheckConstraintMetadata.fromJSON(e))
         : [],
     };
   },
@@ -3766,6 +3834,9 @@ export const TableMetadata = {
     }
     if (message.collation !== "") {
       obj.collation = message.collation;
+    }
+    if (message.charset !== "") {
+      obj.charset = message.charset;
     }
     if (!message.rowCount.isZero()) {
       obj.rowCount = (message.rowCount || Long.ZERO).toString();
@@ -3794,6 +3865,9 @@ export const TableMetadata = {
     if (message.partitions?.length) {
       obj.partitions = message.partitions.map((e) => TablePartitionMetadata.toJSON(e));
     }
+    if (message.checkConstraints?.length) {
+      obj.checkConstraints = message.checkConstraints.map((e) => CheckConstraintMetadata.toJSON(e));
+    }
     return obj;
   },
 
@@ -3807,6 +3881,7 @@ export const TableMetadata = {
     message.indexes = object.indexes?.map((e) => IndexMetadata.fromPartial(e)) || [];
     message.engine = object.engine ?? "";
     message.collation = object.collation ?? "";
+    message.charset = object.charset ?? "";
     message.rowCount = (object.rowCount !== undefined && object.rowCount !== null)
       ? Long.fromValue(object.rowCount)
       : Long.ZERO;
@@ -3824,6 +3899,81 @@ export const TableMetadata = {
     message.userComment = object.userComment ?? "";
     message.foreignKeys = object.foreignKeys?.map((e) => ForeignKeyMetadata.fromPartial(e)) || [];
     message.partitions = object.partitions?.map((e) => TablePartitionMetadata.fromPartial(e)) || [];
+    message.checkConstraints = object.checkConstraints?.map((e) => CheckConstraintMetadata.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseCheckConstraintMetadata(): CheckConstraintMetadata {
+  return { name: "", expression: "" };
+}
+
+export const CheckConstraintMetadata = {
+  encode(message: CheckConstraintMetadata, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.expression !== "") {
+      writer.uint32(18).string(message.expression);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): CheckConstraintMetadata {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCheckConstraintMetadata();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.expression = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CheckConstraintMetadata {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      expression: isSet(object.expression) ? globalThis.String(object.expression) : "",
+    };
+  },
+
+  toJSON(message: CheckConstraintMetadata): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.expression !== "") {
+      obj.expression = message.expression;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CheckConstraintMetadata>): CheckConstraintMetadata {
+    return CheckConstraintMetadata.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CheckConstraintMetadata>): CheckConstraintMetadata {
+    const message = createBaseCheckConstraintMetadata();
+    message.name = object.name ?? "";
+    message.expression = object.expression ?? "";
     return message;
   },
 };
@@ -3989,6 +4139,7 @@ function createBaseColumnMetadata(): ColumnMetadata {
     comment: "",
     userComment: "",
     effectiveMaskingLevel: MaskingLevel.MASKING_LEVEL_UNSPECIFIED,
+    generation: undefined,
   };
 }
 
@@ -4035,6 +4186,9 @@ export const ColumnMetadata = {
     }
     if (message.effectiveMaskingLevel !== MaskingLevel.MASKING_LEVEL_UNSPECIFIED) {
       writer.uint32(112).int32(maskingLevelToNumber(message.effectiveMaskingLevel));
+    }
+    if (message.generation !== undefined) {
+      GenerationMetadata.encode(message.generation, writer.uint32(130).fork()).ldelim();
     }
     return writer;
   },
@@ -4144,6 +4298,13 @@ export const ColumnMetadata = {
 
           message.effectiveMaskingLevel = maskingLevelFromJSON(reader.int32());
           continue;
+        case 16:
+          if (tag !== 130) {
+            break;
+          }
+
+          message.generation = GenerationMetadata.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4171,6 +4332,7 @@ export const ColumnMetadata = {
       effectiveMaskingLevel: isSet(object.effectiveMaskingLevel)
         ? maskingLevelFromJSON(object.effectiveMaskingLevel)
         : MaskingLevel.MASKING_LEVEL_UNSPECIFIED,
+      generation: isSet(object.generation) ? GenerationMetadata.fromJSON(object.generation) : undefined,
     };
   },
 
@@ -4218,6 +4380,9 @@ export const ColumnMetadata = {
     if (message.effectiveMaskingLevel !== MaskingLevel.MASKING_LEVEL_UNSPECIFIED) {
       obj.effectiveMaskingLevel = maskingLevelToJSON(message.effectiveMaskingLevel);
     }
+    if (message.generation !== undefined) {
+      obj.generation = GenerationMetadata.toJSON(message.generation);
+    }
     return obj;
   },
 
@@ -4240,6 +4405,85 @@ export const ColumnMetadata = {
     message.comment = object.comment ?? "";
     message.userComment = object.userComment ?? "";
     message.effectiveMaskingLevel = object.effectiveMaskingLevel ?? MaskingLevel.MASKING_LEVEL_UNSPECIFIED;
+    message.generation = (object.generation !== undefined && object.generation !== null)
+      ? GenerationMetadata.fromPartial(object.generation)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseGenerationMetadata(): GenerationMetadata {
+  return { type: GenerationMetadata_Type.TYPE_UNSPECIFIED, expression: "" };
+}
+
+export const GenerationMetadata = {
+  encode(message: GenerationMetadata, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.type !== GenerationMetadata_Type.TYPE_UNSPECIFIED) {
+      writer.uint32(8).int32(generationMetadata_TypeToNumber(message.type));
+    }
+    if (message.expression !== "") {
+      writer.uint32(18).string(message.expression);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GenerationMetadata {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGenerationMetadata();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 8) {
+            break;
+          }
+
+          message.type = generationMetadata_TypeFromJSON(reader.int32());
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.expression = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GenerationMetadata {
+    return {
+      type: isSet(object.type)
+        ? generationMetadata_TypeFromJSON(object.type)
+        : GenerationMetadata_Type.TYPE_UNSPECIFIED,
+      expression: isSet(object.expression) ? globalThis.String(object.expression) : "",
+    };
+  },
+
+  toJSON(message: GenerationMetadata): unknown {
+    const obj: any = {};
+    if (message.type !== GenerationMetadata_Type.TYPE_UNSPECIFIED) {
+      obj.type = generationMetadata_TypeToJSON(message.type);
+    }
+    if (message.expression !== "") {
+      obj.expression = message.expression;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<GenerationMetadata>): GenerationMetadata {
+    return GenerationMetadata.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<GenerationMetadata>): GenerationMetadata {
+    const message = createBaseGenerationMetadata();
+    message.type = object.type ?? GenerationMetadata_Type.TYPE_UNSPECIFIED;
+    message.expression = object.expression ?? "";
     return message;
   },
 };
@@ -5078,6 +5322,7 @@ function createBaseIndexMetadata(): IndexMetadata {
     name: "",
     expressions: [],
     keyLength: [],
+    descending: [],
     type: "",
     unique: false,
     primary: false,
@@ -5098,6 +5343,11 @@ export const IndexMetadata = {
     writer.uint32(74).fork();
     for (const v of message.keyLength) {
       writer.int64(v);
+    }
+    writer.ldelim();
+    writer.uint32(82).fork();
+    for (const v of message.descending) {
+      writer.bool(v);
     }
     writer.ldelim();
     if (message.type !== "") {
@@ -5153,6 +5403,23 @@ export const IndexMetadata = {
             const end2 = reader.uint32() + reader.pos;
             while (reader.pos < end2) {
               message.keyLength.push(reader.int64() as Long);
+            }
+
+            continue;
+          }
+
+          break;
+        case 10:
+          if (tag === 80) {
+            message.descending.push(reader.bool());
+
+            continue;
+          }
+
+          if (tag === 82) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.descending.push(reader.bool());
             }
 
             continue;
@@ -5217,6 +5484,9 @@ export const IndexMetadata = {
         ? object.expressions.map((e: any) => globalThis.String(e))
         : [],
       keyLength: globalThis.Array.isArray(object?.keyLength) ? object.keyLength.map((e: any) => Long.fromValue(e)) : [],
+      descending: globalThis.Array.isArray(object?.descending)
+        ? object.descending.map((e: any) => globalThis.Boolean(e))
+        : [],
       type: isSet(object.type) ? globalThis.String(object.type) : "",
       unique: isSet(object.unique) ? globalThis.Boolean(object.unique) : false,
       primary: isSet(object.primary) ? globalThis.Boolean(object.primary) : false,
@@ -5236,6 +5506,9 @@ export const IndexMetadata = {
     }
     if (message.keyLength?.length) {
       obj.keyLength = message.keyLength.map((e) => (e || Long.ZERO).toString());
+    }
+    if (message.descending?.length) {
+      obj.descending = message.descending;
     }
     if (message.type !== "") {
       obj.type = message.type;
@@ -5266,6 +5539,7 @@ export const IndexMetadata = {
     message.name = object.name ?? "";
     message.expressions = object.expressions?.map((e) => e) || [];
     message.keyLength = object.keyLength?.map((e) => Long.fromValue(e)) || [];
+    message.descending = object.descending?.map((e) => e) || [];
     message.type = object.type ?? "";
     message.unique = object.unique ?? false;
     message.primary = object.primary ?? false;
@@ -5556,7 +5830,7 @@ export const ForeignKeyMetadata = {
 };
 
 function createBaseDatabaseConfig(): DatabaseConfig {
-  return { name: "", schemaConfigs: [], classificationFromConfig: false };
+  return { name: "", schemaConfigs: [] };
 }
 
 export const DatabaseConfig = {
@@ -5566,9 +5840,6 @@ export const DatabaseConfig = {
     }
     for (const v of message.schemaConfigs) {
       SchemaConfig.encode(v!, writer.uint32(18).fork()).ldelim();
-    }
-    if (message.classificationFromConfig === true) {
-      writer.uint32(24).bool(message.classificationFromConfig);
     }
     return writer;
   },
@@ -5594,13 +5865,6 @@ export const DatabaseConfig = {
 
           message.schemaConfigs.push(SchemaConfig.decode(reader, reader.uint32()));
           continue;
-        case 3:
-          if (tag !== 24) {
-            break;
-          }
-
-          message.classificationFromConfig = reader.bool();
-          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5616,9 +5880,6 @@ export const DatabaseConfig = {
       schemaConfigs: globalThis.Array.isArray(object?.schemaConfigs)
         ? object.schemaConfigs.map((e: any) => SchemaConfig.fromJSON(e))
         : [],
-      classificationFromConfig: isSet(object.classificationFromConfig)
-        ? globalThis.Boolean(object.classificationFromConfig)
-        : false,
     };
   },
 
@@ -5630,9 +5891,6 @@ export const DatabaseConfig = {
     if (message.schemaConfigs?.length) {
       obj.schemaConfigs = message.schemaConfigs.map((e) => SchemaConfig.toJSON(e));
     }
-    if (message.classificationFromConfig === true) {
-      obj.classificationFromConfig = message.classificationFromConfig;
-    }
     return obj;
   },
 
@@ -5643,7 +5901,6 @@ export const DatabaseConfig = {
     const message = createBaseDatabaseConfig();
     message.name = object.name ?? "";
     message.schemaConfigs = object.schemaConfigs?.map((e) => SchemaConfig.fromPartial(e)) || [];
-    message.classificationFromConfig = object.classificationFromConfig ?? false;
     return message;
   },
 };

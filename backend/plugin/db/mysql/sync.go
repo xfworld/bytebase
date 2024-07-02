@@ -32,6 +32,8 @@ const (
 	autoIncrementSymbol    = "AUTO_INCREMENT"
 	autoRandSymbol         = "AUTO_RANDOM"
 	pkAutoRandomBitsSymbol = "PK_AUTO_RANDOM_BITS"
+	virtualGenerated       = "VIRTUAL GENERATED"
+	storedGenerated        = "STORED GENERATED"
 )
 
 var (
@@ -154,6 +156,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		return nil, errors.Wrapf(err, "failed to parse MySQL version %s to semantic version", version)
 	}
 	atLeast8_0_13 := semVersion.GE(semver.MustParse("8.0.13"))
+	atLeast8_0_16 := semVersion.GE(semver.MustParse("8.0.16"))
 
 	// Query index info.
 	indexMap := make(map[db.TableKey]map[string]*storepb.IndexMetadata)
@@ -162,6 +165,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			TABLE_NAME,
 			INDEX_NAME,
 			COLUMN_NAME,
+			COLLATION,
 			IFNULL(SUB_PART, -1),
 			'',
 			SEQ_IN_INDEX,
@@ -182,6 +186,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 				TABLE_NAME,
 				INDEX_NAME,
 				COLUMN_NAME,
+				COLLATION,
 				IFNULL(SUB_PART, -1),
 				EXPRESSION,
 				SEQ_IN_INDEX,
@@ -202,6 +207,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		var tableName, indexName, indexType, comment, expression string
 		var columnName sql.NullString
 		var expressionName sql.NullString
+		var collation sql.NullString
 		var position int
 		var subPart int64
 		var unique, visible bool
@@ -209,6 +215,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			&tableName,
 			&indexName,
 			&columnName,
+			&collation,
 			&subPart,
 			&expressionName,
 			&position,
@@ -227,6 +234,11 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			expression = fmt.Sprintf("(%s)", expressionName.String)
 		}
 
+		desc := false
+		if collation.Valid && collation.String == "D" {
+			desc = true
+		}
+
 		key := db.TableKey{Schema: "", Table: tableName}
 		if _, ok := indexMap[key]; !ok {
 			indexMap[key] = make(map[string]*storepb.IndexMetadata)
@@ -243,6 +255,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		}
 		indexMap[key][indexName].Expressions = append(indexMap[key][indexName].Expressions, expression)
 		indexMap[key][indexName].KeyLength = append(indexMap[key][indexName].KeyLength, subPart)
+		indexMap[key][indexName].Descending = append(indexMap[key][indexName].Descending, desc)
 	}
 	if err := indexRows.Err(); err != nil {
 		return nil, util.FormatErrorWithQuery(err, indexQuery)
@@ -261,6 +274,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			IFNULL(CHARACTER_SET_NAME, ''),
 			IFNULL(COLLATION_NAME, ''),
 			COLUMN_COMMENT,
+			GENERATION_EXPRESSION,
 			EXTRA
 		FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = ?
@@ -274,6 +288,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		column := &storepb.ColumnMetadata{}
 		var tableName, nullable, extra string
 		var defaultStr sql.NullString
+		var generationExpr sql.NullString
 		if err := columnRows.Scan(
 			&tableName,
 			&column.Name,
@@ -284,6 +299,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			&column.CharacterSet,
 			&column.Collation,
 			&column.Comment,
+			&generationExpr,
 			&extra,
 		); err != nil {
 			return nil, err
@@ -292,13 +308,61 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		if err != nil {
 			return nil, err
 		}
+		// TODO(d): sanitize \0 strings for now till we find better solutions.
+		column.Comment = strings.ReplaceAll(column.Comment, "\u0000", "")
 		column.Nullable = nullableBool
 		setColumnMetadataDefault(column, defaultStr, nullableBool, extra)
 		key := db.TableKey{Schema: "", Table: tableName}
 		columnMap[key] = append(columnMap[key], column)
+		if extra != "" && strings.Contains(strings.ToUpper(extra), virtualGenerated) && generationExpr.Valid && generationExpr.String != "" {
+			column.Generation = &storepb.GenerationMetadata{
+				Type:       storepb.GenerationMetadata_TYPE_VIRTUAL,
+				Expression: generationExpr.String,
+			}
+		} else if extra != "" && strings.Contains(strings.ToUpper(extra), storedGenerated) && generationExpr.Valid && generationExpr.String != "" {
+			column.Generation = &storepb.GenerationMetadata{
+				Type:       storepb.GenerationMetadata_TYPE_STORED,
+				Expression: generationExpr.String,
+			}
+		}
 	}
 	if err := columnRows.Err(); err != nil {
 		return nil, util.FormatErrorWithQuery(err, columnQuery)
+	}
+
+	// Check constraints info.
+	checkMap := make(map[db.TableKey][]*storepb.CheckConstraintMetadata)
+	if atLeast8_0_16 {
+		checkQuery := `
+		SELECT
+			tc.TABLE_NAME,
+			cc.CONSTRAINT_NAME,
+			cc.CHECK_CLAUSE
+		FROM information_schema.CHECK_CONSTRAINTS cc
+			JOIN information_schema.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+		WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA = ?
+	`
+		checkRows, err := driver.db.QueryContext(ctx, checkQuery, driver.databaseName)
+		if err != nil {
+			return nil, util.FormatErrorWithQuery(err, checkQuery)
+		}
+		defer checkRows.Close()
+		for checkRows.Next() {
+			check := &storepb.CheckConstraintMetadata{}
+			var tableName string
+			if err := checkRows.Scan(
+				&tableName,
+				&check.Name,
+				&check.Expression,
+			); err != nil {
+				return nil, err
+			}
+			key := db.TableKey{Schema: "", Table: tableName}
+			checkMap[key] = append(checkMap[key], check)
+		}
+		if err := checkRows.Err(); err != nil {
+			return nil, util.FormatErrorWithQuery(err, checkQuery)
+		}
 	}
 
 	// Query view info.
@@ -363,17 +427,20 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 	// Query table info.
 	tableQuery := `
 		SELECT
-			TABLE_NAME,
-			TABLE_TYPE,
-			IFNULL(ENGINE, ''),
-			IFNULL(TABLE_COLLATION, ''),
-			IFNULL(TABLE_ROWS, 0),
-			IFNULL(DATA_LENGTH, 0),
-			IFNULL(INDEX_LENGTH, 0),
-			IFNULL(DATA_FREE, 0),
-			IFNULL(CREATE_OPTIONS, ''),
-			IFNULL(TABLE_COMMENT, '')
-		FROM information_schema.TABLES
+			TABLES.TABLE_NAME,
+			TABLES.TABLE_TYPE,
+			IFNULL(TABLES.ENGINE, ''),
+			IFNULL(TABLES.TABLE_COLLATION, ''),
+			IFNULL(TABLES.TABLE_ROWS, 0),
+			IFNULL(TABLES.DATA_LENGTH, 0),
+			IFNULL(TABLES.INDEX_LENGTH, 0),
+			IFNULL(TABLES.DATA_FREE, 0),
+			IFNULL(TABLES.CREATE_OPTIONS, ''),
+			IFNULL(TABLES.TABLE_COMMENT, ''),
+			IFNULL(CCSA.CHARACTER_SET_NAME, '')
+		FROM information_schema.TABLES TABLES
+		LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA
+		ON TABLES.TABLE_COLLATION = CCSA.COLLATION_NAME
 		WHERE TABLE_SCHEMA = ?
 		ORDER BY TABLE_NAME`
 	tableRows, err := driver.db.QueryContext(ctx, tableQuery, driver.databaseName)
@@ -382,7 +449,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 	}
 	defer tableRows.Close()
 	for tableRows.Next() {
-		var tableName, tableType, engine, collation, createOptions, comment string
+		var tableName, tableType, engine, collation, createOptions, comment, charset string
 		var rowCount, dataSize, indexSize, dataFree int64
 		// Workaround TiDB bug https://github.com/pingcap/tidb/issues/27970
 		var tableCollation sql.NullString
@@ -397,6 +464,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 			&dataFree,
 			&createOptions,
 			&comment,
+			&charset,
 		); err != nil {
 			return nil, err
 		}
@@ -406,18 +474,20 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 		case baseTableType:
 			columns := columnMap[key]
 			tableMetadata := &storepb.TableMetadata{
-				Name:          tableName,
-				Columns:       columns,
-				ForeignKeys:   foreignKeysMap[key],
-				Engine:        engine,
-				Collation:     collation,
-				RowCount:      rowCount,
-				DataSize:      dataSize,
-				IndexSize:     indexSize,
-				DataFree:      dataFree,
-				CreateOptions: createOptions,
-				Comment:       comment,
-				Partitions:    partitionTables[key],
+				Name:             tableName,
+				Columns:          columns,
+				ForeignKeys:      foreignKeysMap[key],
+				Engine:           engine,
+				Collation:        collation,
+				RowCount:         rowCount,
+				DataSize:         dataSize,
+				IndexSize:        indexSize,
+				DataFree:         dataFree,
+				CreateOptions:    createOptions,
+				Comment:          comment,
+				Partitions:       partitionTables[key],
+				CheckConstraints: checkMap[key],
+				Charset:          charset,
 			}
 			if tableCollation.Valid {
 				tableMetadata.Collation = tableCollation.String
@@ -633,8 +703,10 @@ func setColumnMetadataDefault(column *storepb.ColumnMetadata, defaultStr sql.Nul
 		case strings.Contains(extra, "DEFAULT_GENERATED"):
 			column.DefaultValue = &storepb.ColumnMetadata_DefaultExpression{DefaultExpression: fmt.Sprintf("(%s)", defaultStr.String)}
 		default:
+			// TODO(d): sanitize \0 strings for now till we find better solutions.
+			v := strings.ReplaceAll(defaultStr.String, "\u0000", "")
 			// For non-generated and non CURRENT_XXX default value, use string.
-			column.DefaultValue = &storepb.ColumnMetadata_Default{Default: &wrapperspb.StringValue{Value: defaultStr.String}}
+			column.DefaultValue = &storepb.ColumnMetadata_Default{Default: &wrapperspb.StringValue{Value: v}}
 		}
 	} else if strings.Contains(strings.ToUpper(extra), autoIncrementSymbol) {
 		// TODO(zp): refactor column default value.

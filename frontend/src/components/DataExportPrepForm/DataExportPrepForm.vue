@@ -1,5 +1,5 @@
 <template>
-  <DrawerContent>
+  <DrawerContent class="max-w-[100vw]">
     <template #header>
       <div class="flex flex-col gap-y-1">
         <span>
@@ -28,7 +28,6 @@
           <DatabaseV1Table
             mode="ALL_SHORT"
             :database-list="filteredDatabaseList"
-            :show-sql-editor-button="false"
             :single-selection="true"
             @update:selected-databases="handleDatabasesSelectionChanged"
           />

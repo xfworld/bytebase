@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/bytebase/bytebase/backend/common"
+	"github.com/bytebase/bytebase/backend/common/log"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 )
@@ -31,7 +32,7 @@ func (s *Store) GetProjectIamPolicy(ctx context.Context, projectUID int) (*store
 	}
 
 	p := &storepb.ProjectIamPolicy{}
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), p); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal iam policy")
 	}
 
@@ -56,38 +57,88 @@ func (s *Store) GetRolloutPolicy(ctx context.Context, environmentID int) (*store
 	}
 
 	p := &storepb.RolloutPolicy{}
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), p); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal rollout policy")
 	}
 
 	return p, nil
 }
 
-// GetSQLReviewPolicy will get the SQL review policy for an environment.
-func (s *Store) GetSQLReviewPolicy(ctx context.Context, environmentID int) (*storepb.SQLReviewPolicy, error) {
-	resourceType := api.PolicyResourceTypeEnvironment
-	pType := api.PolicyTypeSQLReview
+// GetReviewConfigForDatabase will get the review config for a database.
+func (s *Store) GetReviewConfigForDatabase(ctx context.Context, database *DatabaseMessage) (*storepb.ReviewConfigPayload, error) {
+	resources := []DatabaseReviewConfig{
+		&databaseReviewConfigResource{},
+		&databaseProjectReviewConfigResource{},
+		&databaseEnvironmentReviewConfigResource{},
+	}
+
+	for _, resource := range resources {
+		resourceType := resource.GetResourceType()
+		resourceUID, err := resource.GetResourceUID(ctx, s, database)
+		if err != nil {
+			slog.Debug("failed to resource id", slog.String("resource_type", string(resourceType)), slog.String("database", database.DatabaseName), log.BBError(err))
+			continue
+		}
+
+		reviewConfig, err := s.getReviewConfigByResource(ctx, resourceType, resourceUID)
+		if err != nil {
+			slog.Debug("failed to get review config", slog.String("resource_type", string(resourceType)), slog.String("database", database.DatabaseName), log.BBError(err))
+			continue
+		}
+		if reviewConfig == nil {
+			slog.Debug("review config is empty", slog.String("resource_type", string(resourceType)), slog.String("database", database.DatabaseName), log.BBError(err))
+			continue
+		}
+		return reviewConfig, nil
+	}
+
+	return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("SQL review policy for database %s not found", database.DatabaseName)}
+}
+
+func (s *Store) getReviewConfigByResource(ctx context.Context, resourceType api.PolicyResourceType, resourceUID int) (*storepb.ReviewConfigPayload, error) {
+	pType := api.PolicyTypeTag
+
 	policy, err := s.GetPolicyV2(ctx, &FindPolicyMessage{
 		ResourceType: &resourceType,
-		ResourceUID:  &environmentID,
+		ResourceUID:  &resourceUID,
 		Type:         &pType,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if policy == nil {
-		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("SQL review policy for environment %d not found", environmentID)}
+		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("tag policy for resource %v/%d not found", resourceType, resourceUID)}
 	}
 	if !policy.Enforce {
-		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("SQL review policy is not enforced for environment %d", environmentID)}
+		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("tag policy is not enforced for resource %v/%d", resourceType, resourceUID)}
 	}
 
-	p := new(storepb.SQLReviewPolicy)
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	payload := &storepb.TagPolicy{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), payload); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal tag policy payload")
+	}
+
+	reviewConfigName, ok := payload.Tags[string(api.ReservedTagReviewConfig)]
+	if !ok {
+		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("review config tag for resource %v/%d not found", resourceType, resourceUID)}
+	}
+	reviewConfigID, err := common.GetReviewConfigID(reviewConfigName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to extract review config uid from %s", reviewConfigName)
+	}
+
+	reviewConfig, err := s.GetReviewConfig(ctx, reviewConfigID)
+	if err != nil {
 		return nil, err
 	}
+	if reviewConfig == nil {
+		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("review config for resource %v/%d not found", resourceType, resourceUID)}
+	}
+	if !reviewConfig.Enforce {
+		return nil, &common.Error{Code: common.NotFound, Err: errors.Errorf("review config is not enforced for resource %v/%d", resourceType, resourceUID)}
+	}
 
-	return p, nil
+	return reviewConfig.Payload, nil
 }
 
 // GetSlowQueryPolicy will get the slow query policy for instance ID.
@@ -124,7 +175,7 @@ func (s *Store) GetMaskingRulePolicy(ctx context.Context) (*storepb.MaskingRuleP
 	}
 
 	p := new(storepb.MaskingRulePolicy)
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), p); err != nil {
 		return nil, err
 	}
 
@@ -149,7 +200,7 @@ func (s *Store) GetMaskingPolicyByDatabaseUID(ctx context.Context, databaseUID i
 	}
 
 	p := new(storepb.MaskingPolicy)
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), p); err != nil {
 		return nil, err
 	}
 
@@ -174,7 +225,7 @@ func (s *Store) GetMaskingExceptionPolicyByProjectUID(ctx context.Context, proje
 	}
 
 	p := new(storepb.MaskingExceptionPolicy)
-	if err := protojson.Unmarshal([]byte(policy.Payload), p); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), p); err != nil {
 		return nil, err
 	}
 
@@ -211,7 +262,6 @@ type UpdatePolicyMessage struct {
 	InheritFromParent *bool
 	Payload           *string
 	Enforce           *bool
-	Delete            *bool
 }
 
 // GetPolicyV2 gets a policy.

@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/bytebase/bytebase/backend/common"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 )
@@ -50,6 +51,8 @@ type DataSourceMessage struct {
 	ReplicaSet          string
 	DirectConnection    bool
 	Region              string
+	AccountID           string
+	WarehouseID         string
 }
 
 // Copy returns a copy of the data source message.
@@ -125,6 +128,8 @@ type UpdateDataSourceMessage struct {
 	RemoveSASLConfig  bool
 	DirectConnection  *bool
 	Region            *string
+	AccountID         *string
+	WarehouseID       *string
 }
 
 func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) ([]*DataSourceMessage, error) {
@@ -172,8 +177,7 @@ func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) (
 			return nil, err
 		}
 		var dataSourceOptions storepb.DataSourceOptions
-		decoder := protojson.UnmarshalOptions{DiscardUnknown: true}
-		if err := decoder.Unmarshal(protoBytes, &dataSourceOptions); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal(protoBytes, &dataSourceOptions); err != nil {
 			return nil, err
 		}
 		dataSourceMessage.SRV = dataSourceOptions.Srv
@@ -193,6 +197,8 @@ func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) (
 		dataSourceMessage.ReplicaSet = dataSourceOptions.ReplicaSet
 		dataSourceMessage.DirectConnection = dataSourceOptions.DirectConnection
 		dataSourceMessage.Region = dataSourceOptions.Region
+		dataSourceMessage.AccountID = dataSourceOptions.AccountId
+		dataSourceMessage.WarehouseID = dataSourceOptions.WarehouseId
 		dataSourceMessages = append(dataSourceMessages, &dataSourceMessage)
 	}
 	if err := rows.Err(); err != nil {
@@ -357,6 +363,12 @@ func (s *Store) UpdateDataSourceV2(ctx context.Context, patch *UpdateDataSourceM
 	if v := patch.Region; v != nil {
 		optionSet, args = append(optionSet, fmt.Sprintf("jsonb_build_object('region', $%d::TEXT)", len(args)+1)), append(args, *v)
 	}
+	if v := patch.AccountID; v != nil {
+		optionSet, args = append(optionSet, fmt.Sprintf("jsonb_build_object('accountId', $%d::TEXT)", len(args)+1)), append(args, *v)
+	}
+	if v := patch.WarehouseID; v != nil {
+		optionSet, args = append(optionSet, fmt.Sprintf("jsonb_build_object('warehouseId', $%d::TEXT)", len(args)+1)), append(args, *v)
+	}
 	if len(optionSet) != 0 {
 		set = append(set, fmt.Sprintf(`options = options || %s`, strings.Join(optionSet, "||")))
 	}
@@ -413,6 +425,8 @@ func (*Store) addDataSourceToInstanceImplV2(ctx context.Context, tx *Tx, instanc
 		ReplicaSet:                         dataSource.ReplicaSet,
 		DirectConnection:                   dataSource.DirectConnection,
 		Region:                             dataSource.Region,
+		WarehouseId:                        dataSource.WarehouseID,
+		AccountId:                          dataSource.AccountID,
 	}
 	protoBytes, err := protojson.Marshal(&dataSourceOptions)
 	if err != nil {

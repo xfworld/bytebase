@@ -20,7 +20,7 @@ import (
 )
 
 // Dump dumps the database.
-func (driver *Driver) Dump(ctx context.Context, out io.Writer, schemaOnly bool) (string, error) {
+func (driver *Driver) Dump(ctx context.Context, out io.Writer) (string, error) {
 	// We don't support pg_dump for CloudSQL, because pg_dump not support IAM & instance name for authentication.
 	// To dump schema for CloudSQL, you need to run the cloud-sql-proxy with IAM to get the host and port.
 	// Learn more: https://linear.app/bytebase/issue/BYT-5401/support-iam-authentication-for-gcp-and-aws
@@ -58,7 +58,7 @@ func (driver *Driver) Dump(ctx context.Context, out io.Writer, schemaOnly bool) 
 	}
 
 	for _, dbName := range dumpableDbNames {
-		if err := driver.dumpOneDatabaseWithPgDump(ctx, dbName, out, schemaOnly); err != nil {
+		if err := driver.dumpOneDatabaseWithPgDump(ctx, dbName, out); err != nil {
 			return "", err
 		}
 	}
@@ -66,7 +66,7 @@ func (driver *Driver) Dump(ctx context.Context, out io.Writer, schemaOnly bool) 
 	return "", nil
 }
 
-func (driver *Driver) dumpOneDatabaseWithPgDump(ctx context.Context, database string, out io.Writer, schemaOnly bool) error {
+func (driver *Driver) dumpOneDatabaseWithPgDump(ctx context.Context, database string, out io.Writer) error {
 	var args []string
 	args = append(args, fmt.Sprintf("--username=%s", driver.config.Username))
 	if driver.sshClient == nil {
@@ -87,9 +87,7 @@ func (driver *Driver) dumpOneDatabaseWithPgDump(ctx context.Context, database st
 		databaseAddress := fmt.Sprintf("%s:%s", driver.config.Host, driver.config.Port)
 		go util.ProxyConnection(driver.sshClient, listener, databaseAddress)
 	}
-	if schemaOnly {
-		args = append(args, "--schema-only")
-	}
+	args = append(args, "--schema-only")
 	args = append(args, "--inserts")
 	args = append(args, "--use-set-session-authorization")
 	// Avoid pg_dump v15 generate "ALTER SCHEMA public OWNER TO" statement.
@@ -199,6 +197,13 @@ func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writ
 		if err := func() error {
 			// Skip "SET SESSION AUTHORIZATION" till we can support it.
 			if strings.HasPrefix(line, "SET SESSION AUTHORIZATION ") {
+				return nil
+			}
+			// Skip "COMMENT ON EXTENSION" till we can support it.
+			// Extensions created in AWS Aurora PostgreSQL are owned by rdsadmin.
+			// We don't have privileges to comment on the extension and have to ignore it.
+			if strings.HasPrefix(line, "COMMENT ON EXTENSION ") {
+				previousLineEmpty = true
 				return nil
 			}
 			// Skip comment lines.

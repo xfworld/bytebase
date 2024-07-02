@@ -26,12 +26,11 @@ var (
 )
 
 type ValidateSQLForEditorFunc func(string) (bool, error)
-type GetMaskedFieldsFunc func(string, string, *SensitiveSchemaInfo) ([]SensitiveField, error)
-type ExtractChangedResourcesFunc func(string, string, string) ([]SchemaResource, error)
+type ExtractChangedResourcesFunc func(string, string, any) ([]SchemaResource, error)
 type ExtractResourceListFunc func(string, string, string) ([]SchemaResource, error)
 type SplitMultiSQLFunc func(string) ([]SingleSQL, error)
 type SchemaDiffFunc func(ctx DiffContext, oldStmt, newStmt string) (string, error)
-type CompletionFunc func(ctx context.Context, statement string, caretLine int, caretOffset int, defaultDatabase string, metadata GetDatabaseMetadataFunc, listDatabaseNames ListDatabaseNamesFunc) ([]Candidate, error)
+type CompletionFunc func(ctx context.Context, cCtx CompletionContext, statement string, caretLine int, caretOffset int) ([]Candidate, error)
 
 // GetQuerySpanFunc is the interface of getting the query span for a query.
 type GetQuerySpanFunc func(ctx context.Context, gCtx GetQuerySpanContext, statement, database, schema string, ignoreCaseSensitive bool) (*QuerySpan, error)
@@ -40,7 +39,7 @@ type GetQuerySpanFunc func(ctx context.Context, gCtx GetQuerySpanContext, statem
 type GetAffectedRowsFunc func(ctx context.Context, stmt any, getAffectedRowsByQuery GetAffectedRowsCountByQueryFunc, getTableDataSizeFunc GetTableDataSizeFunc) (int64, error)
 
 // TransformDMLToSelectFunc is the interface of transforming DML statements to SELECT statements.
-type TransformDMLToSelectFunc func(statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]BackupStatement, error)
+type TransformDMLToSelectFunc func(ctx TransformContext, statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]BackupStatement, error)
 
 type GenerateRestoreSQLFunc func(statement string, backupDatabase string, backupTable string, originalDatabase string, originalTable string) (string, error)
 
@@ -93,12 +92,12 @@ func RegisterExtractChangedResourcesFunc(engine storepb.Engine, f ExtractChanged
 }
 
 // ExtractChangedResources extracts the changed resources from the SQL.
-func ExtractChangedResources(engine storepb.Engine, currentDatabase string, currentSchema string, sql string) ([]SchemaResource, error) {
+func ExtractChangedResources(engine storepb.Engine, currentDatabase string, currentSchema string, ast any) ([]SchemaResource, error) {
 	f, ok := changedResourcesGetters[engine]
 	if !ok {
 		return nil, errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(currentDatabase, currentSchema, sql)
+	return f(currentDatabase, currentSchema, ast)
 }
 
 func RegisterSplitterFunc(engine storepb.Engine, f SplitMultiSQLFunc) {
@@ -147,12 +146,12 @@ func RegisterCompleteFunc(engine storepb.Engine, f CompletionFunc) {
 }
 
 // Completion returns the completion candidates for the statement.
-func Completion(ctx context.Context, engine storepb.Engine, statement string, caretLine int, caretOffset int, defaultDatabase string, metadata GetDatabaseMetadataFunc, listDatabaseNames ListDatabaseNamesFunc) ([]Candidate, error) {
+func Completion(ctx context.Context, engine storepb.Engine, cCtx CompletionContext, statement string, caretLine int, caretOffset int) ([]Candidate, error) {
 	f, ok := completers[engine]
 	if !ok {
 		return nil, errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(ctx, statement, caretLine, caretOffset, defaultDatabase, metadata, listDatabaseNames)
+	return f(ctx, cCtx, statement, caretLine, caretOffset)
 }
 
 func RegisterGetQuerySpan(engine storepb.Engine, f GetQuerySpanFunc) {
@@ -227,12 +226,12 @@ func RegisterTransformDMLToSelect(engine storepb.Engine, f TransformDMLToSelectF
 }
 
 // TransformDMLToSelect transforms the DML statement to SELECT statement.
-func TransformDMLToSelect(engine storepb.Engine, statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]BackupStatement, error) {
+func TransformDMLToSelect(engine storepb.Engine, ctx TransformContext, statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]BackupStatement, error) {
 	f, ok := transformDMLToSelect[engine]
 	if !ok {
 		return nil, errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(statement, sourceDatabase, targetDatabase, tablePrefix)
+	return f(ctx, statement, sourceDatabase, targetDatabase, tablePrefix)
 }
 
 func RegisterGenerateRestoreSQL(engine storepb.Engine, f GenerateRestoreSQLFunc) {

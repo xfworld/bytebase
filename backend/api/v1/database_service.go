@@ -18,7 +18,6 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -377,7 +376,7 @@ func (s *DatabaseService) UpdateDatabase(ctx context.Context, request *v1pb.Upda
 	if request.Database == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "database must be set")
 	}
-	if request.UpdateMask == nil {
+	if len(request.GetUpdateMask().GetPaths()) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "update_mask must be set")
 	}
 
@@ -762,9 +761,8 @@ func (s *DatabaseService) UpdateDatabaseMetadata(ctx context.Context, request *v
 		if path == "schema_configs" {
 			databaseMetadata := request.GetDatabaseMetadata()
 			databaseConfig := convertV1DatabaseConfig(ctx, &v1pb.DatabaseConfig{
-				Name:                     databaseName,
-				SchemaConfigs:            databaseMetadata.GetSchemaConfigs(),
-				ClassificationFromConfig: databaseMetadata.ClassificationFromConfig,
+				Name:          databaseName,
+				SchemaConfigs: databaseMetadata.GetSchemaConfigs(),
 			}, nil /* optionalStores */)
 			if err := s.store.UpdateDBSchema(ctx, database.UID, &store.UpdateDBSchemaMessage{Config: databaseConfig}, principalID); err != nil {
 				return nil, err
@@ -934,19 +932,13 @@ func (s *DatabaseService) ListChangeHistories(ctx context.Context, request *v1pb
 		return nil, status.Errorf(codes.Internal, "failed to list change history, error: %v", err)
 	}
 
+	nextPageToken := ""
 	if len(changeHistories) == limitPlusOne {
-		nextPageToken, err := getPageToken(limit, offset+limit)
+		nextPageToken, err = getPageToken(limit, offset+limit)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get next page token, error: %v", err)
 		}
-		converted, err := s.convertToChangeHistories(ctx, changeHistories[:limit])
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to convert change histories, error: %v", err)
-		}
-		return &v1pb.ListChangeHistoriesResponse{
-			ChangeHistories: converted,
-			NextPageToken:   nextPageToken,
-		}, nil
+		changeHistories = changeHistories[:limit]
 	}
 
 	// no subsequent pages
@@ -956,7 +948,7 @@ func (s *DatabaseService) ListChangeHistories(ctx context.Context, request *v1pb
 	}
 	return &v1pb.ListChangeHistoriesResponse{
 		ChangeHistories: converted,
-		NextPageToken:   "",
+		NextPageToken:   nextPageToken,
 	}, nil
 }
 
@@ -1631,8 +1623,12 @@ func (s *DatabaseService) ListSlowQueries(ctx context.Context, request *v1pb.Lis
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
+	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "role not found")
+	}
 
-	switch user.Role {
+	switch role {
 	case api.WorkspaceAdmin, api.WorkspaceDBA:
 		canAccessDBs = databases
 	case api.WorkspaceMember:
@@ -1646,7 +1642,7 @@ func (s *DatabaseService) ListSlowQueries(ctx context.Context, request *v1pb.Lis
 			}
 		}
 	default:
-		return nil, status.Errorf(codes.PermissionDenied, "unknown role %q", user.Role)
+		return nil, status.Errorf(codes.PermissionDenied, "unknown role %q", role)
 	}
 
 	result := &v1pb.ListSlowQueriesResponse{}
@@ -1841,10 +1837,10 @@ func (s *DatabaseService) convertToDatabase(ctx context.Context, database *store
 	}
 	environment, effectiveEnvironment := "", ""
 	if database.EnvironmentID != "" {
-		environment = fmt.Sprintf("%s%s", common.EnvironmentNamePrefix, database.EnvironmentID)
+		environment = common.FormatEnvironment(database.EnvironmentID)
 	}
 	if database.EffectiveEnvironmentID != "" {
-		effectiveEnvironment = fmt.Sprintf("%s%s", common.EnvironmentNamePrefix, database.EffectiveEnvironmentID)
+		effectiveEnvironment = common.FormatEnvironment(database.EffectiveEnvironmentID)
 	}
 	instanceResource, err := convertToInstanceResource(instance)
 	if err != nil {
@@ -2255,7 +2251,7 @@ func getOpenAIResponse(ctx context.Context, messages []openai.ChatCompletionMess
 			retErr = err
 			continue
 		}
-		if err := protojson.Unmarshal([]byte(resp.Choices[0].Message.Content), &result); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(resp.Choices[0].Message.Content), &result); err != nil {
 			retErr = err
 			continue
 		}

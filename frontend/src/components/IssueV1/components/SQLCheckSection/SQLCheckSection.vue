@@ -15,6 +15,7 @@
       }"
       button-style="--n-padding: 0 8px 0 6px; --n-icon-margin: 3px;"
       class="justify-between flex-1"
+      @update:advices="$emit('update:advices', $event)"
     >
       <template #result="{ advices, isRunning }">
         <template v-if="advices === undefined">
@@ -48,14 +49,18 @@ import { SQLCheckButton } from "@/components/SQLCheck";
 import { TaskTypeListWithStatement } from "@/types";
 import { Plan_ChangeDatabaseConfig_Type } from "@/types/proto/v1/plan_service";
 import { Task_Type } from "@/types/proto/v1/rollout_service";
-import { CheckRequest_ChangeType } from "@/types/proto/v1/sql_service";
+import { Advice, CheckRequest_ChangeType } from "@/types/proto/v1/sql_service";
 import type { Defer } from "@/utils/util";
-import { useEditSheet } from "../StatementSection/useEditSheet";
+import { useTaskSheet } from "../StatementSection/useTaskSheet";
 import OnlineMigrationAdviceExtra from "./OnlineMigrationAdviceExtra.vue";
 import SQLCheckBadge from "./SQLCheckBadge.vue";
 
+defineEmits<{
+  (event: "update:advices", advices: Advice[] | undefined): void;
+}>();
+
 const { issue, selectedTask, selectedSpec, events } = useIssueContext();
-const { sheetStatement } = useEditSheet();
+const { sheetStatement } = useTaskSheet();
 
 const rolloutMode = computed(() => !!issue.value.rollout);
 

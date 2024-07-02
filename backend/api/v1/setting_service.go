@@ -25,6 +25,9 @@ import (
 	api "github.com/bytebase/bytebase/backend/legacyapi"
 	"github.com/bytebase/bytebase/backend/plugin/mail"
 	"github.com/bytebase/bytebase/backend/plugin/schema"
+	"github.com/bytebase/bytebase/backend/plugin/webhook/feishu"
+	"github.com/bytebase/bytebase/backend/plugin/webhook/slack"
+	"github.com/bytebase/bytebase/backend/plugin/webhook/wecom"
 	"github.com/bytebase/bytebase/backend/store"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
@@ -133,6 +136,11 @@ func (s *SettingService) GetSetting(ctx context.Context, request *v1pb.GetSettin
 
 // SetSetting set the setting by name.
 func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.UpdateSettingRequest) (*v1pb.Setting, error) {
+	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "user not found")
+	}
+
 	settingName, err := common.GetSettingName(request.Setting.Name)
 	if err != nil {
 		return nil, err
@@ -158,6 +166,9 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 	var storeSettingValue string
 	switch apiSettingName {
 	case api.SettingWorkspaceProfile:
+		if request.UpdateMask == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "update mask is required")
+		}
 		payload := new(storepb.WorkspaceProfileSetting)
 		if err := convertV1PbToStorePb(request.Setting.Value.GetWorkspaceProfileSettingValue(), payload); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", apiSettingName, err)
@@ -166,42 +177,84 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to find setting %s with error: %v", apiSettingName, err)
 		}
-		if s.profile.SaaS {
-			if oldSetting.ExternalUrl != payload.ExternalUrl {
-				return nil, status.Errorf(codes.InvalidArgument, "feature %s is unavailable in current mode", settingName)
-			}
-			if oldSetting.DisallowSignup != payload.DisallowSignup {
-				return nil, status.Errorf(codes.InvalidArgument, "feature %s is unavailable in current mode", settingName)
-			}
-			if strings.Join(oldSetting.OutboundIpList, ",") != strings.Join(payload.OutboundIpList, ",") {
-				return nil, status.Errorf(codes.InvalidArgument, "feature %s is unavailable in current mode", settingName)
+
+		for _, path := range request.UpdateMask.Paths {
+			switch path {
+			case "value.workspace_profile_setting_value.disallow_signup":
+				if s.profile.SaaS {
+					return nil, status.Errorf(codes.InvalidArgument, "feature %s is unavailable in current mode", settingName)
+				}
+				if err := s.licenseService.IsFeatureEnabled(api.FeatureDisallowSignup); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, err.Error())
+				}
+				oldSetting.DisallowSignup = payload.DisallowSignup
+			case "value.workspace_profile_setting_value.external_url":
+				if s.profile.SaaS {
+					return nil, status.Errorf(codes.InvalidArgument, "feature %s is unavailable in current mode", settingName)
+				}
+				if payload.ExternalUrl != "" {
+					externalURL, err := common.NormalizeExternalURL(payload.ExternalUrl)
+					if err != nil {
+						return nil, status.Errorf(codes.InvalidArgument, "invalid external url: %v", err)
+					}
+					payload.ExternalUrl = externalURL
+				}
+				oldSetting.ExternalUrl = payload.ExternalUrl
+			case "value.workspace_profile_setting_value.require_2fa":
+				if err := s.licenseService.IsFeatureEnabled(api.Feature2FA); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, err.Error())
+				}
+				oldSetting.Require_2Fa = payload.Require_2Fa
+			case "value.workspace_profile_setting_value.outbound_ip_list":
+				// We're not support update outbound_ip_list via api.
+			case "value.workspace_profile_setting_value.gitops_webhook_url":
+				if payload.GitopsWebhookUrl != "" {
+					gitopsWebhookURL, err := common.NormalizeExternalURL(payload.GitopsWebhookUrl)
+					if err != nil {
+						return nil, status.Errorf(codes.InvalidArgument, "invalid GitOps webhook URL: %v", err)
+					}
+					payload.GitopsWebhookUrl = gitopsWebhookURL
+				}
+				oldSetting.GitopsWebhookUrl = payload.GitopsWebhookUrl
+			case "value.workspace_profile_setting_value.token_duration":
+				if err := s.licenseService.IsFeatureEnabled(api.FeatureSecureToken); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, err.Error())
+				}
+				if payload.TokenDuration != nil && payload.TokenDuration.Seconds > 0 && payload.TokenDuration.AsDuration() < time.Hour {
+					return nil, status.Errorf(codes.InvalidArgument, "refresh token duration should be at least one hour")
+				}
+				oldSetting.TokenDuration = payload.TokenDuration
+			case "value.workspace_profile_setting_value.announcement":
+				if err := s.licenseService.IsFeatureEnabled(api.FeatureAnnouncement); err != nil {
+					return nil, status.Errorf(codes.PermissionDenied, err.Error())
+				}
+				oldSetting.Announcement = payload.Announcement
+			case "value.workspace_profile_setting_value.maximum_role_expiration":
+				if payload.MaximumRoleExpiration != nil {
+					// If the value is less than or equal to 0, we will remove the setting. AKA no limit.
+					if payload.MaximumRoleExpiration.Seconds <= 0 {
+						payload.MaximumRoleExpiration = nil
+					}
+				}
+				oldSetting.MaximumRoleExpiration = payload.MaximumRoleExpiration
+			case "value.workspace_profile_setting_value.domains":
+				if err := validateDomains(payload.Domains); err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "invalid domains, error %v", err)
+				}
+				oldSetting.Domains = payload.Domains
+			case "value.workspace_profile_setting_value.enforce_identity_domain":
+				oldSetting.EnforceIdentityDomain = payload.EnforceIdentityDomain
+			case "value.workspace_profile_setting_value.database_change_mode":
+				oldSetting.DatabaseChangeMode = payload.DatabaseChangeMode
+			default:
+				return nil, status.Errorf(codes.InvalidArgument, "invalid update mask path %v", path)
 			}
 		}
 
-		if payload.ExternalUrl != "" {
-			externalURL, err := common.NormalizeExternalURL(payload.ExternalUrl)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid external url: %v", err)
-			}
-			payload.ExternalUrl = externalURL
+		if len(oldSetting.Domains) == 0 && oldSetting.EnforceIdentityDomain {
+			return nil, status.Errorf(codes.InvalidArgument, "identity domain can be enforced only when workspace domains are set")
 		}
-		if payload.GitopsWebhookUrl != "" {
-			gitopsWebhookURL, err := common.NormalizeExternalURL(payload.GitopsWebhookUrl)
-			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid GitOps webhook URL: %v", err)
-			}
-			payload.GitopsWebhookUrl = gitopsWebhookURL
-		}
-		if payload.TokenDuration != nil && payload.TokenDuration.Seconds > 0 && payload.TokenDuration.AsDuration() < time.Hour {
-			return nil, status.Errorf(codes.InvalidArgument, "refresh token duration should be at least one hour")
-		}
-		if payload.MaximumRoleExpiration != nil {
-			// If the value is less than or equal to 0, we will remove the setting. AKA no limit.
-			if payload.MaximumRoleExpiration.Seconds <= 0 {
-				payload.MaximumRoleExpiration = nil
-			}
-		}
-		bytes, err := protojson.Marshal(payload)
+		bytes, err := protojson.Marshal(oldSetting)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to marshal setting for %s with error: %v", apiSettingName, err)
 		}
@@ -226,18 +279,14 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 			if err != nil {
 				return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("failed to get creator: %v", err))
 			}
-			if email == api.SystemBotEmail {
-				creatorID = api.SystemBotID
-			} else {
-				creator, err := s.store.GetUserByEmail(ctx, email)
-				if err != nil {
-					return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get creator: %v", err))
-				}
-				if creator == nil {
-					return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("creator %s not found", rule.Template.Creator))
-				}
-				creatorID = creator.ID
+			creator, err := s.store.GetUserByEmail(ctx, email)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get creator: %v", err))
 			}
+			if creator == nil {
+				return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("creator %s not found", rule.Template.Creator))
+			}
+			creatorID = creator.ID
 
 			flow := new(storepb.ApprovalFlow)
 			if err := convertV1PbToStorePb(rule.Template.Flow, flow); err != nil {
@@ -272,7 +321,7 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 				return nil, status.Errorf(codes.InvalidArgument, "should set the password for the first time")
 			}
 			oldValue := new(storepb.SMTPMailDeliverySetting)
-			if err := protojson.Unmarshal([]byte(oldStoreSetting.Value), oldValue); err != nil {
+			if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(oldStoreSetting.Value), oldValue); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", err, apiSettingName)
 			}
 			apiValue.Password = &oldValue.Password
@@ -328,9 +377,60 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 			return nil, status.Errorf(codes.Internal, "failed to marshal setting for %s with error: %v", apiSettingName, err)
 		}
 		storeSettingValue = string(bytes)
+
 	case api.SettingAppIM:
-		// TODO(p0ny): impl
-		return nil, status.Errorf(codes.Unimplemented, "not implemented")
+		payload := new(storepb.AppIMSetting)
+		if err := convertV1PbToStorePb(request.Setting.Value.GetAppImSettingValue(), payload); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s, error: %v", apiSettingName, err)
+		}
+		setting, err := s.store.GetAppIMSetting(ctx)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get old app im setting")
+		}
+		if request.UpdateMask == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "update mask is required")
+		}
+		for _, path := range request.UpdateMask.Paths {
+			switch path {
+			case "value.app_im_setting_value.slack":
+				if err := slack.ValidateToken(ctx, payload.Slack.GetToken()); err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "validation failed, error: %v", err)
+				}
+				setting.Slack = payload.Slack
+
+			case "value.app_im_setting_value.feishu":
+				if err := feishu.Validate(ctx, payload.GetFeishu().GetAppId(), payload.GetFeishu().GetAppSecret(), user.Email); err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "validation failed, error: %v", err)
+				}
+				setting.Feishu = payload.Feishu
+
+			case "value.app_im_setting_value.wecom":
+				if err := wecom.Validate(ctx, payload.GetWecom().GetCorpId(), payload.GetWecom().GetAgentId(), payload.GetWecom().GetSecret()); err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "validation failed, error: %v", err)
+				}
+				setting.Wecom = payload.Wecom
+
+			default:
+				return nil, status.Errorf(codes.InvalidArgument, "invalid update mask path %v", path)
+			}
+		}
+		if request.ValidateOnly {
+			return &v1pb.Setting{
+				Name: request.Setting.Name,
+				Value: &v1pb.Value{
+					Value: &v1pb.Value_AppImSettingValue{
+						AppImSettingValue: &v1pb.AppIMSetting{},
+					},
+				},
+			}, nil
+		}
+
+		bytes, err := protojson.Marshal(setting)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to marshal setting for %s, error: %v", apiSettingName, err)
+		}
+		storeSettingValue = string(bytes)
+
 	case api.SettingWorkspaceExternalApproval:
 		oldSetting, err := s.store.GetWorkspaceExternalApprovalSetting(ctx)
 		if err != nil {
@@ -381,6 +481,9 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 		}
 		storeSettingValue = string(bytes)
 	case api.SettingSchemaTemplate:
+		if err := s.licenseService.IsFeatureEnabled(api.FeatureSchemaTemplate); err != nil {
+			return nil, status.Errorf(codes.PermissionDenied, err.Error())
+		}
 		schemaTemplateSetting := request.Setting.Value.GetSchemaTemplateSettingValue()
 		if schemaTemplateSetting == nil {
 			return nil, status.Errorf(codes.InvalidArgument, "value cannot be nil when setting schema template setting")
@@ -456,6 +559,16 @@ func (s *SettingService) UpdateSetting(ctx context.Context, request *v1pb.Update
 			return nil, status.Errorf(codes.Internal, "failed to marshal setting for %s with error: %v", apiSettingName, err)
 		}
 		storeSettingValue = string(bytes)
+	case api.SettingWatermark:
+		if err := s.licenseService.IsFeatureEnabled(api.FeatureWatermark); err != nil {
+			return nil, status.Errorf(codes.PermissionDenied, err.Error())
+		}
+		storeSettingValue = request.Setting.Value.GetStringValue()
+	case api.SettingPluginOpenAIKey:
+		if err := s.licenseService.IsFeatureEnabled(api.FeaturePluginOpenAI); err != nil {
+			return nil, status.Errorf(codes.PermissionDenied, err.Error())
+		}
+		storeSettingValue = request.Setting.Value.GetStringValue()
 	default:
 		storeSettingValue = request.Setting.Value.GetStringValue()
 	}
@@ -503,7 +616,7 @@ func convertV1PbToStorePb(inputPB, outputPB protoreflect.ProtoMessage) error {
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to marshal setting: %v", err)
 	}
-	if err := protojson.Unmarshal(bytes, outputPB); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal(bytes, outputPB); err != nil {
 		return status.Errorf(codes.Internal, "failed to unmarshal setting: %v", err)
 	}
 	return nil
@@ -514,7 +627,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 	switch setting.Name {
 	case api.SettingWorkspaceMailDelivery:
 		storeValue := new(storepb.SMTPMailDeliverySetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), storeValue); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), storeValue); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return stripSensitiveData(&v1pb.Setting{
@@ -537,18 +650,31 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 			},
 		})
 	case api.SettingAppIM:
-		// TODO(p0ny): impl
+		storeValue := new(storepb.AppIMSetting)
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), storeValue); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
+		}
 		return &v1pb.Setting{
 			Name: settingName,
 			Value: &v1pb.Value{
 				Value: &v1pb.Value_AppImSettingValue{
-					AppImSettingValue: &v1pb.AppIMSetting{},
+					AppImSettingValue: &v1pb.AppIMSetting{
+						Slack: &v1pb.AppIMSetting_Slack{
+							Enabled: storeValue.Slack != nil && storeValue.Slack.Enabled,
+						},
+						Feishu: &v1pb.AppIMSetting_Feishu{
+							Enabled: storeValue.Feishu != nil && storeValue.Feishu.Enabled,
+						},
+						Wecom: &v1pb.AppIMSetting_Wecom{
+							Enabled: storeValue.Wecom != nil && storeValue.Wecom.Enabled,
+						},
+					},
 				},
 			},
 		}, nil
 	case api.SettingPluginAgent:
 		v1Value := new(v1pb.AgentPluginSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), v1Value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), v1Value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return &v1pb.Setting{
@@ -561,7 +687,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingWorkspaceProfile:
 		v1Value := new(v1pb.WorkspaceProfileSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), v1Value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), v1Value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return &v1pb.Setting{
@@ -574,7 +700,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingWorkspaceApproval:
 		storeValue := new(storepb.WorkspaceApprovalSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), storeValue); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), storeValue); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		v1Value := &v1pb.WorkspaceApprovalSetting{}
@@ -602,7 +728,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingWorkspaceExternalApproval:
 		storeValue := new(storepb.ExternalApprovalSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), storeValue); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), storeValue); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting values for %s with error: %v", setting.Name, err)
 		}
 		v1Value := convertToExternalApprovalSetting(storeValue)
@@ -615,9 +741,8 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 			},
 		}, nil
 	case api.SettingSchemaTemplate:
-		decoder := protojson.UnmarshalOptions{DiscardUnknown: true}
 		value := new(storepb.SchemaTemplateSetting)
-		if err := decoder.Unmarshal([]byte(setting.Value), value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 
@@ -635,7 +760,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingDataClassification:
 		v1Value := new(v1pb.DataClassificationSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), v1Value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), v1Value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return &v1pb.Setting{
@@ -648,7 +773,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingSemanticTypes:
 		v1Value := new(v1pb.SemanticTypeSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), v1Value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), v1Value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return &v1pb.Setting{
@@ -661,7 +786,7 @@ func (s *SettingService) convertToSettingMessage(ctx context.Context, setting *s
 		}, nil
 	case api.SettingMaskingAlgorithm:
 		v1Value := new(v1pb.MaskingAlgorithmSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), v1Value); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), v1Value); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", setting.Name, err)
 		}
 		return &v1pb.Setting{
@@ -699,8 +824,7 @@ func (s *SettingService) validateSchemaTemplate(ctx context.Context, schemaTempl
 	}
 
 	value := new(storepb.SchemaTemplateSetting)
-	decoder := protojson.UnmarshalOptions{DiscardUnknown: true}
-	if err := decoder.Unmarshal([]byte(settingValue), value); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(settingValue), value); err != nil {
 		return status.Errorf(codes.Internal, "failed to unmarshal setting value for %s with error: %v", settingName, err)
 	}
 	v1Value, err := convertSchemaTemplateSetting(ctx, value)
@@ -817,7 +941,7 @@ func (s *SettingService) sendTestEmail(ctx context.Context, value *v1pb.SMTPMail
 	}
 	if setting != nil {
 		settingValue := new(storepb.WorkspaceProfileSetting)
-		if err := protojson.Unmarshal([]byte(setting.Value), settingValue); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(setting.Value), settingValue); err != nil {
 			return status.Errorf(codes.Internal, "failed to unmarshal setting value: %v", err)
 		}
 		if settingValue.ExternalUrl != "" {
@@ -1175,6 +1299,56 @@ func checkSubstitution(substitution string) error {
 	}
 	if len(substitution) > 16 {
 		return status.Errorf(codes.InvalidArgument, "the substitution should less than 16 bytes")
+	}
+	return nil
+}
+
+var domainRegexp = regexp.MustCompile(`^(?i:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$`)
+var disallowedDomains = map[string]bool{
+	"gmail.com":      true,
+	"googlemail.com": true,
+	"outlook.com":    true,
+	"hotmail.com":    true,
+	"live.com":       true,
+	"msn.com":        true,
+	"yahoo.com":      true,
+	"ymail.com":      true,
+	"rocketmail.com": true,
+	"icloud.com":     true,
+	"me.com":         true,
+	"mac.com":        true,
+	"aol.com":        true,
+	"zoho.com":       true,
+	"protonmail.com": true,
+	"gmx.com":        true,
+	"gmx.net":        true,
+	"mail.com":       true,
+	"yandex.com":     true,
+	"yandex.ru":      true,
+	"fastmail.com":   true,
+	"fastmail.fm":    true,
+	"tutanota.com":   true,
+	"163.com":        true,
+	"126.com":        true,
+	"sohu.com":       true,
+	"qq.com":         true,
+	"sina.com":       true,
+	"sina.cn":        true,
+	"aliyun.com":     true,
+	"aliyun.cn":      true,
+	"tom.com":        true,
+	"21cn.com":       true,
+	"yeah.net":       true,
+}
+
+func validateDomains(domains []string) error {
+	for _, domain := range domains {
+		if !domainRegexp.MatchString(domain) {
+			return errors.Errorf("invalid domain %q", domain)
+		}
+		if disallowedDomains[domain] {
+			return errors.Errorf("domain %q is not allowed", domain)
+		}
 	}
 	return nil
 }

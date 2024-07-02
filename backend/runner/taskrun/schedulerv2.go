@@ -231,7 +231,7 @@ func (s *SchedulerV2) scheduleAutoRolloutTask(ctx context.Context, taskUID int) 
 		}
 
 		s.webhookManager.CreateEvent(ctx, &webhook.Event{
-			Actor:   store.SystemBotUser,
+			Actor:   s.store.GetSystemBotUser(ctx),
 			Type:    webhook.EventTypeTaskRunStatusUpdate,
 			Comment: "",
 			Issue:   webhook.NewIssue(issue),
@@ -368,15 +368,14 @@ func (s *SchedulerV2) scheduleRunningTaskRuns(ctx context.Context) error {
 		if maximumConnections == 0 {
 			maximumConnections = state.DefaultInstanceMaximumConnections
 		}
-		s.stateCfg.Lock()
-		if s.stateCfg.InstanceOutstandingConnections[task.InstanceID] >= maximumConnections {
-			s.stateCfg.Unlock()
+		if s.stateCfg.InstanceOutstandingConnections.Increment(task.InstanceID, maximumConnections) {
 			continue
 		}
-		s.stateCfg.InstanceOutstandingConnections[task.InstanceID]++
-		s.stateCfg.Unlock()
 
 		s.stateCfg.RunningTaskRuns.Store(taskRun.ID, true)
+		if task.DatabaseID != nil {
+			s.stateCfg.RunningDatabaseMigration.Store(*task.DatabaseID, true)
+		}
 		go s.runTaskRunOnce(ctx, taskRun, task, executor)
 	}
 
@@ -391,17 +390,12 @@ func (s *SchedulerV2) runTaskRunOnce(ctx context.Context, taskRun *store.TaskRun
 		if task.DatabaseID != nil {
 			s.stateCfg.RunningDatabaseMigration.Delete(*task.DatabaseID)
 		}
-		s.stateCfg.Lock()
-		s.stateCfg.InstanceOutstandingConnections[task.InstanceID]--
-		s.stateCfg.Unlock()
+		s.stateCfg.InstanceOutstandingConnections.Decrement(task.InstanceID)
 	}()
 
 	driverCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s.stateCfg.RunningTaskRunsCancelFunc.Store(taskRun.ID, cancel)
-	if task.DatabaseID != nil {
-		s.stateCfg.RunningDatabaseMigration.Store(*task.DatabaseID, true)
-	}
 
 	done, result, err := RunExecutorOnce(ctx, driverCtx, executor, task, taskRun.ID)
 
@@ -667,7 +661,7 @@ func (s *SchedulerV2) ListenTaskSkippedOrDone(ctx context.Context) {
 				// create "stage ends" activity.
 				if err := func() error {
 					s.webhookManager.CreateEvent(ctx, &webhook.Event{
-						Actor:   store.SystemBotUser,
+						Actor:   s.store.GetSystemBotUser(ctx),
 						Type:    webhook.EventTypeStageStatusUpdate,
 						Comment: "",
 						Issue:   webhook.NewIssue(issue),
@@ -691,7 +685,7 @@ func (s *SchedulerV2) ListenTaskSkippedOrDone(ctx context.Context) {
 						return errors.Wrapf(err, "failed to get rollout policy")
 					}
 					s.webhookManager.CreateEvent(ctx, &webhook.Event{
-						Actor:   store.SystemBotUser,
+						Actor:   s.store.GetSystemBotUser(ctx),
 						Type:    webhook.EventTypeIssueRolloutReady,
 						Comment: "",
 						Issue:   webhook.NewIssue(issue),
@@ -706,9 +700,8 @@ func (s *SchedulerV2) ListenTaskSkippedOrDone(ctx context.Context) {
 					slog.Error("failed to create rollout release notification activity", log.BBError(err))
 				}
 
-				if pipelineDone {
-					// Every task in the pipeline has finished.
-					// Resolve the issue.
+				// After all tasks in the pipeline are done, we will resolve the issue if the issue is auto-resolvable.
+				if issue.Project.Setting.AutoResolveIssue && pipelineDone {
 					if err := func() error {
 						// For those database data export issues, we don't resolve them automatically.
 						if issue.Type == api.IssueDatabaseDataExport {
@@ -738,7 +731,7 @@ func (s *SchedulerV2) ListenTaskSkippedOrDone(ctx context.Context) {
 						}
 
 						s.webhookManager.CreateEvent(ctx, &webhook.Event{
-							Actor:   store.SystemBotUser,
+							Actor:   s.store.GetSystemBotUser(ctx),
 							Type:    webhook.EventTypeIssueStatusUpdate,
 							Comment: "",
 							Issue:   webhook.NewIssue(updatedIssue),
@@ -772,7 +765,7 @@ func (s *SchedulerV2) createActivityForTaskRunStatusUpdate(ctx context.Context, 
 			return nil
 		}
 		s.webhookManager.CreateEvent(ctx, &webhook.Event{
-			Actor:   store.SystemBotUser,
+			Actor:   s.store.GetSystemBotUser(ctx),
 			Type:    webhook.EventTypeTaskRunStatusUpdate,
 			Comment: "",
 			Issue:   webhook.NewIssue(issue),

@@ -33,17 +33,26 @@ export const useDatabaseV1Store = defineStore("database_v1", () => {
   const databaseMapByName = reactive(new Map<string, ComposedDatabase>());
   const databaseMapByUID = reactive(new Map<string, ComposedDatabase>());
 
-  const reset = () => {
-    databaseMapByName.clear();
-    databaseMapByUID.clear();
-  };
-
   // Getters
   const databaseList = computed(() => {
     return Array.from(databaseMapByName.values());
   });
 
   // Actions
+  const reset = () => {
+    databaseMapByName.clear();
+    databaseMapByUID.clear();
+  };
+
+  const removeCacheByInstance = (instance: string) => {
+    for (const db of databaseList.value) {
+      if (db.instance === instance) {
+        databaseMapByName.delete(db.name);
+        databaseMapByUID.delete(db.uid);
+      }
+    }
+  };
+
   const upsertDatabaseMap = async (databaseList: Database[]) => {
     const composedDatabaseList = await batchComposeDatabase(databaseList);
     composedDatabaseList.forEach((database) => {
@@ -206,6 +215,7 @@ export const useDatabaseV1Store = defineStore("database_v1", () => {
 
   return {
     reset,
+    removeCacheByInstance,
     databaseList,
     searchDatabases,
     syncDatabase,
@@ -248,6 +258,22 @@ export const useSearchDatabaseV1List = (
   return { databaseList, ready };
 };
 
+export const useDatabaseV1ListByProject = (
+  project: MaybeRef<string | undefined>
+) => {
+  const store = useDatabaseV1Store();
+
+  const databaseList = computed(() => {
+    const proj = unref(project);
+    if (proj) {
+      return store.databaseListByProject(proj);
+    }
+    return store.databaseList;
+  });
+
+  return { databaseList };
+};
+
 export const useDatabaseV1ByName = (name: MaybeRef<string>) => {
   const store = useDatabaseV1Store();
   const ready = ref(true);
@@ -271,7 +297,7 @@ export const useDatabaseV1ByName = (name: MaybeRef<string>) => {
   };
 };
 
-const batchComposeDatabase = async (databaseList: Database[]) => {
+export const batchComposeDatabase = async (databaseList: Database[]) => {
   const projectV1Store = useProjectV1Store();
   const instanceV1Store = useInstanceV1Store();
   const environmentV1Store = useEnvironmentV1Store();

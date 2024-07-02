@@ -273,7 +273,9 @@
     "leave-without-saving": "¿Salir sin ahorrar?",
     "configure-now": "Configurar ahora",
     "connection": "Conexión",
-    "permission-denied": "Permiso denegado"
+    "permission-denied": "Permiso denegado",
+    "resource": "Recurso",
+    "closed": "Cerrado"
   },
   "error-page": {
     "go-back-home": "Volver al inicio"
@@ -513,7 +515,8 @@
         "n-members": "{n} miembros",
         "group-members": "Miembros del grupo",
         "group-roles": "Roles grupales",
-        "edit-group": "Editar grupo"
+        "edit-group": "Editar grupo",
+        "workspace-domain-required": "Primero configure un dominio de espacio de trabajo."
       },
       "action": {
         "deactivate": "Desactivar",
@@ -549,9 +552,7 @@
       "workspace-role-at-least-one": "El espacio de trabajo debe tener al menos un administrador"
     },
     "im-integration": {
-      "enable": "Habilitar",
-      "description": "Permitir a los usuarios aprobar incidencias directamente desde IM.",
-      "feishu-updated-tip": "Integración con Feishu actualizada correctamente"
+      "description": "Envíe mensajes directos a los usuarios para eventos de problemas específicos. Funciona con el webhook del proyecto."
     },
     "sso": {
       "create": "Crear SSO",
@@ -655,6 +656,15 @@
           "days": "Días)",
           "never-expires": "Nunca expira"
         },
+        "domain-restriction": {
+          "self": "Dominio de espacio de trabajo",
+          "description": "Especifique el dominio que podría usarse como dominio de correo electrónico para los miembros del espacio de trabajo.",
+          "domain-input-placeholder": "Por favor ingrese el dominio, p.e. ejemplo.com",
+          "members-restriction": {
+            "self": "Restricción de miembros",
+            "description": "Restrinja el inicio de sesión a usuarios con direcciones de correo electrónico de los dominios especificados."
+          }
+        },
         "config-updated": "La configuración se ha actualizado.",
         "plugin": {
           "openai": {
@@ -697,6 +707,16 @@
         "restrict-issue-creation-for-sql-review": {
           "title": "Prohibir la creación de problemas para la revisión de SQL con errores.",
           "description": "Una vez habilitado, a los usuarios solo se les permite crear problemas si la revisión de SQL no contiene errores."
+        },
+        "database-change-mode": {
+          "self": "Modo de cambio de base de datos",
+          "description": "Controla cómo los usuarios realizan migraciones de esquemas de bases de datos. El modo de emisión utiliza flujos de trabajo de problemas/tareas con aprobaciones personalizadas para un proceso estructurado. El modo Editor SQL permite la ejecución directa de SQL en un editor SQL para realizar cambios rápidos y sencillos.",
+          "issue-mode": {
+            "self": "Modo de emisión"
+          },
+          "sql-editor-mode": {
+            "self": "Modo de edición SQL"
+          }
         }
       }
     },
@@ -964,12 +984,14 @@
         "cancel": "¿Cancelar todo el incidencia?",
         "reopen": "¿Reabrir incidencia?",
         "title": "{action} {type} [{name}]?",
-        "action-to-stage": "{action} etapa ({n} tareas)"
+        "action-to-stage": "{action} etapa ({n} tareas)",
+        "close": "¿Cerrar el problema?"
       },
       "dropdown": {
         "resolve": "Resolver incidencia",
         "cancel": "Cancelar incidencia",
-        "reopen": "Reabrir incidencia"
+        "reopen": "Reabrir incidencia",
+        "close": "Cerrar problema"
       },
       "form": {
         "note": "Nota",
@@ -1115,7 +1137,9 @@
       "reopen": "Reabrir",
       "reopened": "reabierto",
       "action-n-issues": "{action} {n} incidencia | {action} {n} incidencias",
-      "successfully-updated-n-issues": "Incidencia actualizada correctamente {n} | Incidencias actualizadas correctamente {n}"
+      "successfully-updated-n-issues": "Incidencia actualizada correctamente {n} | Incidencias actualizadas correctamente {n}",
+      "closed": "cerrado",
+      "close": "Cerca"
     },
     "sql-hint": {
       "change-will-apply-to-all-tasks-in-tenant-mode": "El cambio se aplicará a todas las tareas",
@@ -1199,7 +1223,7 @@
     "unfinished-resolved-issue-tips": "Este problema está marcado como \"Listo\", pero algunas de sus tareas no se ejecutan correctamente.",
     "some-tasks-are-not-executed-successfully": "(Algunas tareas no se ejecutan correctamente)",
     "preview": "Problema de vista previa",
-    "missing-sql-statement": "Sentencia SQL faltante. Para aplicar este cambio a todas las tareas, haz clic en el botón '@:{'issue.apply-to-other-tasks'}'.",
+    "missing-sql-statement": "Sentencia SQL faltante.",
     "task-summary-tooltip": "{failed} tarea fallida | \n{failed} tareas fallidas",
     "data-export": {
       "options": "Opciones de exportación",
@@ -1225,7 +1249,8 @@
       "statement-type": "Tipo de declaración"
     },
     "sql-review-only": "Sólo revisión de SQL",
-    "create-issue": "Crear problema"
+    "create-issue": "Crear problema",
+    "this-plan-will-be-converted-to-a-new-issue": "Este plan se convertirá en una nueva edición."
   },
   "alter-schema": {
     "vcs-enabled": "Este proyecto ha habilitado el control de versiones basado en VCS y seleccionar la base de datos a continuación lo llevará al repositorio Git correspondiente para iniciar el proceso de cambio.",
@@ -1460,7 +1485,7 @@
     "create-gcp-credentials": "Para crear credenciales, consulte",
     "used-for-testing-connection": "Usado solo para probar conexiones",
     "all": "Todas las instancias",
-    "force-archive-description": "Forzar a archivar. \nTodos los problemas relacionados se resolverán y todas las hojas relacionadas se eliminarán.",
+    "force-archive-description": "Forzar a archivar. Todas las bases de datos quedarán desasignadas.",
     "sync-mode": {
       "self": "Modo de sincronización",
       "database": {
@@ -1498,7 +1523,7 @@
     "production-environment": "Entorno de producción",
     "access-control": {
       "title": "Control de acceso",
-      "disable-copy-data-from-sql-editor": "Desactivar copiar datos desde el editor SQL"
+      "disable-copy-data-from-sql-editor": "Restringir la copia de datos en el editor SQL (permitido para administradores/DBA)"
     }
   },
   "quick-start": {
@@ -1614,6 +1639,7 @@
     "need-to-select-first": "Necesita seleccionar primero el historial de cambios",
     "all-tables": "Todas las tablas",
     "affected-tables": "Tablas afectadas",
+    "select-affection-tables": "Seleccionar tablas afectadas",
     "view-full": "Ver completo"
   },
   "database": {
@@ -1895,6 +1921,11 @@
         "btn-text": "Eliminar este webhook",
         "confirm-title": "¿Eliminar el '{title}' del webhook y todo su historial de ejecución?"
       },
+      "direct-messages": "Mensajes directos",
+      "enable-direct-messages": "Habilitar mensajes directos",
+      "direct-messages-tip": "Una vez habilitado, Bytebase enviará mensajes directos a los usuarios relacionados (emparejados por correo electrónico).",
+      "direct-messages-warning": "Debes configurar {im} para que funcione.",
+      "activity-support-direct-message": "Soporte para enviar mensajes directos a usuarios relacionados.",
       "activity-item": {
         "issue-creation": {
           "title": "Creación de incidencia",
@@ -1971,10 +2002,24 @@
         "no-protection-rule-configured": "No hay regla de protección configurada",
         "only-apply-to-main-branches": "Sólo aplica en sucursales principales"
       },
-      "labels": {
-        "issue-labels": "Etiquetas de problemas",
-        "configure-labels": "Configurar etiquetas",
-        "force-issue-labels": "Requerir etiquetas para todos los incidencias"
+      "issue-related": {
+        "self": "Problema relacionado",
+        "labels": {
+          "self": "Etiquetas",
+          "configure-labels": "Configurar etiquetas",
+          "force-issue-labels": {
+            "self": "Requerir etiquetas para todos los problemas",
+            "description": "Exija al menos una etiqueta al crear problemas."
+          }
+        },
+        "allow-modify-statement": {
+          "self": "Permitir modificar declaración",
+          "description": "Permitir a los usuarios modificar la declaración del problema después de su creación."
+        },
+        "auto-resolve-issue": {
+          "self": "Problema de resolución automática",
+          "description": "Resuelva automáticamente el problema después de completar todas las tareas."
+        }
       }
     },
     "members": {
@@ -2258,7 +2303,12 @@
     "rows-upper-limit": "se ha alcanzado el límite de resultados de la consulta",
     "tab-mode": {
       "readonly": "Solo lectura",
-      "admin": "Admin"
+      "admin": "Admin",
+      "standard": "Estándar",
+      "description": {
+        "standard": "Permitir declaraciones DDL y DML.",
+        "readonly": "Permitir declaraciones SELECT, SHOW y SET."
+      }
     },
     "close-sheet": "Cerrar hoja",
     "connect": "Conectar",
@@ -2292,9 +2342,11 @@
     "batch-query": {
       "batch": "Lote",
       "select-database": "Seleccione la base de datos a continuación",
-      "description": "Consulta por lotes {count} bases de datos adicionales en {project}."
+      "description": "Consulta por lotes {count} bases de datos adicionales en {project}.",
+      "show-or-hide-empty-query-results": "Mostrar/ocultar resultados de consulta vacíos"
     },
     "executing-query": "Ejecutando consulta",
+    "request-query": "Solicitar consulta",
     "grouping": "Agrupamiento",
     "previous-row": "Fila anterior",
     "next-row": "siguiente fila",
@@ -2320,7 +2372,13 @@
       "rows": "filas"
     },
     "n-per-page": "{n} / página",
-    "customize-tree-structure": "Personalizar la estructura del árbol"
+    "customize-tree-structure": "Personalizar la estructura del árbol",
+    "will-override-current-editing-statement": "Anulará la declaración de edición actual.",
+    "standard-mode": {
+      "self": "Modo estandar"
+    },
+    "to-enable-standard-mode": "para habilitar el modo estándar",
+    "add-a-new-instance": "Agregar una nueva instancia"
   },
   "schema-editor": {
     "self": "Editor de esquema",
@@ -2731,6 +2789,7 @@
     "configure-policy": "Configurar política",
     "policy-removed": "La política de revisión se eliminó correctamente.",
     "policy-created": "La política de revisión se creó correctamente.",
+    "policy-create-failed": "No se pudo crear la política de revisión.",
     "policy-updated": "La política de revisión se actualizó correctamente.",
     "policy-duplicated": "La política de revisión se duplicó correctamente.",
     "rules": "Reglas",
@@ -2742,6 +2801,8 @@
     "input-then-press-enter": "Ingrese el valor y luego presione enter para agregar",
     "not-available-for-free": "La regla no está disponible para {plan}",
     "unlock-full-feature": "Desbloquear más de 100 reglas de validación de SQL",
+    "search-by-name": "Buscar por nombre",
+    "no-linked-resources": "No hay recursos vinculados",
     "create": {
       "breadcrumb": "Crear política de revisión SQL",
       "basic-info": {
@@ -2750,12 +2811,10 @@
         "display-name-placeholder": "El nombre de la política de revisión",
         "display-name-default": "Política de revisión SQL",
         "display-name-label": "Un nombre para mostrar que ayuda a identificar entre diferentes políticas de revisión.",
-        "environments": "Entornos",
-        "environments-label": "Aplicar la política de revisión a los entornos seleccionados. Un entorno solo puede estar vinculado a una política.",
-        "environments-select": "Seleccionar entornos",
-        "no-linked-environments": "Ningún entorno vinculado",
-        "no-available-environment": "Ningún entorno disponible",
-        "no-available-environment-desc": "No hay entornos disponibles. Un entorno solo puede estar vinculado a una política de revisión SQL.",
+        "attach-resource": "Adjuntar al recurso",
+        "attach-resource-label": "Aplicar la política de revisión al recurso seleccionado. Un recurso sólo puede vincular una política. La base de datos utilizará la política de revisión de SQL adjunta al proyecto; de lo contrario, recurrirá a la política de entorno.",
+        "attach-resource-info-environment": "La política de revisión de SQL afectará a todas las bases de datos que pertenecen al entorno seleccionado.",
+        "attach-resource-info-project": "La política de revisión de SQL afectará a todas las bases de datos que pertenecen al proyecto seleccionado. Se ignorará la política de revisión de SQL para el entorno.",
         "choose-template": "Elegir plantilla"
       },
       "configure-rule": {
@@ -2898,7 +2957,8 @@
     "schema-group": "grupo de mesas",
     "changelist": "Lista de cambios",
     "vcs-provider": "Proveedor GitOps",
-    "vcs-connector": "Conector GitOps"
+    "vcs-connector": "Conector GitOps",
+    "review-config": "Revisar configuración"
   },
   "resource-id": {
     "self": "ID de {resource}",
@@ -3253,10 +3313,13 @@
         "pattern": "{recurso} solo puede contener letras minúsculas, números y guiones. Debe comenzar con una letra minúscula.",
         "max-length": "{recurso} puede contener hasta {length} caracteres"
       },
-      "delete": "Eliminar rol"
+      "delete": "Eliminar rol",
+      "delete-warning": "Se eliminará el rol \"{name}\". Esta acción no se puede deshacer.",
+      "delete-warning-with-resources": "El rol \"{name}\" está asignado a los siguientes usuarios:"
     },
     "select": "Seleccionar rol",
     "select-roles": "Seleccionar roles",
+    "default-workspace-role": "Los usuarios obtendrán el rol de \"Miembro del espacio de trabajo\" de forma predeterminada.",
     "title": "Título",
     "select-role": "Seleccionar rol",
     "expired-tip": "El papel puede haber expirado.",

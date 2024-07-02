@@ -1,12 +1,20 @@
-import { LayersIcon } from "lucide-vue-next";
+import {
+  BuildingIcon,
+  GalleryHorizontalEndIcon,
+  LayersIcon,
+  SquareStackIcon,
+} from "lucide-vue-next";
 import { computed, h } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, type RouteRecordRaw } from "vue-router";
 import type { SidebarItem } from "@/components/CommonSidebar.vue";
 import sqlEditorRoutes, {
+  SQL_EDITOR_SETTING_GENERAL_MODULE,
+  SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
   SQL_EDITOR_SETTING_INSTANCE_MODULE,
+  SQL_EDITOR_SETTING_PROJECT_MODULE,
 } from "@/router/sqlEditor";
-import { useCurrentUserV1 } from "@/store";
+import { useCurrentUserV1, usePageMode } from "@/store";
 import type { WorkspacePermission } from "@/types";
 import { hasWorkspacePermissionV2 } from "@/utils";
 
@@ -14,6 +22,7 @@ export const useSidebarItems = () => {
   const route = useRoute();
   const { t } = useI18n();
   const me = useCurrentUserV1();
+  const pageMode = usePageMode();
 
   const getItemClass = (item: SidebarItem) => {
     if (route.name === item.name) {
@@ -86,25 +95,36 @@ export const useSidebarItems = () => {
   };
 
   const itemList = computed((): SidebarItem[] => {
+    if (pageMode.value === "STANDALONE") {
+      // Hide SQL Editor settings entirely in STANDALONE mode
+      return [];
+    }
+
     const sidebarList: SidebarItem[] = [
       {
+        title: t("settings.sidebar.general"),
+        icon: () => h(BuildingIcon),
+        name: SQL_EDITOR_SETTING_GENERAL_MODULE,
+        type: "route",
+      },
+      {
         title: t("common.instances"),
-        icon: h(LayersIcon),
+        icon: () => h(LayersIcon),
         name: SQL_EDITOR_SETTING_INSTANCE_MODULE,
         type: "route",
       },
-      // {
-      //   title: t("common.projects"),
-      //   icon: h(GalleryHorizontalEndIcon),
-      //   name: SQL_EDITOR_SETTING_PROJECT_MODULE,
-      //   type: "route",
-      // },
-      // {
-      //   title: t("common.environments"),
-      //   icon: h(SquareStackIcon),
-      //   name: SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
-      //   type: "route",
-      // },
+      {
+        title: t("common.projects"),
+        icon: () => h(GalleryHorizontalEndIcon),
+        name: SQL_EDITOR_SETTING_PROJECT_MODULE,
+        type: "route",
+      },
+      {
+        title: t("common.environments"),
+        icon: () => h(SquareStackIcon),
+        name: SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
+        type: "route",
+      },
     ];
 
     return filterSidebarByPermissions(sidebarList);

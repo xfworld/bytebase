@@ -113,6 +113,7 @@
     - [ChangedResourceSchema](#bytebase-v1-ChangedResourceSchema)
     - [ChangedResourceTable](#bytebase-v1-ChangedResourceTable)
     - [ChangedResources](#bytebase-v1-ChangedResources)
+    - [CheckConstraintMetadata](#bytebase-v1-CheckConstraintMetadata)
     - [ColumnConfig](#bytebase-v1-ColumnConfig)
     - [ColumnConfig.LabelsEntry](#bytebase-v1-ColumnConfig-LabelsEntry)
     - [ColumnMetadata](#bytebase-v1-ColumnMetadata)
@@ -130,6 +131,7 @@
     - [ForeignKeyMetadata](#bytebase-v1-ForeignKeyMetadata)
     - [FunctionConfig](#bytebase-v1-FunctionConfig)
     - [FunctionMetadata](#bytebase-v1-FunctionMetadata)
+    - [GenerationMetadata](#bytebase-v1-GenerationMetadata)
     - [GetChangeHistoryRequest](#bytebase-v1-GetChangeHistoryRequest)
     - [GetDatabaseMetadataRequest](#bytebase-v1-GetDatabaseMetadataRequest)
     - [GetDatabaseRequest](#bytebase-v1-GetDatabaseRequest)
@@ -172,6 +174,7 @@
     - [ChangeHistory.Type](#bytebase-v1-ChangeHistory-Type)
     - [ChangeHistoryView](#bytebase-v1-ChangeHistoryView)
     - [DatabaseMetadataView](#bytebase-v1-DatabaseMetadataView)
+    - [GenerationMetadata.Type](#bytebase-v1-GenerationMetadata-Type)
     - [StreamMetadata.Mode](#bytebase-v1-StreamMetadata-Mode)
     - [StreamMetadata.Type](#bytebase-v1-StreamMetadata-Type)
     - [TablePartitionMetadata.Type](#bytebase-v1-TablePartitionMetadata-Type)
@@ -333,9 +336,10 @@
     - [Policy](#bytebase-v1-Policy)
     - [RestrictIssueCreationForSQLReviewPolicy](#bytebase-v1-RestrictIssueCreationForSQLReviewPolicy)
     - [RolloutPolicy](#bytebase-v1-RolloutPolicy)
-    - [SQLReviewPolicy](#bytebase-v1-SQLReviewPolicy)
     - [SQLReviewRule](#bytebase-v1-SQLReviewRule)
     - [SlowQueryPolicy](#bytebase-v1-SlowQueryPolicy)
+    - [TagPolicy](#bytebase-v1-TagPolicy)
+    - [TagPolicy.TagsEntry](#bytebase-v1-TagPolicy-TagsEntry)
     - [UpdatePolicyRequest](#bytebase-v1-UpdatePolicyRequest)
   
     - [MaskingExceptionPolicy.MaskingException.Action](#bytebase-v1-MaskingExceptionPolicy-MaskingException-Action)
@@ -359,6 +363,7 @@
     - [Plan.CreateDatabaseConfig](#bytebase-v1-Plan-CreateDatabaseConfig)
     - [Plan.CreateDatabaseConfig.LabelsEntry](#bytebase-v1-Plan-CreateDatabaseConfig-LabelsEntry)
     - [Plan.ExportDataConfig](#bytebase-v1-Plan-ExportDataConfig)
+    - [Plan.PlanCheckRunStatusCountEntry](#bytebase-v1-Plan-PlanCheckRunStatusCountEntry)
     - [Plan.Spec](#bytebase-v1-Plan-Spec)
     - [Plan.Step](#bytebase-v1-Plan-Step)
     - [Plan.VCSSource](#bytebase-v1-Plan-VCSSource)
@@ -434,6 +439,17 @@
     - [Workflow](#bytebase-v1-Workflow)
   
     - [ProjectService](#bytebase-v1-ProjectService)
+  
+- [v1/review_config_service.proto](#v1_review_config_service-proto)
+    - [CreateReviewConfigRequest](#bytebase-v1-CreateReviewConfigRequest)
+    - [DeleteReviewConfigRequest](#bytebase-v1-DeleteReviewConfigRequest)
+    - [GetReviewConfigRequest](#bytebase-v1-GetReviewConfigRequest)
+    - [ListReviewConfigsRequest](#bytebase-v1-ListReviewConfigsRequest)
+    - [ListReviewConfigsResponse](#bytebase-v1-ListReviewConfigsResponse)
+    - [ReviewConfig](#bytebase-v1-ReviewConfig)
+    - [UpdateReviewConfigRequest](#bytebase-v1-UpdateReviewConfigRequest)
+  
+    - [ReviewConfigService](#bytebase-v1-ReviewConfigService)
   
 - [v1/risk_service.proto](#v1_risk_service-proto)
     - [CreateRiskRequest](#bytebase-v1-CreateRiskRequest)
@@ -517,6 +533,7 @@
     - [AppIMSetting](#bytebase-v1-AppIMSetting)
     - [AppIMSetting.Feishu](#bytebase-v1-AppIMSetting-Feishu)
     - [AppIMSetting.Slack](#bytebase-v1-AppIMSetting-Slack)
+    - [AppIMSetting.Wecom](#bytebase-v1-AppIMSetting-Wecom)
     - [DataClassificationSetting](#bytebase-v1-DataClassificationSetting)
     - [DataClassificationSetting.DataClassificationConfig](#bytebase-v1-DataClassificationSetting-DataClassificationConfig)
     - [DataClassificationSetting.DataClassificationConfig.ClassificationEntry](#bytebase-v1-DataClassificationSetting-DataClassificationConfig-ClassificationEntry)
@@ -551,6 +568,7 @@
     - [WorkspaceTrialSetting](#bytebase-v1-WorkspaceTrialSetting)
   
     - [Announcement.AlertLevel](#bytebase-v1-Announcement-AlertLevel)
+    - [DatabaseChangeMode](#bytebase-v1-DatabaseChangeMode)
     - [MaskingAlgorithmSetting.Algorithm.InnerOuterMask.MaskType](#bytebase-v1-MaskingAlgorithmSetting-Algorithm-InnerOuterMask-MaskType)
     - [SMTPMailDeliverySettingValue.Authentication](#bytebase-v1-SMTPMailDeliverySettingValue-Authentication)
     - [SMTPMailDeliverySettingValue.Encryption](#bytebase-v1-SMTPMailDeliverySettingValue-Encryption)
@@ -1049,6 +1067,7 @@ DATABASE_CONNECTION is the anomaly type for database connection, e.g. the databa
 | ELASTICSEARCH | 21 |  |
 | BIGQUERY | 22 |  |
 | DYNAMODB | 23 |  |
+| DATABRICKS | 24 |  |
 
 
 
@@ -1632,6 +1651,8 @@ This value should be 4-63 characters, and valid characters are /[a-z][0-9]-/. |
 | replica_set | [string](#string) |  | replica_set is used for MongoDB replica set. |
 | direct_connection | [bool](#bool) |  | direct_connection is used for MongoDB to dispatch all the operations to the node specified in the connection string. |
 | region | [string](#string) |  | region is the location of where the DB is, works for AWS RDS. For example, us-east-1. |
+| account_id | [string](#string) |  | account_id is used by Databricks. |
+| warehouse_id | [string](#string) |  | warehouse_id is used by Databricks. |
 
 
 
@@ -1796,7 +1817,7 @@ InstanceOptions is the option for instances.
 | primary | [string](#string) |  |  |
 | instance | [string](#string) |  |  |
 | realm | [string](#string) |  |  |
-| keytab | [string](#string) |  |  |
+| keytab | [bytes](#bytes) |  |  |
 | kdc_host | [string](#string) |  |  |
 | kdc_port | [string](#string) |  |  |
 | kdc_transport_protocol | [string](#string) |  |  |
@@ -2262,6 +2283,22 @@ AdviseIndexResponse is the response of advising index.
 
 
 
+<a name="bytebase-v1-CheckConstraintMetadata"></a>
+
+### CheckConstraintMetadata
+CheckConstraintMetadata is the metadata for check constraints.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name is the name of a check constraint. |
+| expression | [string](#string) |  | The expression is the expression of a check constraint. |
+
+
+
+
+
+
 <a name="bytebase-v1-ColumnConfig"></a>
 
 ### ColumnConfig
@@ -2318,6 +2355,7 @@ ColumnMetadata is the metadata for columns.
 | comment | [string](#string) |  | The comment is the comment of a column. classification and user_comment is parsed from the comment. |
 | user_comment | [string](#string) |  | The user_comment is the user comment of a column parsed from the comment. |
 | effective_masking_level | [MaskingLevel](#bytebase-v1-MaskingLevel) |  | The effective_masking_level is the effective masking level of the column, evaluate from the column masking data and global masking rules. |
+| generation | [GenerationMetadata](#bytebase-v1-GenerationMetadata) |  | The generation is the generation of a column. |
 
 
 
@@ -2374,7 +2412,6 @@ ColumnMetadata is the metadata for columns.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  |  |
 | schema_configs | [SchemaConfig](#bytebase-v1-SchemaConfig) | repeated | The schema_configs is the list of configs for schemas in a database. |
-| classification_from_config | [bool](#bool) |  | If true, we will only store the classification in the config. Otherwise we will get the classification from table/column comment, and write back to the schema metadata. |
 
 
 
@@ -2397,7 +2434,6 @@ Format: instances/{instance}/databases/{database}/metadata |
 | collation | [string](#string) |  | The collation is the collation of a database. |
 | extensions | [ExtensionMetadata](#bytebase-v1-ExtensionMetadata) | repeated | The extensions is the list of extensions in a database. |
 | schema_configs | [SchemaConfig](#bytebase-v1-SchemaConfig) | repeated | The schema_configs is the list of configs for schemas in a database. |
-| classification_from_config | [bool](#bool) |  |  |
 
 
 
@@ -2575,6 +2611,22 @@ FunctionMetadata is the metadata for functions.
 
 
 
+<a name="bytebase-v1-GenerationMetadata"></a>
+
+### GenerationMetadata
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [GenerationMetadata.Type](#bytebase-v1-GenerationMetadata-Type) |  |  |
+| expression | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="bytebase-v1-GetChangeHistoryRequest"></a>
 
 ### GetChangeHistoryRequest
@@ -2653,6 +2705,7 @@ IndexMetadata is the metadata for indexes.
 | name | [string](#string) |  | The name is the name of an index. |
 | expressions | [string](#string) | repeated | The expressions are the ordered columns or expressions of an index. This could refer to a column or an expression. |
 | key_length | [int64](#int64) | repeated | The key_lengths are the ordered key lengths of an index. If the key length is not specified, it&#39;s -1. |
+| descending | [bool](#bool) | repeated | The descending is the ordered descending of an index. |
 | type | [string](#string) |  | The type is the type of an index. |
 | unique | [bool](#bool) |  | The unique is whether the index is unique. |
 | primary | [bool](#bool) |  | The primary is whether the index is a primary key index. |
@@ -2721,7 +2774,7 @@ Combine multiple functions with &#34;&amp;&amp;&#34; and &#34;||&#34;, we MUST u
 | page_token | [string](#string) |  | A page token, received from a previous `ListDatabases` call. Provide this to retrieve the subsequent page.
 
 When paginating, all other parameters provided to `ListDatabases` must match the call that provided the page token. |
-| filter | [string](#string) |  | Filter is used to filter databases returned in the list. For example, &#34;project = projects/{project}&#34; can be used to list databases in a project. Note: the project filter will be moved to parent. |
+| filter | [string](#string) |  | Filter is used to filter databases returned in the list. For example, `project == &#34;projects/{project}&#34;` can be used to list databases in a project. Note: the project filter will be moved to parent. |
 
 
 
@@ -3102,6 +3155,7 @@ TableMetadata is the metadata for tables.
 | indexes | [IndexMetadata](#bytebase-v1-IndexMetadata) | repeated | The indexes is the list of indexes in a table. |
 | engine | [string](#string) |  | The engine is the engine of a table. |
 | collation | [string](#string) |  | The collation is the collation of a table. |
+| charset | [string](#string) |  | The character set of table. |
 | row_count | [int64](#int64) |  | The row_count is the estimated number of rows of a table. |
 | data_size | [int64](#int64) |  | The data_size is the estimated data size of a table. |
 | index_size | [int64](#int64) |  | The index_size is the estimated index size of a table. |
@@ -3111,6 +3165,7 @@ TableMetadata is the metadata for tables.
 | user_comment | [string](#string) |  | The user_comment is the user comment of a table parsed from the comment. |
 | foreign_keys | [ForeignKeyMetadata](#bytebase-v1-ForeignKeyMetadata) | repeated | The foreign_keys is the list of foreign keys in a table. |
 | partitions | [TablePartitionMetadata](#bytebase-v1-TablePartitionMetadata) | repeated | The partitions is the list of partitions in a table. |
+| check_constraints | [CheckConstraintMetadata](#bytebase-v1-CheckConstraintMetadata) | repeated | The check_constraints is the list of check constraints in a table. |
 
 
 
@@ -3322,6 +3377,19 @@ ViewMetadata is the metadata for views.
 
 
 
+<a name="bytebase-v1-GenerationMetadata-Type"></a>
+
+### GenerationMetadata.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| TYPE_UNSPECIFIED | 0 |  |
+| TYPE_VIRTUAL | 1 |  |
+| TYPE_STORED | 2 |  |
+
+
+
 <a name="bytebase-v1-StreamMetadata-Mode"></a>
 
 ### StreamMetadata.Mode
@@ -3529,6 +3597,7 @@ PostgreSQL: RANGE, LIST, HASH (https://www.postgresql.org/docs/current/ddl-parti
 | source_metadata | [DatabaseMetadata](#bytebase-v1-DatabaseMetadata) |  | The metadata of the source schema. |
 | target_metadata | [DatabaseMetadata](#bytebase-v1-DatabaseMetadata) |  | The metadata of the target schema. |
 | engine | [Engine](#bytebase-v1-Engine) |  | The database engine of the schema. |
+| classification_from_config | [bool](#bool) |  | If false, we will build the raw common by classification in database config. |
 
 
 
@@ -5662,12 +5731,12 @@ MaskingExceptionPolicy is the allowlist of users who can access sensitive data.
 | type | [PolicyType](#bytebase-v1-PolicyType) |  |  |
 | rollout_policy | [RolloutPolicy](#bytebase-v1-RolloutPolicy) |  |  |
 | masking_policy | [MaskingPolicy](#bytebase-v1-MaskingPolicy) |  |  |
-| sql_review_policy | [SQLReviewPolicy](#bytebase-v1-SQLReviewPolicy) |  |  |
 | slow_query_policy | [SlowQueryPolicy](#bytebase-v1-SlowQueryPolicy) |  |  |
 | disable_copy_data_policy | [DisableCopyDataPolicy](#bytebase-v1-DisableCopyDataPolicy) |  |  |
 | masking_rule_policy | [MaskingRulePolicy](#bytebase-v1-MaskingRulePolicy) |  |  |
 | masking_exception_policy | [MaskingExceptionPolicy](#bytebase-v1-MaskingExceptionPolicy) |  |  |
 | restrict_issue_creation_for_sql_review_policy | [RestrictIssueCreationForSQLReviewPolicy](#bytebase-v1-RestrictIssueCreationForSQLReviewPolicy) |  |  |
+| tag_policy | [TagPolicy](#bytebase-v1-TagPolicy) |  |  |
 | enforce | [bool](#bool) |  |  |
 | resource_type | [PolicyResourceType](#bytebase-v1-PolicyResourceType) |  | The resource type for the policy. |
 | resource_uid | [string](#string) |  | The system-assigned, unique identifier for the resource. |
@@ -5710,22 +5779,6 @@ MaskingExceptionPolicy is the allowlist of users who can access sensitive data.
 
 
 
-<a name="bytebase-v1-SQLReviewPolicy"></a>
-
-### SQLReviewPolicy
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  |  |
-| rules | [SQLReviewRule](#bytebase-v1-SQLReviewRule) | repeated |  |
-
-
-
-
-
-
 <a name="bytebase-v1-SQLReviewRule"></a>
 
 ### SQLReviewRule
@@ -5754,6 +5807,37 @@ MaskingExceptionPolicy is the allowlist of users who can access sensitive data.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | active | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="bytebase-v1-TagPolicy"></a>
+
+### TagPolicy
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tags | [TagPolicy.TagsEntry](#bytebase-v1-TagPolicy-TagsEntry) | repeated | tags is the key - value map for resources. for example, the environment resource can have the sql review config tag, like &#34;bb.tag.review_config&#34;: &#34;reviewConfigs/{review config resource id}&#34; |
+
+
+
+
+
+
+<a name="bytebase-v1-TagPolicy-TagsEntry"></a>
+
+### TagPolicy.TagsEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 
 
@@ -5819,13 +5903,13 @@ The policy&#39;s `name` field is used to identify the instance to update. Format
 | ---- | ------ | ----------- |
 | POLICY_TYPE_UNSPECIFIED | 0 |  |
 | ROLLOUT_POLICY | 11 |  |
-| SQL_REVIEW | 4 |  |
 | MASKING | 5 |  |
 | SLOW_QUERY | 7 |  |
 | DISABLE_COPY_DATA | 8 |  |
 | MASKING_RULE | 9 |  |
 | MASKING_EXCEPTION | 10 |  |
 | RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW | 12 |  |
+| TAG | 13 |  |
 
 
 
@@ -5990,6 +6074,7 @@ When paginating, all other parameters provided to `ListPlans` must match the cal
 | creator | [string](#string) |  | Format: users/hello@world.com |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| plan_check_run_status_count | [Plan.PlanCheckRunStatusCountEntry](#bytebase-v1-Plan-PlanCheckRunStatusCountEntry) | repeated | The status count of the latest plan check runs. Keys are: - SUCCESS - WARNING - ERROR |
 
 
 
@@ -6098,6 +6183,22 @@ When paginating, all other parameters provided to `ListPlans` must match the cal
 | sheet | [string](#string) |  | The resource name of the sheet. Format: projects/{project}/sheets/{sheet} |
 | format | [ExportFormat](#bytebase-v1-ExportFormat) |  | The format of the exported file. |
 | password | [string](#string) | optional | The zip password provide by users. Leave it empty if no needs to encrypt the zip file. |
+
+
+
+
+
+
+<a name="bytebase-v1-Plan-PlanCheckRunStatusCountEntry"></a>
+
+### Plan.PlanCheckRunStatusCountEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [int32](#int32) |  |  |
 
 
 
@@ -6829,7 +6930,9 @@ When paginating, all other parameters provided to `ListProjects` must match the 
 | webhooks | [Webhook](#bytebase-v1-Webhook) | repeated |  |
 | data_classification_config_id | [string](#string) |  |  |
 | issue_labels | [Label](#bytebase-v1-Label) | repeated |  |
-| force_issue_labels | [bool](#bool) |  |  |
+| force_issue_labels | [bool](#bool) |  | Force issue labels to be used when creating an issue. |
+| allow_modify_statement | [bool](#bool) |  | Allow modifying statement after issue is created. |
+| auto_resolve_issue | [bool](#bool) |  | Enable auto resolve issue. |
 
 
 
@@ -7283,6 +7386,155 @@ The type of target.
 | DeleteDatabaseGroup | [DeleteDatabaseGroupRequest](#bytebase-v1-DeleteDatabaseGroupRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 | GetProjectProtectionRules | [GetProjectProtectionRulesRequest](#bytebase-v1-GetProjectProtectionRulesRequest) | [ProtectionRules](#bytebase-v1-ProtectionRules) |  |
 | UpdateProjectProtectionRules | [UpdateProjectProtectionRulesRequest](#bytebase-v1-UpdateProjectProtectionRulesRequest) | [ProtectionRules](#bytebase-v1-ProtectionRules) |  |
+
+ 
+
+
+
+<a name="v1_review_config_service-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## v1/review_config_service.proto
+
+
+
+<a name="bytebase-v1-CreateReviewConfigRequest"></a>
+
+### CreateReviewConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| review_config | [ReviewConfig](#bytebase-v1-ReviewConfig) |  | The sql review to create. |
+
+
+
+
+
+
+<a name="bytebase-v1-DeleteReviewConfigRequest"></a>
+
+### DeleteReviewConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the sql review to delete. Format: reviewConfigs/{uid} |
+
+
+
+
+
+
+<a name="bytebase-v1-GetReviewConfigRequest"></a>
+
+### GetReviewConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the sql review to retrieve. Format: reviewConfigs/{uid} |
+
+
+
+
+
+
+<a name="bytebase-v1-ListReviewConfigsRequest"></a>
+
+### ListReviewConfigsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of sql review to return. The service may return fewer than this value. If unspecified, at most 50 sql review will be returned. The maximum value is 1000; values above 1000 will be coerced to 1000. |
+| page_token | [string](#string) |  | A page token, provide this to retrieve the subsequent page.
+
+When paginating, all other parameters provided to `ListSQLReviews` must match the call that provided the page token. |
+
+
+
+
+
+
+<a name="bytebase-v1-ListReviewConfigsResponse"></a>
+
+### ListReviewConfigsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| review_configs | [ReviewConfig](#bytebase-v1-ReviewConfig) | repeated | The sql review from the specified request. |
+| next_page_token | [string](#string) |  | A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. |
+
+
+
+
+
+
+<a name="bytebase-v1-ReviewConfig"></a>
+
+### ReviewConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | The name of the sql review to retrieve. Format: reviewConfigs/{uid} |
+| title | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+| creator | [string](#string) |  | Format: users/hello@world.com |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| rules | [SQLReviewRule](#bytebase-v1-SQLReviewRule) | repeated |  |
+| resources | [string](#string) | repeated | resources using the config. Format: {resurce}/{resource id}, for example, environments/test. |
+
+
+
+
+
+
+<a name="bytebase-v1-UpdateReviewConfigRequest"></a>
+
+### UpdateReviewConfigRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| review_config | [ReviewConfig](#bytebase-v1-ReviewConfig) |  | The sql review toupdate.
+
+The name field is used to identify the sql review to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update. |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="bytebase-v1-ReviewConfigService"></a>
+
+### ReviewConfigService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateReviewConfig | [CreateReviewConfigRequest](#bytebase-v1-CreateReviewConfigRequest) | [ReviewConfig](#bytebase-v1-ReviewConfig) |  |
+| ListReviewConfigs | [ListReviewConfigsRequest](#bytebase-v1-ListReviewConfigsRequest) | [ListReviewConfigsResponse](#bytebase-v1-ListReviewConfigsResponse) |  |
+| GetReviewConfig | [GetReviewConfigRequest](#bytebase-v1-GetReviewConfigRequest) | [ReviewConfig](#bytebase-v1-ReviewConfig) |  |
+| UpdateReviewConfig | [UpdateReviewConfigRequest](#bytebase-v1-UpdateReviewConfigRequest) | [ReviewConfig](#bytebase-v1-ReviewConfig) |  |
+| DeleteReviewConfig | [DeleteReviewConfigRequest](#bytebase-v1-DeleteReviewConfigRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) |  |
 
  
 
@@ -7940,7 +8192,6 @@ When paginating, all other parameters provided to `ListRolloutTaskRuns` must mat
 | change_history | [string](#string) |  | The resource name of the change history Format: instances/{instance}/databases/{database}/changeHistories/{changeHistory} |
 | schema_version | [string](#string) |  |  |
 | execution_status | [TaskRun.ExecutionStatus](#bytebase-v1-TaskRun-ExecutionStatus) |  |  |
-| execution_status_update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Last execution status update timestamp. |
 | execution_detail | [TaskRun.ExecutionDetail](#bytebase-v1-TaskRun-ExecutionDetail) |  |  |
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | export_archive_status | [TaskRun.ExportArchiveStatus](#bytebase-v1-TaskRun-ExportArchiveStatus) |  |  |
@@ -8399,6 +8650,7 @@ When paginating, all other parameters provided to `ListRolloutTaskRuns` must mat
 | ----- | ---- | ----- | ----------- |
 | slack | [AppIMSetting.Slack](#bytebase-v1-AppIMSetting-Slack) |  |  |
 | feishu | [AppIMSetting.Feishu](#bytebase-v1-AppIMSetting-Feishu) |  |  |
+| wecom | [AppIMSetting.Wecom](#bytebase-v1-AppIMSetting-Wecom) |  |  |
 
 
 
@@ -8413,6 +8665,7 @@ When paginating, all other parameters provided to `ListRolloutTaskRuns` must mat
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
 | app_id | [string](#string) |  |  |
 | app_secret | [string](#string) |  |  |
 
@@ -8429,7 +8682,26 @@ When paginating, all other parameters provided to `ListRolloutTaskRuns` must mat
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
 | token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="bytebase-v1-AppIMSetting-Wecom"></a>
+
+### AppIMSetting.Wecom
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
+| corp_id | [string](#string) |  |  |
+| agent_id | [string](#string) |  |  |
+| secret | [string](#string) |  |  |
 
 
 
@@ -8463,6 +8735,7 @@ When paginating, all other parameters provided to `ListRolloutTaskRuns` must mat
 | title | [string](#string) |  |  |
 | levels | [DataClassificationSetting.DataClassificationConfig.Level](#bytebase-v1-DataClassificationSetting-DataClassificationConfig-Level) | repeated | levels is user defined level list for classification. The order for the level decides its priority. |
 | classification | [DataClassificationSetting.DataClassificationConfig.ClassificationEntry](#bytebase-v1-DataClassificationSetting-DataClassificationConfig-ClassificationEntry) | repeated | classification is the id - DataClassification map. The id should in [0-9]&#43;-[0-9]&#43;-[0-9]&#43; format. |
+| classification_from_config | [bool](#bool) |  | If true, we will only store the classification in the config. Otherwise we will get the classification from table/column comment, and write back to the schema metadata. |
 
 
 
@@ -8975,6 +9248,9 @@ The external URL is used for: 1. Constructing the correct callback URL when conf
 | token_duration | [google.protobuf.Duration](#google-protobuf-Duration) |  | The duration for token. |
 | announcement | [Announcement](#bytebase-v1-Announcement) |  | The setting of custom announcement |
 | maximum_role_expiration | [google.protobuf.Duration](#google-protobuf-Duration) |  | The max duration for role expired. |
+| domains | [string](#string) | repeated | The workspace domain, e.g. bytebase.com. |
+| enforce_identity_domain | [bool](#bool) |  | Only user and group from the domains can be created and login. |
+| database_change_mode | [DatabaseChangeMode](#bytebase-v1-DatabaseChangeMode) |  | The workspace database change mode. |
 
 
 
@@ -9014,6 +9290,19 @@ We support three levels of AlertLevel: INFO, WARNING, and ERROR.
 | ALERT_LEVEL_INFO | 1 |  |
 | ALERT_LEVEL_WARNING | 2 |  |
 | ALERT_LEVEL_CRITICAL | 3 |  |
+
+
+
+<a name="bytebase-v1-DatabaseChangeMode"></a>
+
+### DatabaseChangeMode
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DATABASE_CHANGE_MODE_UNSPECIFIED | 0 |  |
+| PIPELINE | 1 | A more advanced database change process, including custom approval workflows and other advanced features. Default to this mode. |
+| EDITOR | 2 | A simple database change process in SQL editor. Users can execute SQL directly. |
 
 
 
@@ -9684,6 +9973,7 @@ Type of the SheetPayload.
 | ----- | ---- | ----- | ----------- |
 | metadata | [DatabaseMetadata](#bytebase-v1-DatabaseMetadata) |  |  |
 | engine | [Engine](#bytebase-v1-Engine) |  | The database engine of the schema string. |
+| classification_from_config | [bool](#bool) |  | If false, we will build the raw common by classification in database config. |
 
 
 

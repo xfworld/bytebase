@@ -9,6 +9,7 @@ export const SQL_EDITOR_WORKSHEET_MODULE = "sql-editor.worksheet";
 export const SQL_EDITOR_DETAIL_MODULE_LEGACY = "sql-editor.legacy-detail";
 export const SQL_EDITOR_SHARE_MODULE_LEGACY = "sql-editor.legacy-share";
 export const SQL_EDITOR_SETTING_MODULE = "sql-editor.setting";
+export const SQL_EDITOR_SETTING_GENERAL_MODULE = "sql-editor.setting.general";
 export const SQL_EDITOR_SETTING_INSTANCE_MODULE = "sql-editor.setting.instance";
 export const SQL_EDITOR_SETTING_ENVIRONMENT_MODULE =
   "sql-editor.setting.environment";
@@ -75,10 +76,25 @@ const sqlEditorRoutes: RouteRecordRaw[] = [
         component: () => import("../views/sql-editor/SQLEditorSettingPage.vue"),
         children: [
           {
+            path: "general",
+            name: SQL_EDITOR_SETTING_GENERAL_MODULE,
+            meta: {
+              requiredWorkspacePermissionList: () => [
+                "bb.settings.get",
+                "bb.settings.set",
+              ],
+            },
+            component: () => import("../views/sql-editor/Setting/General"),
+          },
+          {
             path: "instance",
             name: SQL_EDITOR_SETTING_INSTANCE_MODULE,
             meta: {
-              requiredWorkspacePermissionList: () => ["bb.instances.list"],
+              requiredWorkspacePermissionList: () => [
+                "bb.instances.list",
+                "bb.instances.create",
+                "bb.instances.update",
+              ],
             },
             component: () => import("../views/sql-editor/Setting/Instance"),
           },
@@ -86,7 +102,10 @@ const sqlEditorRoutes: RouteRecordRaw[] = [
             path: "project",
             name: SQL_EDITOR_SETTING_PROJECT_MODULE,
             meta: {
-              requiredWorkspacePermissionList: () => ["bb.projects.list"],
+              requiredWorkspacePermissionList: () => [
+                "bb.projects.list",
+                "bb.projects.create",
+              ],
             },
             component: () => import("../views/sql-editor/Setting/Project"),
           },
@@ -94,7 +113,11 @@ const sqlEditorRoutes: RouteRecordRaw[] = [
             path: "environment",
             name: SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
             meta: {
-              requiredWorkspacePermissionList: () => ["bb.environments.list"],
+              requiredWorkspacePermissionList: () => [
+                "bb.environments.list",
+                "bb.environments.create",
+                "bb.environments.update",
+              ],
             },
             component: () => import("../views/sql-editor/Setting/Environment"),
           },

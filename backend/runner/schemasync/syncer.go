@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
+	"github.com/sourcegraph/conc/pool"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,15 +32,18 @@ import (
 )
 
 const (
-	schemaSyncInterval = 1 * time.Minute
+	instanceSyncInterval        = 15 * time.Minute
+	databaseSyncCheckerInterval = 5 * time.Second
+	syncTimeout                 = 15 * time.Minute
 	// defaultSyncInterval means never sync.
 	defaultSyncInterval = 0 * time.Second
+	MaximumOutstanding  = 100
 )
 
 // NewSyncer creates a schema syncer.
-func NewSyncer(store *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, profile config.Profile, licenseService enterprise.LicenseService) *Syncer {
+func NewSyncer(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *state.State, profile config.Profile, licenseService enterprise.LicenseService) *Syncer {
 	return &Syncer{
-		store:          store,
+		store:          stores,
 		dbFactory:      dbFactory,
 		stateCfg:       stateCfg,
 		profile:        profile,
@@ -49,41 +53,68 @@ func NewSyncer(store *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *sta
 
 // Syncer is the schema syncer.
 type Syncer struct {
-	store          *store.Store
-	dbFactory      *dbfactory.DBFactory
-	stateCfg       *state.State
-	profile        config.Profile
-	licenseService enterprise.LicenseService
+	sync.Mutex
+
+	store           *store.Store
+	dbFactory       *dbfactory.DBFactory
+	stateCfg        *state.State
+	profile         config.Profile
+	licenseService  enterprise.LicenseService
+	databaseSyncMap sync.Map // map[int]*store.DatabaseMessage
 }
 
 // Run will run the schema syncer once.
 func (s *Syncer) Run(ctx context.Context, wg *sync.WaitGroup) {
-	ticker := time.NewTicker(schemaSyncInterval)
-	defer ticker.Stop()
 	defer wg.Done()
-	slog.Debug(fmt.Sprintf("Schema syncer started and will run every %v", schemaSyncInterval))
-	for {
-		select {
-		case <-ticker.C:
-			s.trySyncAll(ctx)
-		case <-s.stateCfg.InstanceSyncTickleChan:
-			s.stateCfg.InstanceSyncs.Range(func(key, value any) bool {
-				s.stateCfg.InstanceSyncs.Delete(key)
-				instance, ok := value.(*store.InstanceMessage)
-				if !ok {
-					return true
-				}
-				// Sync all databases for instance.
-				if _, err := s.SyncInstance(ctx, instance); err != nil {
-					slog.Error("failed to sync instance", log.BBError(err))
-				}
-				s.syncAllDatabases(ctx, instance)
-				return true
-			})
-		case <-ctx.Done(): // if cancel() execute
-			return
+
+	sp := pool.New()
+	sp.Go(func() {
+		slog.Debug(fmt.Sprintf("Schema syncer started and will run every %v", instanceSyncInterval))
+		ticker := time.NewTicker(instanceSyncInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				s.trySyncAll(ctx)
+			case <-ctx.Done(): // if cancel() execute
+				return
+			}
 		}
-	}
+	})
+
+	sp.Go(func() {
+		ticker := time.NewTicker(databaseSyncCheckerInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				dbwp := pool.New().WithMaxGoroutines(MaximumOutstanding)
+				s.databaseSyncMap.Range(func(key, value any) bool {
+					s.databaseSyncMap.Delete(key)
+					database, ok := value.(*store.DatabaseMessage)
+					if !ok {
+						return true
+					}
+
+					dbwp.Go(func() {
+						slog.Debug("Sync database schema", slog.String("instance", database.InstanceID), slog.String("database", database.DatabaseName))
+						if err := s.SyncDatabaseSchema(ctx, database, false /* force */); err != nil {
+							slog.Debug("Failed to sync database schema",
+								slog.String("instance", database.InstanceID),
+								slog.String("databaseName", database.DatabaseName),
+								log.BBError(err))
+						}
+					})
+					return true
+				})
+				dbwp.Wait()
+			case <-ctx.Done(): // if cancel() execute
+				return
+			}
+		}
+	})
+	sp.Wait()
 }
 
 func (s *Syncer) trySyncAll(ctx context.Context) {
@@ -96,6 +127,8 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			slog.Error("Instance syncer PANIC RECOVER", log.BBError(err), log.BBStack("panic-stack"))
 		}
 	}()
+
+	wp := pool.New().WithMaxGoroutines(MaximumOutstanding)
 	instances, err := s.store.ListInstancesV2(ctx, &store.FindInstanceMessage{})
 	if err != nil {
 		slog.Error("Failed to retrieve instances", log.BBError(err))
@@ -103,6 +136,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 	}
 	now := time.Now()
 	for _, instance := range instances {
+		instance := instance
 		interval := getOrDefaultSyncInterval(instance)
 		if interval == defaultSyncInterval {
 			continue
@@ -115,13 +149,16 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 			continue
 		}
 
-		slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
-		if _, err := s.SyncInstance(ctx, instance); err != nil {
-			slog.Debug("Failed to sync instance",
-				slog.String("instance", instance.ResourceID),
-				slog.String("error", err.Error()))
-		}
+		wp.Go(func() {
+			slog.Debug("Sync instance schema", slog.String("instance", instance.ResourceID))
+			if _, err := s.SyncInstance(ctx, instance); err != nil {
+				slog.Debug("Failed to sync instance",
+					slog.String("instance", instance.ResourceID),
+					slog.String("error", err.Error()))
+			}
+		})
 	}
+	wp.Wait()
 
 	instancesMap := map[string]*store.InstanceMessage{}
 	for _, instance := range instances {
@@ -134,6 +171,7 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		return
 	}
 	for _, database := range databases {
+		database := database
 		if database.SyncState != api.OK {
 			continue
 		}
@@ -153,26 +191,12 @@ func (s *Syncer) trySyncAll(ctx context.Context) {
 		if now.Before(nextSyncTime) {
 			continue
 		}
-		if err := s.SyncDatabaseSchema(ctx, database, false /* force */); err != nil {
-			slog.Debug("Failed to sync database schema",
-				slog.String("instance", instance.ResourceID),
-				slog.String("databaseName", database.DatabaseName),
-				log.BBError(err))
-		}
+
+		s.databaseSyncMap.Store(database.UID, database)
 	}
 }
 
-func (s *Syncer) syncAllDatabases(ctx context.Context, instance *store.InstanceMessage) {
-	defer func() {
-		if r := recover(); r != nil {
-			err, ok := r.(error)
-			if !ok {
-				err = errors.Errorf("%v", r)
-			}
-			slog.Error("Database syncer PANIC RECOVER", log.BBError(err), log.BBStack("panic-stack"))
-		}
-	}()
-
+func (s *Syncer) SyncAllDatabases(ctx context.Context, instance *store.InstanceMessage) {
 	find := &store.FindDatabaseMessage{}
 	if instance != nil {
 		find.InstanceID = &instance.ResourceID
@@ -184,32 +208,12 @@ func (s *Syncer) syncAllDatabases(ctx context.Context, instance *store.InstanceM
 		return
 	}
 
-	instanceMap := make(map[string][]*store.DatabaseMessage)
 	for _, database := range databases {
 		// Skip deleted databases.
 		if database.SyncState != api.OK {
 			continue
 		}
-		instanceMap[database.InstanceID] = append(instanceMap[database.InstanceID], database)
-	}
-
-	for _, databaseList := range instanceMap {
-		for _, database := range databaseList {
-			instanceID := database.InstanceID
-			slog.Debug("Sync database schema",
-				slog.String("instance", instanceID),
-				slog.String("database", database.DatabaseName),
-				slog.Int64("lastSuccessfulSyncTs", database.SuccessfulSyncTimeTs),
-			)
-			// If we fail to sync a particular database due to permission issue, we will continue to sync the rest of the databases.
-			// We don't force dump database schema because it's rarely changed till the metadata is changed.
-			if err := s.SyncDatabaseSchema(ctx, database, false /* force */); err != nil {
-				slog.Debug("Failed to sync database schema",
-					slog.String("instance", instanceID),
-					slog.String("databaseName", database.DatabaseName),
-					log.BBError(err))
-			}
-		}
+		s.databaseSyncMap.Store(database.UID, database)
 	}
 }
 
@@ -227,7 +231,9 @@ func (s *Syncer) SyncInstance(ctx context.Context, instance *store.InstanceMessa
 	defer driver.Close(ctx)
 	s.upsertInstanceConnectionAnomaly(ctx, instance, nil)
 
-	instanceMeta, err := driver.SyncInstance(ctx)
+	deadlineCtx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(syncTimeout))
+	defer cancelFunc()
+	instanceMeta, err := driver.SyncInstance(deadlineCtx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to sync instance: %s", instance.ResourceID)
 	}
@@ -332,7 +338,9 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	defer driver.Close(ctx)
 	s.upsertDatabaseConnectionAnomaly(ctx, instance, database, nil)
 	// Sync database schema
-	databaseMetadata, err := driver.SyncDBSchema(ctx)
+	deadlineCtx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(syncTimeout))
+	defer cancelFunc()
+	databaseMetadata, err := driver.SyncDBSchema(deadlineCtx)
 	if err != nil {
 		return errors.Wrapf(err, "failed to sync database schema for database %q", database.DatabaseName)
 	}
@@ -346,11 +354,23 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	if dbSchema != nil {
 		dbModelConfig = dbSchema.GetInternalConfig()
 	}
+
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &database.ProjectID,
+	})
+	if err != nil {
+		return errors.Wrapf(err, `failed to get project by id "%s"`, database.ProjectID)
+	}
+	classificationConfig, err := s.store.GetDataClassificationConfigByID(ctx, project.DataClassificationConfigID)
+	if err != nil {
+		return errors.Wrapf(err, `failed to get classification config by id "%s"`, project.DataClassificationConfigID)
+	}
+
 	if instance.Engine != storepb.Engine_MYSQL && instance.Engine != storepb.Engine_POSTGRES {
 		// Force to disable classification from comment if the engine is not MYSQL or PG.
-		dbModelConfig.ClassificationFromConfig = true
+		classificationConfig.ClassificationFromConfig = true
 	}
-	if dbModelConfig.ClassificationFromConfig {
+	if classificationConfig.ClassificationFromConfig {
 		// Only set the user comment.
 		setUserCommentFromComment(databaseMetadata)
 	} else {
@@ -384,7 +404,7 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		// if oldDatabaseMetadata is nil and databaseMetadata is not, they are not equal resulting a sync.
 		if force || !equalDatabaseMetadata(oldDatabaseMetadata, databaseMetadata) {
 			var schemaBuf bytes.Buffer
-			if _, err := driver.Dump(ctx, &schemaBuf, true /* schemaOnly */); err != nil {
+			if _, err := driver.Dump(ctx, &schemaBuf); err != nil {
 				return errors.Wrapf(err, "failed to dump database schema for database %q", database.DatabaseName)
 			}
 			rawDump = schemaBuf.Bytes()

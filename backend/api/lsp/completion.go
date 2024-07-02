@@ -56,11 +56,17 @@ func (h *Handler) handleTextDocumentCompletion(ctx context.Context, _ *jsonrpc2.
 		// Nothing.
 	case storepb.Engine_MSSQL:
 	case storepb.Engine_ORACLE, storepb.Engine_DM, storepb.Engine_OCEANBASE_ORACLE, storepb.Engine_SNOWFLAKE:
+	case storepb.Engine_DYNAMODB:
 	default:
 		slog.Debug("Engine is not supported", slog.String("engine", engine.String()))
 		return newEmptyCompletionList(), nil
 	}
-	candidates, err := base.Completion(ctx, engine, string(content), params.Position.Line+1, params.Position.Character, defaultDatabase, h.GetDatabaseMetadataFunc, h.ListDatabaseNamesFunc)
+	candidates, err := base.Completion(ctx, engine, base.CompletionContext{
+		Scene:             h.getScene(),
+		DefaultDatabase:   defaultDatabase,
+		Metadata:          h.GetDatabaseMetadataFunc,
+		ListDatabaseNames: h.ListDatabaseNamesFunc,
+	}, string(content), params.Position.Line+1, params.Position.Character)
 	if err != nil {
 		// return errors will close the websocket connection, so we just log the error and return empty completion list.
 		slog.Error("Failed to get completion candidates", "err", err)
@@ -77,7 +83,7 @@ func (h *Handler) handleTextDocumentCompletion(ctx context.Context, _ *jsonrpc2.
 			},
 			Kind:          convertLSPCompletionItemKind(candidate.Type),
 			Documentation: candidate.Comment,
-			SortText:      generateSortText(params, candidate),
+			SortText:      generateSortText(params, engine, candidate),
 			InsertText:    candidate.Text,
 		}
 		items = append(items, completionItem)
@@ -89,29 +95,52 @@ func (h *Handler) handleTextDocumentCompletion(ctx context.Context, _ *jsonrpc2.
 	}, nil
 }
 
-func generateSortText(params lsp.CompletionParams, candidate base.Candidate) string {
-	switch params.Context.TriggerCharacter {
-	case ".", " ", "\n":
-		return generateSortTextAfterDot(candidate)
+func generateSortText(_ lsp.CompletionParams, engine storepb.Engine, candidate base.Candidate) string {
+	switch engine {
+	case storepb.Engine_MSSQL:
+		switch candidate.Type {
+		case base.CandidateTypeSchema:
+			return "01" + candidate.Text
+		case base.CandidateTypeTable, base.CandidateTypeForeignTable:
+			return "02" + candidate.Text
+		case base.CandidateTypeView, base.CandidateTypeMaterializedView:
+			return "03" + candidate.Text
+		case base.CandidateTypeColumn:
+			return "04" + candidate.Text
+		case base.CandidateTypeFunction:
+			return "05" + candidate.Text
+		case base.CandidateTypeKeyword:
+			switch candidate.Text {
+			case "SELECT", "SHOW", "SET", "FROM", "WHERE":
+				return "09" + candidate.Text
+			default:
+				return "10" + candidate.Text
+			}
+		default:
+			return "10" + string(candidate.Type) + candidate.Text
+		}
 	default:
-		return string(candidate.Type) + candidate.Text
-	}
-}
-
-func generateSortTextAfterDot(candidate base.Candidate) string {
-	switch candidate.Type {
-	case base.CandidateTypeColumn:
-		return "01" + candidate.Text
-	case base.CandidateTypeSchema:
-		return "02" + candidate.Text
-	case base.CandidateTypeTable, base.CandidateTypeForeignTable:
-		return "03" + candidate.Text
-	case base.CandidateTypeView, base.CandidateTypeMaterializedView:
-		return "04" + candidate.Text
-	case base.CandidateTypeFunction:
-		return "05" + candidate.Text
-	default:
-		return "10" + string(candidate.Type) + candidate.Text
+		switch candidate.Type {
+		case base.CandidateTypeColumn:
+			return "01" + candidate.Text
+		case base.CandidateTypeSchema:
+			return "02" + candidate.Text
+		case base.CandidateTypeTable, base.CandidateTypeForeignTable:
+			return "03" + candidate.Text
+		case base.CandidateTypeView, base.CandidateTypeMaterializedView:
+			return "04" + candidate.Text
+		case base.CandidateTypeFunction:
+			return "05" + candidate.Text
+		case base.CandidateTypeKeyword:
+			switch candidate.Text {
+			case "SELECT", "SHOW", "SET", "FROM", "WHERE":
+				return "09" + candidate.Text
+			default:
+				return "10" + candidate.Text
+			}
+		default:
+			return "10" + string(candidate.Type) + candidate.Text
+		}
 	}
 }
 

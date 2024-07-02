@@ -18,7 +18,7 @@ service SQLService {
       post: "/v1/{name=instances/*/databases/*}:query"
       body: "*"
 
-      additional_bindings {
+      additional_bindings: {
         post: "/v1/{name=instances/*}:query"
         body: "*"
       }
@@ -30,7 +30,7 @@ service SQLService {
       post: "/v1/{name=instances/*/databases/*}:execute"
       body: "*"
 
-      additional_bindings {
+      additional_bindings: {
         post: "/v1/{name=instances/*}:execute"
         body: "*"
       }
@@ -50,11 +50,11 @@ service SQLService {
       post: "/v1/{name=instances/*/databases/*}:export"
       body: "*"
 
-      additional_bindings {
+      additional_bindings: {
         post: "/v1/{name=instances/*}:export"
         body: "*"
       }
-      additional_bindings {
+      additional_bindings: {
         post: "/v1/{name=projects/*/issues/*}:export"
         body: "*"
       }
@@ -361,6 +361,8 @@ message StringifyMetadataRequest {
   DatabaseMetadata metadata = 1 [(google.api.field_behavior) = REQUIRED];
   // The database engine of the schema string.
   Engine engine = 2;
+  // If false, we will build the raw common by classification in database config.
+  bool classification_from_config = 3;
 }
 
 message StringifyMetadataResponse {

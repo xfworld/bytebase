@@ -12,6 +12,64 @@ import { PlanType, planTypeFromJSON, planTypeToJSON, planTypeToNumber } from "./
 
 export const protobufPackage = "bytebase.v1";
 
+export enum DatabaseChangeMode {
+  DATABASE_CHANGE_MODE_UNSPECIFIED = "DATABASE_CHANGE_MODE_UNSPECIFIED",
+  /**
+   * PIPELINE - A more advanced database change process, including custom approval workflows and other advanced features.
+   * Default to this mode.
+   */
+  PIPELINE = "PIPELINE",
+  /** EDITOR - A simple database change process in SQL editor. Users can execute SQL directly. */
+  EDITOR = "EDITOR",
+  UNRECOGNIZED = "UNRECOGNIZED",
+}
+
+export function databaseChangeModeFromJSON(object: any): DatabaseChangeMode {
+  switch (object) {
+    case 0:
+    case "DATABASE_CHANGE_MODE_UNSPECIFIED":
+      return DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED;
+    case 1:
+    case "PIPELINE":
+      return DatabaseChangeMode.PIPELINE;
+    case 2:
+    case "EDITOR":
+      return DatabaseChangeMode.EDITOR;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return DatabaseChangeMode.UNRECOGNIZED;
+  }
+}
+
+export function databaseChangeModeToJSON(object: DatabaseChangeMode): string {
+  switch (object) {
+    case DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED:
+      return "DATABASE_CHANGE_MODE_UNSPECIFIED";
+    case DatabaseChangeMode.PIPELINE:
+      return "PIPELINE";
+    case DatabaseChangeMode.EDITOR:
+      return "EDITOR";
+    case DatabaseChangeMode.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export function databaseChangeModeToNumber(object: DatabaseChangeMode): number {
+  switch (object) {
+    case DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED:
+      return 0;
+    case DatabaseChangeMode.PIPELINE:
+      return 1;
+    case DatabaseChangeMode.EDITOR:
+      return 2;
+    case DatabaseChangeMode.UNRECOGNIZED:
+    default:
+      return -1;
+  }
+}
+
 export interface ListSettingsRequest {
   /**
    * The maximum number of settings to return. The service may return fewer than
@@ -265,15 +323,25 @@ export function sMTPMailDeliverySettingValue_AuthenticationToNumber(
 export interface AppIMSetting {
   slack: AppIMSetting_Slack | undefined;
   feishu: AppIMSetting_Feishu | undefined;
+  wecom: AppIMSetting_Wecom | undefined;
 }
 
 export interface AppIMSetting_Slack {
+  enabled: boolean;
   token: string;
 }
 
 export interface AppIMSetting_Feishu {
+  enabled: boolean;
   appId: string;
   appSecret: string;
+}
+
+export interface AppIMSetting_Wecom {
+  enabled: boolean;
+  corpId: string;
+  agentId: string;
+  secret: string;
 }
 
 export interface AgentPluginSetting {
@@ -309,7 +377,15 @@ export interface WorkspaceProfileSetting {
     | Announcement
     | undefined;
   /** The max duration for role expired. */
-  maximumRoleExpiration: Duration | undefined;
+  maximumRoleExpiration:
+    | Duration
+    | undefined;
+  /** The workspace domain, e.g. bytebase.com. */
+  domains: string[];
+  /** Only user and group from the domains can be created and login. */
+  enforceIdentityDomain: boolean;
+  /** The workspace database change mode. */
+  databaseChangeMode: DatabaseChangeMode;
 }
 
 export interface Announcement {
@@ -463,6 +539,12 @@ export interface DataClassificationSetting_DataClassificationConfig {
    * The id should in [0-9]+-[0-9]+-[0-9]+ format.
    */
   classification: { [key: string]: DataClassificationSetting_DataClassificationConfig_DataClassification };
+  /**
+   * If true, we will only store the classification in the config.
+   * Otherwise we will get the classification from table/column comment,
+   * and write back to the schema metadata.
+   */
+  classificationFromConfig: boolean;
 }
 
 export interface DataClassificationSetting_DataClassificationConfig_Level {
@@ -1582,7 +1664,7 @@ export const SMTPMailDeliverySettingValue = {
 };
 
 function createBaseAppIMSetting(): AppIMSetting {
-  return { slack: undefined, feishu: undefined };
+  return { slack: undefined, feishu: undefined, wecom: undefined };
 }
 
 export const AppIMSetting = {
@@ -1592,6 +1674,9 @@ export const AppIMSetting = {
     }
     if (message.feishu !== undefined) {
       AppIMSetting_Feishu.encode(message.feishu, writer.uint32(18).fork()).ldelim();
+    }
+    if (message.wecom !== undefined) {
+      AppIMSetting_Wecom.encode(message.wecom, writer.uint32(26).fork()).ldelim();
     }
     return writer;
   },
@@ -1617,6 +1702,13 @@ export const AppIMSetting = {
 
           message.feishu = AppIMSetting_Feishu.decode(reader, reader.uint32());
           continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.wecom = AppIMSetting_Wecom.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1630,6 +1722,7 @@ export const AppIMSetting = {
     return {
       slack: isSet(object.slack) ? AppIMSetting_Slack.fromJSON(object.slack) : undefined,
       feishu: isSet(object.feishu) ? AppIMSetting_Feishu.fromJSON(object.feishu) : undefined,
+      wecom: isSet(object.wecom) ? AppIMSetting_Wecom.fromJSON(object.wecom) : undefined,
     };
   },
 
@@ -1640,6 +1733,9 @@ export const AppIMSetting = {
     }
     if (message.feishu !== undefined) {
       obj.feishu = AppIMSetting_Feishu.toJSON(message.feishu);
+    }
+    if (message.wecom !== undefined) {
+      obj.wecom = AppIMSetting_Wecom.toJSON(message.wecom);
     }
     return obj;
   },
@@ -1655,18 +1751,24 @@ export const AppIMSetting = {
     message.feishu = (object.feishu !== undefined && object.feishu !== null)
       ? AppIMSetting_Feishu.fromPartial(object.feishu)
       : undefined;
+    message.wecom = (object.wecom !== undefined && object.wecom !== null)
+      ? AppIMSetting_Wecom.fromPartial(object.wecom)
+      : undefined;
     return message;
   },
 };
 
 function createBaseAppIMSetting_Slack(): AppIMSetting_Slack {
-  return { token: "" };
+  return { enabled: false, token: "" };
 }
 
 export const AppIMSetting_Slack = {
   encode(message: AppIMSetting_Slack, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.enabled === true) {
+      writer.uint32(8).bool(message.enabled);
+    }
     if (message.token !== "") {
-      writer.uint32(10).string(message.token);
+      writer.uint32(18).string(message.token);
     }
     return writer;
   },
@@ -1679,7 +1781,14 @@ export const AppIMSetting_Slack = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          if (tag !== 10) {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.enabled = reader.bool();
+          continue;
+        case 2:
+          if (tag !== 18) {
             break;
           }
 
@@ -1695,11 +1804,17 @@ export const AppIMSetting_Slack = {
   },
 
   fromJSON(object: any): AppIMSetting_Slack {
-    return { token: isSet(object.token) ? globalThis.String(object.token) : "" };
+    return {
+      enabled: isSet(object.enabled) ? globalThis.Boolean(object.enabled) : false,
+      token: isSet(object.token) ? globalThis.String(object.token) : "",
+    };
   },
 
   toJSON(message: AppIMSetting_Slack): unknown {
     const obj: any = {};
+    if (message.enabled === true) {
+      obj.enabled = message.enabled;
+    }
     if (message.token !== "") {
       obj.token = message.token;
     }
@@ -1711,22 +1826,26 @@ export const AppIMSetting_Slack = {
   },
   fromPartial(object: DeepPartial<AppIMSetting_Slack>): AppIMSetting_Slack {
     const message = createBaseAppIMSetting_Slack();
+    message.enabled = object.enabled ?? false;
     message.token = object.token ?? "";
     return message;
   },
 };
 
 function createBaseAppIMSetting_Feishu(): AppIMSetting_Feishu {
-  return { appId: "", appSecret: "" };
+  return { enabled: false, appId: "", appSecret: "" };
 }
 
 export const AppIMSetting_Feishu = {
   encode(message: AppIMSetting_Feishu, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.enabled === true) {
+      writer.uint32(8).bool(message.enabled);
+    }
     if (message.appId !== "") {
-      writer.uint32(10).string(message.appId);
+      writer.uint32(18).string(message.appId);
     }
     if (message.appSecret !== "") {
-      writer.uint32(18).string(message.appSecret);
+      writer.uint32(26).string(message.appSecret);
     }
     return writer;
   },
@@ -1739,14 +1858,21 @@ export const AppIMSetting_Feishu = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          if (tag !== 10) {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.enabled = reader.bool();
+          continue;
+        case 2:
+          if (tag !== 18) {
             break;
           }
 
           message.appId = reader.string();
           continue;
-        case 2:
-          if (tag !== 18) {
+        case 3:
+          if (tag !== 26) {
             break;
           }
 
@@ -1763,6 +1889,7 @@ export const AppIMSetting_Feishu = {
 
   fromJSON(object: any): AppIMSetting_Feishu {
     return {
+      enabled: isSet(object.enabled) ? globalThis.Boolean(object.enabled) : false,
       appId: isSet(object.appId) ? globalThis.String(object.appId) : "",
       appSecret: isSet(object.appSecret) ? globalThis.String(object.appSecret) : "",
     };
@@ -1770,6 +1897,9 @@ export const AppIMSetting_Feishu = {
 
   toJSON(message: AppIMSetting_Feishu): unknown {
     const obj: any = {};
+    if (message.enabled === true) {
+      obj.enabled = message.enabled;
+    }
     if (message.appId !== "") {
       obj.appId = message.appId;
     }
@@ -1784,8 +1914,113 @@ export const AppIMSetting_Feishu = {
   },
   fromPartial(object: DeepPartial<AppIMSetting_Feishu>): AppIMSetting_Feishu {
     const message = createBaseAppIMSetting_Feishu();
+    message.enabled = object.enabled ?? false;
     message.appId = object.appId ?? "";
     message.appSecret = object.appSecret ?? "";
+    return message;
+  },
+};
+
+function createBaseAppIMSetting_Wecom(): AppIMSetting_Wecom {
+  return { enabled: false, corpId: "", agentId: "", secret: "" };
+}
+
+export const AppIMSetting_Wecom = {
+  encode(message: AppIMSetting_Wecom, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.enabled === true) {
+      writer.uint32(8).bool(message.enabled);
+    }
+    if (message.corpId !== "") {
+      writer.uint32(18).string(message.corpId);
+    }
+    if (message.agentId !== "") {
+      writer.uint32(26).string(message.agentId);
+    }
+    if (message.secret !== "") {
+      writer.uint32(34).string(message.secret);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): AppIMSetting_Wecom {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAppIMSetting_Wecom();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 8) {
+            break;
+          }
+
+          message.enabled = reader.bool();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.corpId = reader.string();
+          continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.agentId = reader.string();
+          continue;
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.secret = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AppIMSetting_Wecom {
+    return {
+      enabled: isSet(object.enabled) ? globalThis.Boolean(object.enabled) : false,
+      corpId: isSet(object.corpId) ? globalThis.String(object.corpId) : "",
+      agentId: isSet(object.agentId) ? globalThis.String(object.agentId) : "",
+      secret: isSet(object.secret) ? globalThis.String(object.secret) : "",
+    };
+  },
+
+  toJSON(message: AppIMSetting_Wecom): unknown {
+    const obj: any = {};
+    if (message.enabled === true) {
+      obj.enabled = message.enabled;
+    }
+    if (message.corpId !== "") {
+      obj.corpId = message.corpId;
+    }
+    if (message.agentId !== "") {
+      obj.agentId = message.agentId;
+    }
+    if (message.secret !== "") {
+      obj.secret = message.secret;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AppIMSetting_Wecom>): AppIMSetting_Wecom {
+    return AppIMSetting_Wecom.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AppIMSetting_Wecom>): AppIMSetting_Wecom {
+    const message = createBaseAppIMSetting_Wecom();
+    message.enabled = object.enabled ?? false;
+    message.corpId = object.corpId ?? "";
+    message.agentId = object.agentId ?? "";
+    message.secret = object.secret ?? "";
     return message;
   },
 };
@@ -1874,6 +2109,9 @@ function createBaseWorkspaceProfileSetting(): WorkspaceProfileSetting {
     tokenDuration: undefined,
     announcement: undefined,
     maximumRoleExpiration: undefined,
+    domains: [],
+    enforceIdentityDomain: false,
+    databaseChangeMode: DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED,
   };
 }
 
@@ -1902,6 +2140,15 @@ export const WorkspaceProfileSetting = {
     }
     if (message.maximumRoleExpiration !== undefined) {
       Duration.encode(message.maximumRoleExpiration, writer.uint32(66).fork()).ldelim();
+    }
+    for (const v of message.domains) {
+      writer.uint32(74).string(v!);
+    }
+    if (message.enforceIdentityDomain === true) {
+      writer.uint32(80).bool(message.enforceIdentityDomain);
+    }
+    if (message.databaseChangeMode !== DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED) {
+      writer.uint32(88).int32(databaseChangeModeToNumber(message.databaseChangeMode));
     }
     return writer;
   },
@@ -1969,6 +2216,27 @@ export const WorkspaceProfileSetting = {
 
           message.maximumRoleExpiration = Duration.decode(reader, reader.uint32());
           continue;
+        case 9:
+          if (tag !== 74) {
+            break;
+          }
+
+          message.domains.push(reader.string());
+          continue;
+        case 10:
+          if (tag !== 80) {
+            break;
+          }
+
+          message.enforceIdentityDomain = reader.bool();
+          continue;
+        case 11:
+          if (tag !== 88) {
+            break;
+          }
+
+          message.databaseChangeMode = databaseChangeModeFromJSON(reader.int32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1992,6 +2260,13 @@ export const WorkspaceProfileSetting = {
       maximumRoleExpiration: isSet(object.maximumRoleExpiration)
         ? Duration.fromJSON(object.maximumRoleExpiration)
         : undefined,
+      domains: globalThis.Array.isArray(object?.domains) ? object.domains.map((e: any) => globalThis.String(e)) : [],
+      enforceIdentityDomain: isSet(object.enforceIdentityDomain)
+        ? globalThis.Boolean(object.enforceIdentityDomain)
+        : false,
+      databaseChangeMode: isSet(object.databaseChangeMode)
+        ? databaseChangeModeFromJSON(object.databaseChangeMode)
+        : DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED,
     };
   },
 
@@ -2021,6 +2296,15 @@ export const WorkspaceProfileSetting = {
     if (message.maximumRoleExpiration !== undefined) {
       obj.maximumRoleExpiration = Duration.toJSON(message.maximumRoleExpiration);
     }
+    if (message.domains?.length) {
+      obj.domains = message.domains;
+    }
+    if (message.enforceIdentityDomain === true) {
+      obj.enforceIdentityDomain = message.enforceIdentityDomain;
+    }
+    if (message.databaseChangeMode !== DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED) {
+      obj.databaseChangeMode = databaseChangeModeToJSON(message.databaseChangeMode);
+    }
     return obj;
   },
 
@@ -2044,6 +2328,9 @@ export const WorkspaceProfileSetting = {
       (object.maximumRoleExpiration !== undefined && object.maximumRoleExpiration !== null)
         ? Duration.fromPartial(object.maximumRoleExpiration)
         : undefined;
+    message.domains = object.domains?.map((e) => e) || [];
+    message.enforceIdentityDomain = object.enforceIdentityDomain ?? false;
+    message.databaseChangeMode = object.databaseChangeMode ?? DatabaseChangeMode.DATABASE_CHANGE_MODE_UNSPECIFIED;
     return message;
   },
 };
@@ -3064,7 +3351,7 @@ export const DataClassificationSetting = {
 };
 
 function createBaseDataClassificationSetting_DataClassificationConfig(): DataClassificationSetting_DataClassificationConfig {
-  return { id: "", title: "", levels: [], classification: {} };
+  return { id: "", title: "", levels: [], classification: {}, classificationFromConfig: false };
 }
 
 export const DataClassificationSetting_DataClassificationConfig = {
@@ -3087,6 +3374,9 @@ export const DataClassificationSetting_DataClassificationConfig = {
         writer.uint32(34).fork(),
       ).ldelim();
     });
+    if (message.classificationFromConfig === true) {
+      writer.uint32(40).bool(message.classificationFromConfig);
+    }
     return writer;
   },
 
@@ -3131,6 +3421,13 @@ export const DataClassificationSetting_DataClassificationConfig = {
             message.classification[entry4.key] = entry4.value;
           }
           continue;
+        case 5:
+          if (tag !== 40) {
+            break;
+          }
+
+          message.classificationFromConfig = reader.bool();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3155,6 +3452,9 @@ export const DataClassificationSetting_DataClassificationConfig = {
           return acc;
         }, {})
         : {},
+      classificationFromConfig: isSet(object.classificationFromConfig)
+        ? globalThis.Boolean(object.classificationFromConfig)
+        : false,
     };
   },
 
@@ -3177,6 +3477,9 @@ export const DataClassificationSetting_DataClassificationConfig = {
           obj.classification[k] = DataClassificationSetting_DataClassificationConfig_DataClassification.toJSON(v);
         });
       }
+    }
+    if (message.classificationFromConfig === true) {
+      obj.classificationFromConfig = message.classificationFromConfig;
     }
     return obj;
   },
@@ -3202,6 +3505,7 @@ export const DataClassificationSetting_DataClassificationConfig = {
       }
       return acc;
     }, {});
+    message.classificationFromConfig = object.classificationFromConfig ?? false;
     return message;
   },
 };
