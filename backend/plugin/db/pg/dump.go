@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/blang/semver/v4"
 	"github.com/pkg/errors"
 
 	"github.com/bytebase/bytebase/backend/plugin/db/util"
@@ -68,17 +69,17 @@ func (driver *Driver) Dump(ctx context.Context, out io.Writer) (string, error) {
 
 func (driver *Driver) dumpOneDatabaseWithPgDump(ctx context.Context, database string, out io.Writer) error {
 	var args []string
-	args = append(args, fmt.Sprintf("--username=%s", driver.config.Username))
+	var host, port string
 	if driver.sshClient == nil {
-		args = append(args, fmt.Sprintf("--host=%s", driver.config.Host))
-		args = append(args, fmt.Sprintf("--port=%s", driver.config.Port))
+		host = driver.config.Host
+		port = driver.config.Port
 	} else {
 		localPort := <-util.PortFIFO
 		defer func() {
 			util.PortFIFO <- localPort
 		}()
-		args = append(args, fmt.Sprintf("--host=%s", "localhost"))
-		args = append(args, fmt.Sprintf("--port=%d", localPort))
+		host = "localhost"
+		port = fmt.Sprintf("%d", localPort)
 		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
 		if err != nil {
 			return err
@@ -87,23 +88,6 @@ func (driver *Driver) dumpOneDatabaseWithPgDump(ctx context.Context, database st
 		databaseAddress := fmt.Sprintf("%s:%s", driver.config.Host, driver.config.Port)
 		go util.ProxyConnection(driver.sshClient, listener, databaseAddress)
 	}
-	args = append(args, "--schema-only")
-	args = append(args, "--inserts")
-	args = append(args, "--use-set-session-authorization")
-	// Avoid pg_dump v15 generate "ALTER SCHEMA public OWNER TO" statement.
-	args = append(args, "--no-owner")
-	// Avoid pg_dump v15 generate REVOKE/GRANT statement.
-	args = append(args, "--no-privileges")
-	args = append(args, database)
-
-	if err := driver.execPgDump(ctx, args, out); err != nil {
-		return errors.Wrapf(err, "failed to exec pg_dump")
-	}
-	return nil
-}
-
-func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writer) error {
-	pgDumpPath := filepath.Join(driver.dbBinDir, "pg_dump")
 
 	password := driver.config.Password
 	if driver.config.AuthenticationType == storepb.DataSourceOptions_AWS_RDS_IAM {
@@ -117,29 +101,65 @@ func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writ
 	if password == "" {
 		args = append(args, "--no-password")
 	}
+	connectionString := buildPostgreSQLKeywordValueConnectionString(host, port, driver.config.Username, password, database)
+	args = append(args, connectionString)
+	args = append(args, "--schema-only")
+	args = append(args, "--inserts")
+	args = append(args, "--use-set-session-authorization")
+	// Avoid pg_dump v15 generate "ALTER SCHEMA public OWNER TO" statement.
+	args = append(args, "--no-owner")
+	// Avoid pg_dump v15 generate REVOKE/GRANT statement.
+	args = append(args, "--no-privileges")
+
+	if err := driver.execPgDump(ctx, args, out); err != nil {
+		return errors.Wrapf(err, "failed to exec pg_dump")
+	}
+	return nil
+}
+
+func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writer) error {
+	version, err := driver.getVersion(ctx)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get version")
+	}
+	semVersion, err := semver.Make(version)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse version %s to semantic version", version)
+	}
+	atLeast10_0_0 := semVersion.GE(semver.MustParse("10.0.0"))
+
+	pgDumpPath := filepath.Join(driver.dbBinDir, "pg_dump")
 	cmd := exec.CommandContext(ctx, pgDumpPath, args...)
 
-	// Unlike MySQL, PostgreSQL does not support specifying password in commands, we can do this by means of environment variables.
-	if password != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PGPASSWORD=%s", password))
-	}
 	sslMode := getSSLMode(driver.config.TLSConfig, driver.config.SSHConfig)
-	cmd.Env = append(cmd.Env, fmt.Sprintf("PGSSLMODE=%s", sslMode))
 
-	if driver.config.TLSConfig.SslCA != "" {
-		caTempFile, err := os.CreateTemp("", "pg-ssl-ca-")
-		if err != nil {
-			return err
+	// Unfortunately, pg_dump doesn't directly support use system certificate directly. Instead, it supprots
+	// specify one cert file path in PGSSLROOTCERT environment variable.
+	// MacOS(dev-env):
+	// 1. The system certs are stored in the Keychain utility, and it is not recommended to access them outside of Keychain.
+	// 2. The user self-signed ca should be add in Keychain utility and mark it is trusted.
+	// Debian(our docker image based):
+	// 1. The system certs are mostly stored in the /etc/ssl/certs/ca-certificates.crt, and some are stored in the /usr/share/ca-certificates/xxx.crt.
+	// 2. The user self-signed ca should be added in /usr/share/ca-certificates/xxx.crt.
+	// We should expose this option to user. For now, using require ssl mode to trust server certificate anyway.
+	if driver.config.TLSConfig.UseSSL {
+		sslMode = SSLModeRequire
+		if driver.config.TLSConfig.SslCA != "" {
+			caTempFile, err := os.CreateTemp("", "pg-ssl-ca-")
+			if err != nil {
+				return err
+			}
+			defer os.Remove(caTempFile.Name())
+			if _, err := caTempFile.WriteString(driver.config.TLSConfig.SslCA); err != nil {
+				return err
+			}
+			if err := caTempFile.Close(); err != nil {
+				return err
+			}
+			cmd.Env = append(cmd.Env, fmt.Sprintf("PGSSLROOTCERT=%s", caTempFile.Name()))
 		}
-		defer os.Remove(caTempFile.Name())
-		if _, err := caTempFile.WriteString(driver.config.TLSConfig.SslCA); err != nil {
-			return err
-		}
-		if err := caTempFile.Close(); err != nil {
-			return err
-		}
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PGSSLROOTCERT=%s", caTempFile.Name()))
 	}
+	cmd.Env = append(cmd.Env, fmt.Sprintf("PGSSLMODE=%s", sslMode))
 	if driver.config.TLSConfig.SslCert != "" {
 		certTempFile, err := os.CreateTemp("", "pg-ssl-cert-")
 		if err != nil {
@@ -198,6 +218,13 @@ func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writ
 			// Skip "SET SESSION AUTHORIZATION" till we can support it.
 			if strings.HasPrefix(line, "SET SESSION AUTHORIZATION ") {
 				return nil
+			}
+			if !atLeast10_0_0 && strings.Contains(line, "CREATE EVENT TRIGGER") {
+				// CREATE EVENT TRIGGER statement only supports EXECUTE PROCEDURE in version 10 and before, while newer version supports both EXECUTE { FUNCTION | PROCEDURE }.
+				// Since we use pg_dump >= version 10, the dump uses a new style even for an old version of PostgreSQL.
+				// We should convert EXECUTE FUNCTION to EXECUTE PROCEDURE to make the restoration work on old versions.
+				// https://www.postgresql.org/docs/14/sql-createeventtrigger.html
+				line = strings.ReplaceAll(line, "EXECUTE FUNCTION", "EXECUTE PROCEDURE")
 			}
 			// Skip "COMMENT ON EXTENSION" till we can support it.
 			// Extensions created in AWS Aurora PostgreSQL are owned by rdsadmin.
@@ -265,4 +292,28 @@ func (driver *Driver) execPgDump(ctx context.Context, args []string, out io.Writ
 		return errors.Wrapf(err, "error message: %s", allMsg)
 	}
 	return nil
+}
+
+// Learn more: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-KEYWORD-VALUE
+func buildPostgreSQLKeywordValueConnectionString(host, port, username, password, database string) string {
+	pairs := make(map[string]string)
+	pairs["user"] = escapeConnectionStringValue(username)
+	pairs["password"] = escapeConnectionStringValue(password)
+	pairs["host"] = escapeConnectionStringValue(host)
+	pairs["port"] = escapeConnectionStringValue(port)
+	pairs["dbname"] = escapeConnectionStringValue(database)
+	pairs["application_name"] = escapeConnectionStringValue("bytebase dump")
+
+	var items []string
+	for key, value := range pairs {
+		items = append(items, fmt.Sprintf("%s=%s", key, value))
+	}
+	return strings.Join(items, " ")
+}
+
+// Single quotes and backslashes within a value must be escaped with a backslash, i.e., \' and \\.
+func escapeConnectionStringValue(value string) string {
+	newValue := strings.ReplaceAll(value, `\`, `\\`)
+	newValue = strings.ReplaceAll(newValue, `'`, `\'`)
+	return fmt.Sprintf(`'%s'`, newValue)
 }

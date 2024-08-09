@@ -34,11 +34,11 @@
       />
       <DatabaseSelect
         v-if="sourceType === 'DATABASE'"
-        :database="sourceDatabase?.uid"
-        :project="project.uid"
+        :database-name="sourceDatabase?.name"
+        :project-name="project.name"
         :allowed-engine-type-list="headBranch ? [headBranch.engine] : undefined"
         style="width: 100%"
-        @update:database="$emit('update:source-database-uid', $event)"
+        @update:database-name="$emit('update:source-database-name', $event)"
       />
     </div>
   </div>
@@ -117,8 +117,9 @@
 
 <script setup lang="ts">
 import { CheckIcon, XCircleIcon, MoveLeftIcon } from "lucide-vue-next";
-import { NRadioGroup, NTab, NTabs } from "naive-ui";
+import { NRadio, NRadioGroup, NTab, NTabs } from "naive-ui";
 import { computed, ref, watch } from "vue";
+import { BBSpin } from "@/bbkit";
 import { DiffEditor } from "@/components/MonacoEditor";
 import SchemaEditorLite from "@/components/SchemaEditorLite";
 import MaskSpinner from "@/components/misc/MaskSpinner.vue";
@@ -127,6 +128,7 @@ import { useDatabaseV1Store } from "@/store";
 import type { ComposedDatabase, ComposedProject } from "@/types";
 import { Branch } from "@/types/proto/v1/branch_service";
 import { DatabaseMetadata } from "@/types/proto/v1/database_service";
+import BranchSelector from "../BranchSelector.vue";
 import type { RebaseBranchValidationState, RebaseSourceType } from "./types";
 
 type TabValue = "schema-editor" | "raw-schema-text";
@@ -147,7 +149,7 @@ defineEmits<{
   (event: "update:source-type", type: RebaseSourceType): void;
   (event: "update:head-branch-name", branch: string | undefined): void;
   (event: "update:source-branch-name", branch: string | undefined): void;
-  (event: "update:source-database-uid", uid: string | undefined): void;
+  (event: "update:source-database-name", name: string | undefined): void;
 }>();
 
 const schemaEditorRef = ref<InstanceType<typeof SchemaEditorLite>>();

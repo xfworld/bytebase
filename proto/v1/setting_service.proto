@@ -5,10 +5,12 @@ package bytebase.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "google/type/expr.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 import "v1/database_service.proto";
 import "v1/issue_service.proto";
@@ -20,11 +22,15 @@ service SettingService {
   rpc ListSettings(ListSettingsRequest) returns (ListSettingsResponse) {
     option (google.api.http) = {get: "/v1/settings"};
     option (google.api.method_signature) = "";
+    option (bytebase.v1.permission) = "bb.settings.list";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc GetSetting(GetSettingRequest) returns (Setting) {
     option (google.api.http) = {get: "/v1/{name=settings/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.settings.get";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc UpdateSetting(UpdateSettingRequest) returns (Setting) {
@@ -32,6 +38,9 @@ service SettingService {
       patch: "/v1/{setting.name=settings/*}"
       body: "setting"
     };
+    option (bytebase.v1.permission) = "bb.settings.set";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 }
 
@@ -62,7 +71,10 @@ message ListSettingsResponse {
 // The request message for getting a setting.
 message GetSettingRequest {
   // The resource name of the setting.
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Setting"}
+  ];
 }
 
 // The response message for getting a setting.
@@ -86,9 +98,14 @@ message UpdateSettingRequest {
 
 // The schema of setting.
 message Setting {
+  option (google.api.resource) = {
+    type: "bytebase.com/Setting"
+    pattern: "settings/{setting}"
+  };
+
   // The resource name of the setting. Must be one of the following forms:
   //
-  // - `setting/{setting_name}`
+  // - `setting/{setting}`
   // For example, "settings/bb.branding.logo"
   string name = 1;
 
@@ -113,6 +130,7 @@ message Value {
     DataClassificationSetting data_classification_setting_value = 10;
     SemanticTypeSetting semantic_type_setting_value = 11;
     MaskingAlgorithmSetting masking_algorithm_setting_value = 12;
+    MaximumSQLResultSizeSetting maximum_sql_result_size_setting = 13;
   }
 }
 
@@ -451,4 +469,10 @@ enum DatabaseChangeMode {
   PIPELINE = 1;
   // A simple database change process in SQL editor. Users can execute SQL directly.
   EDITOR = 2;
+}
+
+message MaximumSQLResultSizeSetting {
+  // The limit is in bytes.
+  // The default value is 100MB, we will use the default value if the setting not exists, or the limit <= 0.
+  int64 limit = 1;
 }

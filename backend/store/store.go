@@ -40,11 +40,12 @@ type Store struct {
 	databaseGroupIDCache   *lru.Cache[int64, *DatabaseGroupMessage]
 	vcsIDCache             *lru.Cache[int, *VCSProviderMessage]
 	rolesCache             *lru.Cache[string, *RoleMessage]
-	userGroupCache         *lru.Cache[string, *UserGroupMessage]
+	groupCache             *lru.Cache[string, *GroupMessage]
+	sheetCache             *lru.Cache[int, *SheetMessage]
 
 	// Large objects.
-	sheetCache    *lru.Cache[int, string]
-	dbSchemaCache *lru.Cache[int, *model.DBSchema]
+	sheetStatementCache *lru.Cache[int, string]
+	dbSchemaCache       *lru.Cache[int, *model.DBSchema]
 }
 
 // New creates a new instance of Store.
@@ -137,7 +138,11 @@ func New(db *DB, profile *config.Profile) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	sheetCache, err := lru.New[int, string](10)
+	sheetCache, err := lru.New[int, *SheetMessage](64)
+	if err != nil {
+		return nil, err
+	}
+	sheetStatementCache, err := lru.New[int, string](10)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +150,7 @@ func New(db *DB, profile *config.Profile) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	userGroupCache, err := lru.New[string, *UserGroupMessage](1024)
+	groupCache, err := lru.New[string, *GroupMessage](1024)
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +183,9 @@ func New(db *DB, profile *config.Profile) (*Store, error) {
 		vcsIDCache:             vcsIDCache,
 		rolesCache:             rolesCache,
 		sheetCache:             sheetCache,
+		sheetStatementCache:    sheetStatementCache,
 		dbSchemaCache:          dbSchemaCache,
-		userGroupCache:         userGroupCache,
+		groupCache:             groupCache,
 	}, nil
 }
 

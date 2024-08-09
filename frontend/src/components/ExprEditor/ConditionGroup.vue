@@ -74,6 +74,12 @@
           @remove="removeCondition(operand)"
           @update="$emit('update')"
         />
+        <RawString
+          v-if="isRawStringExpr(operand)"
+          :expr="operand"
+          @remove="removeRawString(operand)"
+          @update="$emit('update')"
+        />
       </div>
     </div>
 
@@ -84,9 +90,17 @@
         /></template>
         <span class="text-gray-500">{{ $t("cel.condition.add") }}</span>
       </NButton>
+      <NButton size="small" quaternary @click="addRawString">
+        <template #icon
+          ><heroicons:plus class="w-4 h-4 text-gray-500"
+        /></template>
+        <span class="text-gray-500">{{
+          $t("cel.condition.add-raw-expression")
+        }}</span>
+      </NButton>
     </div>
 
-    <div v-if="root && allowAdmin" class="space-x-1 pt-3">
+    <div v-if="root && allowAdmin" class="space-x-1">
       <NButton size="small" quaternary @click="addCondition">
         <template #icon><heroicons:plus class="w-4 h-4" /></template>
         <span>{{ $t("cel.condition.add") }}</span>
@@ -103,6 +117,15 @@
           </div>
         </NTooltip>
       </NButton>
+      <NButton
+        v-if="enableRawExpression"
+        size="small"
+        quaternary
+        @click="addRawString"
+      >
+        <template #icon><heroicons:plus class="w-4 h-4" /></template>
+        <span>{{ $t("cel.condition.add-raw-expression") }}</span>
+      </NButton>
     </div>
   </div>
 </template>
@@ -118,8 +141,16 @@ import {
   LogicalOperatorList,
   isConditionGroupExpr,
   isConditionExpr,
+  isRawStringExpr,
+  ExprType,
+  type RawStringExpr,
+  isNumberFactor,
+  type Factor,
+  isStringFactor,
+  isTimestampFactor,
 } from "@/plugins/cel";
 import Condition from "./Condition.vue";
+import RawString from "./RawString.vue";
 import { getOperatorListByFactor } from "./components/common";
 import { useExprEditorContext } from "./context";
 
@@ -133,8 +164,12 @@ const emit = defineEmits<{
   (event: "update"): void;
 }>();
 
-const context = useExprEditorContext();
-const { allowAdmin, factorList, factorOperatorOverrideMap } = context;
+const {
+  allowAdmin,
+  enableRawExpression,
+  factorList,
+  factorOperatorOverrideMap,
+} = useExprEditorContext();
 
 const operator = computed({
   get() {
@@ -165,14 +200,24 @@ const addCondition = () => {
   );
 
   args.value.push({
+    type: ExprType.Condition,
     operator: operators[0] ?? "",
-    args: [factor, ""],
+    args: [factor, getDefaultValue(factor)],
+  } as any);
+  emit("update");
+};
+
+const addRawString = () => {
+  args.value.push({
+    type: ExprType.RawString,
+    content: "",
   } as any);
   emit("update");
 };
 
 const addConditionGroup = () => {
   args.value.push({
+    type: ExprType.ConditionGroup,
     operator: LogicalOperatorList[0],
     args: [],
   });
@@ -193,5 +238,21 @@ const removeConditionGroup = (group: ConditionGroupExpr) => {
     args.value.splice(index, 1);
     emit("update");
   }
+};
+
+const removeRawString = (rawString: RawStringExpr) => {
+  const index = args.value.indexOf(rawString);
+  if (index >= 0) {
+    args.value.splice(index, 1);
+    emit("update");
+  }
+};
+
+const getDefaultValue = (factor: Factor): any => {
+  if (isNumberFactor(factor)) return 0;
+  if (isStringFactor(factor)) return "";
+  if (isTimestampFactor(factor)) return new Date();
+  // Fall back to empty string.
+  return "";
 };
 </script>

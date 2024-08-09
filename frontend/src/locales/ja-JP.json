@@ -24,7 +24,7 @@
     "activities": "活動",
     "sign-in": "ログイン",
     "sign-up": "登録する",
-    "email": "郵便",
+    "email": "メールアドレス",
     "username": "ユーザー名",
     "credentials": "資格",
     "password": "パスワード",
@@ -44,7 +44,7 @@
     "database": "データベース",
     "databases": "データベース",
     "description": "説明する",
-    "instance": "実例",
+    "instance": "インスタンス",
     "instances": "インスタンス",
     "environment": "環境",
     "environments": "環境",
@@ -54,7 +54,7 @@
     "archived": "アーカイブ済み",
     "no-license": "証明書がありません",
     "logout": "サインアウト",
-    "close": "閉鎖",
+    "close": "閉じる",
     "latest": "最新の",
     "error": "間違い",
     "canceled": "キャンセル",
@@ -66,7 +66,7 @@
     "retry": "リトライ",
     "skip": "飛び越える",
     "reopen": "再開",
-    "dismiss": "閉鎖",
+    "dismiss": "閉じる",
     "back": "戻る",
     "next": "次のステップ",
     "edit": "編集",
@@ -97,10 +97,11 @@
     "stage": "ステージ",
     "task": "タスク",
     "tasks": "タスク",
+    "blocking-task": "タスクをブロック中",
     "sql": "SQL",
     "unassigned": "割り当てられていない",
     "new": "作成する",
-    "add": "に追加",
+    "add": "を追加",
     "confirm-and-add": "確認して追加",
     "confirm-and-update": "確認して更新する",
     "query": "お問い合わせ",
@@ -142,8 +143,8 @@
     "updating": "更新中...",
     "address": "住所",
     "assigned": "割り当てられた",
-    "subscribed": "購読しました",
-    "created": "作成した",
+    "subscribed": "購読済",
+    "created": "作成済",
     "label": "ラベル",
     "labels": "ラベル",
     "mode": "モデル",
@@ -277,19 +278,25 @@
     "resource": "リソース",
     "closed": "閉まっている",
     "options": "オプション",
-    "reset": "リセット"
+    "reset": "リセット",
+    "refresh": "リフレッシュ",
+    "rollback": "ロールバック",
+    "rows": {
+      "self": "行",
+      "n-rows": "{n} 行"
+    }
   },
   "error-page": {
     "go-back-home": "ホームページに戻る"
   },
-  "anomaly-center": "異常な中心",
+  "anomaly-center": "異常の検出",
   "kbar": {
     "recently-visited": "最近の訪問",
     "navigation": "ナビゲーション",
     "help": {
       "navigate": "選ぶ",
       "perform": "埋め込む",
-      "close": "閉鎖",
+      "close": "閉じる",
       "back": "戻る"
     },
     "options": {
@@ -393,7 +400,9 @@
       },
       "show-default-parameters": "デフォルトパラメータを表示",
       "hide-default-parameters": "デフォルトパラメータを非表示にする",
-      "enable": "オンラインでの大規模なテーブル変更を有効にする"
+      "enable": "オンラインでの大規模なテーブル変更を有効にする",
+      "disable": "オンライン移行を無効にする",
+      "advice-split-statement-to-single-online-migration-issue": "このステートメントを 1 つのオンライン移行の問題に分割することをアドバイスします。"
     },
     "prior-backup-tips": "影響を受けるデータを事前にバックアップする"
   },
@@ -407,7 +416,9 @@
       "executing-sql": "SQLを実行しています。",
       "executing-sql-detail": "SQL {current}/{total} を ({startLine}, {startColumn}) から ({endLine}, {endColumn}) まで実行しています。",
       "dumping-schema-after-executing-sql": "SQL の実行が完了し、スキーマがエクスポートされています。",
-      "failed-sql-detail": "({startLine}、{startColumn}) から ({endLine}、{endColumn}) までの実行が失敗しました: {message}。"
+      "failed-sql-detail": "({startLine}、{startColumn}) から ({endLine}、{endColumn}) までの実行が失敗しました: {message}。",
+      "waiting-connection": "利用可能なインスタンス接続を待機しています。インスタンスの接続数が制限に達しました。",
+      "waiting-task": "別のタスクが完了するのを待っています。"
     }
   },
   "banner": {
@@ -447,10 +458,10 @@
   "settings": {
     "sidebar": {
       "account": "アカウント",
-      "profile": "個人情報",
+      "profile": "プロフィール",
       "workspace": "ワークスペース",
-      "security-and-policy": "セキュリティ戦略",
-      "integration": "統合された",
+      "security-and-policy": "セキュリティポリシー",
+      "integration": "インテグレーション",
       "general": "ユニバーサル",
       "members-and-groups": "メンバーとグループ",
       "im-integration": "私は",
@@ -458,20 +469,19 @@
       "gitops": "GitOps",
       "subscription": "サブスクリプション",
       "labels": "ラベル",
-      "debug-log": "デバッグログ",
-      "sensitive-data": "データの非感作化",
+      "sensitive-data": "データマスキング",
       "access-control": "データアクセス制御",
       "audit-log": "監査ログ",
       "custom-roles": "カスタムロール",
       "mail-delivery": "メール送信"
     },
     "profile": {
-      "email": "郵便",
+      "email": "メールアドレス",
       "role": "役割",
       "phone": "電話番号",
       "country-code": "国または地域コード",
       "password": "パスワード",
-      "password-confirm": "パスワードを認証する",
+      "password-confirm": "パスワードの確認",
       "password-confirm-placeholder": "新しいパスワードを確認します",
       "password-mismatch": "新しいパスワードが一致しません",
       "subscription": "(有料プランにアップグレードするとキャラクター管理が可能になります)"
@@ -658,6 +668,10 @@
           "days": "日々）",
           "never-expires": "期限切れなし"
         },
+        "maximum-sql-result": {
+          "self": "SQL出力サイズ制限",
+          "description": "出力される SQL クエリ結果のサイズを制限します。"
+        },
         "domain-restriction": {
           "self": "ワークスペースドメイン",
           "description": "ワークスペース メンバーの電子メール ドメインとして使用できるドメインを指定します。",
@@ -808,7 +822,8 @@
         "override-desc": "既存のアルゴリズムは上書きされるため、セマンティック タイプに合わせてアルゴリズムを再構成する必要があります。",
         "override-confirm": "インポートを続行する",
         "default": "デフォルト",
-        "default-desc": "*** を使用してデータをマスクする",
+        "default-with-semantic-type": "デフォルト（セマンティックタイプに従う）",
+        "default-desc": "* を使用して、感度解除のレベルに応じてデータのすべてまたは一部をブロックします。",
         "table": {
           "title": "名前",
           "description": "説明する",
@@ -938,6 +953,7 @@
       "created-issue": "作業指示書を作成する",
       "commented": "コメント",
       "changed-description": "説明の変更",
+      "changed-labels": "ラベルを変更しました",
       "changed-from-to": "{name} を「{oldValue}」から「{newValue}」に変更します",
       "unset-from": "{name} の値を元に戻します (「{oldValue}」から)",
       "set-to": "{name} を「{newValue}」に設定します",
@@ -975,9 +991,9 @@
     "restore": "復元する"
   },
   "issue": {
-    "my-issues": "私の仕事の命令",
+    "my-issues": "私のイシュー",
     "waiting-approval": "承認待ち",
-    "waiting-rollout": "リリースを待っています",
+    "waiting-rollout": "リリース待ち",
     "opened-by-at": "{id} は {creator} から {time} まで始まりました",
     "commit-by-at": "{id} {title} は {time} に {author} によって送信されました",
     "status-transition": {
@@ -1091,8 +1107,8 @@
       "hide": "詳細検索を非表示にする"
     },
     "table": {
-      "open": "オープニング",
-      "closed": "閉まっている",
+      "open": "オープン",
+      "closed": "クローズ　",
       "status": "州",
       "project": "プロジェクト",
       "name": "名前",
@@ -1167,7 +1183,7 @@
       "moderate": "適度",
       "high": "高い"
     },
-    "waiting-to-rollout": "リリースを待っています",
+    "waiting-to-rollout": "リリース待ち",
     "waiting-for-review": "モデレート済み",
     "issue-name": "作業指示書名",
     "grant-request": {
@@ -1219,7 +1235,8 @@
     "error": {
       "issue-is-not-open": "作業指示はオープンされていません",
       "you-don-have-privilege-to-edit-this-issue": "このチケットを編集する権限がありません",
-      "you-are-not-allowed-to-perform-this-action": "このアクションを実行する権限がありません"
+      "you-are-not-allowed-to-perform-this-action": "このアクションを実行する権限がありません",
+      "cannot-close-issue-with-running-tasks": "実行中のタスクに関する問題を解決できません"
     },
     "approval-requested": "承認リクエスト",
     "unfinished-resolved-issue-tips": "作業指示書は「完了」とマークされましたが、一部のタスクは正常に実行されませんでした。",
@@ -1237,6 +1254,8 @@
       "self": "更新のロールアウト時間"
     },
     "task-run": {
+      "logs": "ログ",
+      "session": "セッション",
       "task-run-log": {
         "batch": "バッチ",
         "affected-rows": "影響を受ける行",
@@ -1252,6 +1271,17 @@
           "waiting": "実行の準備完了",
           "running": "処刑される"
         }
+      },
+      "task-run-session": {
+        "blocking-sessions": {
+          "self": "セッションのブロック",
+          "description": "現在のセッションをブロックしているセッション"
+        },
+        "blocked-sessions": {
+          "self": "ブロックされたセッション",
+          "description": "現在のセッションによってブロックされているセッション"
+        },
+        "no-session-found": "セッションが見つかりません。"
       }
     },
     "sql-review": {
@@ -1272,10 +1302,10 @@
   "quick-action": {
     "create-db": "データベースの作成",
     "new-db": "データベースの作成",
-    "add-instance": "@:common.add@:common.instance",
+    "add-instance": "@:common.instance@:common.add",
     "create-instance": "@:common.create@:common.instance",
     "manage-user": "会員管理",
-    "add-environment": "@:common.add@:common.environment",
+    "add-environment": "@:common.environment@:common.add",
     "create-environment": "@:common.create@:common.environment",
     "new-project": "@:common.new@:common.project",
     "create-project": "@:common.create@:common.project",
@@ -1532,7 +1562,12 @@
     "production-environment": "本番環境",
     "access-control": {
       "title": "アクセス制御",
-      "disable-copy-data-from-sql-editor": "SQL エディタにおけるデータコピーの制限 (管理者/DBA はコピー可能)"
+      "disable-copy-data-from-sql-editor": "SQL エディタにおけるデータコピーの制限 (管理者/DBA はコピー可能)",
+      "restrict-admin-data-sources": {
+        "self": "管理者データソースを制限する",
+        "disallow": "管理データソースからのデータのクエリを禁止する",
+        "fallback": "読み取り専用データソースが利用できない場合は、管理データソースにフォールバックします。"
+      }
     }
   },
   "quick-start": {
@@ -1554,14 +1589,14 @@
   "auth": {
     "sign-up": {
       "title": "アカウントを登録してください",
-      "admin-title": "設定{account}",
+      "admin-title": "{account} の登録",
       "admin-account": "管理者アカウント",
-      "create-admin-account": "登録管理者",
-      "confirm-password": "パスワードを認証する",
+      "create-admin-account": "管理者アカウントを作成",
+      "confirm-password": "パスワードの確認",
       "confirm-password-placeholder": "あなたのパスワードを確認",
-      "password-mismatch": "ミスマッチ",
+      "password-mismatch": "パスワードが一致しません",
       "existing-user": "すでにアカウントをお持ちですか？",
-      "accept-terms-and-policy": "{terms} と {policy} のバイトベースを受け入れます",
+      "accept-terms-and-policy": "Bytebase の {terms} と {policy} に同意します",
       "terms-of-service": "利用規約",
       "privacy-policy": "プライバシーポリシー"
     },
@@ -1590,6 +1625,10 @@
     },
     "activate": {
       "title": "{type} アカウントをアクティブ化します"
+    },
+    "login-as-another": {
+      "title": "別のユーザーとしてログインしています",
+      "content": "ホームページへリダイレクトさせていただきます。"
     }
   },
   "policy": {
@@ -1815,6 +1854,7 @@
     "transfer-database-from-to": "データベースをソース プロジェクトからターゲット プロジェクトに転送する",
     "classification": {
       "self": "分類と格付け",
+      "description": "データ分類を使用して、少数の分類のみを制御することで、多数の列のマスキング ポリシーを管理します。",
       "sync-from-comment": "コメントからカテゴリと評価を同期する",
       "sync-from-comment-tip": "有効にすると、分類評価がテーブルまたは列のコメントから同期されます。コメントは「{format}」形式に従う必要があります。",
       "sync-from-comment-enable-warning": "分類評価は DDL とともに変更され、元の注釈と同期されます。",
@@ -2342,7 +2382,7 @@
       "unsaved": "保存されていません",
       "context-menu": {
         "actions": {
-          "close": "閉鎖",
+          "close": "閉じる",
           "close-others": "その他を閉じる",
           "close-to-the-right": "右側をすべて閉じます",
           "close-saved": "保存済みを閉じる",
@@ -2390,7 +2430,19 @@
       "self": "標準モード"
     },
     "to-enable-standard-mode": "標準モードを有効にするには",
-    "add-a-new-instance": "新しいインスタンスを追加する"
+    "add-a-new-instance": "新しいインスタンスを追加する",
+    "web-socket": {
+      "errors": {
+        "title": "WebSocket接続に失敗しました",
+        "description": "オートコンプリートが制限されているか、無効になっている可能性があります。",
+        "disconnected": "WebSocketが切断されました"
+      }
+    },
+    "query-context": {
+      "admin-data-source-is-disallowed-to-query": "管理者データ ソースはクエリできません。",
+      "admin-data-source-is-disallowed-to-query-when-read-only-data-source-is-available": "読み取り専用データ ソースが使用可能な場合、管理データ ソースはクエリを実行できません。"
+    },
+    "manage-connections": "接続を管理する"
   },
   "schema-editor": {
     "self": "スキーマエディタ",
@@ -2807,6 +2859,8 @@
     "policy-updated": "監査ポリシーが更新されました",
     "policy-duplicated": "監査ポリシーがコピーされました",
     "rules": "ルール",
+    "add-rules": "ルールを追加する",
+    "add-or-remove-rules": "ルールを追加または削除する",
     "filter": "フィルター",
     "no-permission": "管理者または DBA のみが監査ポリシーを作成または更新する権限を持っています。",
     "disable": "監査ポリシーを無効にする",
@@ -2820,9 +2874,10 @@
       "no-linked-resources": "リソースのバインドはありません",
       "change-resources": "バインドされたリソースを変更する",
       "self": "リソースにバインドする",
-      "label": "選択したリソースに監査ポリシーを適用します。リソースは 1 つのポリシーにのみ関連付けることができます。データベースはプロジェクトに添付された SQL 監査ポリシーを使用します。それ以外の場合は、環境ポリシーにフォールバックします。",
+      "label": "監査ポリシーは環境リソースまたはプロジェクト リソースにバインドする必要があり、対応するリソースの下にあるすべてのデータベースに影響します。データベースがプロジェクト レベルと環境レベルの両方のポリシーの影響を受ける場合、プロジェクト レベルのポリシーのみが有効になります。",
       "label-environment": "SQL 監査ポリシーは、選択した環境に属するすべてのデータベースに影響します。",
-      "label-project": "SQL 監査ポリシーは、選択したプロジェクト内のすべてのデータベースに影響します。環境の SQL 監査ポリシーは無視されます。"
+      "label-project": "SQL 監査ポリシーは、選択したプロジェクト内のすべてのデータベースに影響します。環境の SQL 監査ポリシーは無視されます。",
+      "override-warning": "次のリソースは、他の SQL 監査ポリシーにバインドされています。 \"{button}\" をクリックすると設定が上書きされます。"
     },
     "create": {
       "breadcrumb": "監査ポリシーを作成する",
@@ -2856,31 +2911,6 @@
     "view-definition": "ビューの定義",
     "other-engines": "他の種類のデータベース"
   },
-  "debug-log": {
-    "title": "デバッグログ",
-    "no-logs": "デバッグログはまだありません",
-    "count-of-logs": "サーバーから取得した最新の {count} ログ。",
-    "debug-log-detail": "ログの詳細",
-    "enabled": "デバッグモードがオンになっています",
-    "open-debug-mode": "デバッグモードをオンにする",
-    "table": {
-      "record-ts": "時間",
-      "method": "方法",
-      "request-path": "リクエストパス",
-      "role": "役割",
-      "error": "間違った情報",
-      "stack-trace": "コールスタック",
-      "empty": "<なし>",
-      "operation": {
-        "operation": "操作する",
-        "view-details": "詳細を確認する",
-        "copy": "コピー",
-        "copy-all": "すべてコピーする",
-        "copied": "コピーされました",
-        "export": "輸出"
-      }
-    }
-  },
   "audit-log": {
     "no-logs": "監査ログはまだありません",
     "audit-log-detail": "監査の詳細",
@@ -2899,7 +2929,8 @@
       "method": "方法",
       "request": "リクエスト",
       "response": "応答",
-      "status": "ポジション"
+      "status": "ポジション",
+      "service-data": "サービスデータ"
     },
     "type": {
       "workspace": {
@@ -3333,7 +3364,8 @@
       },
       "delete": "役割の削除",
       "delete-warning": "ロール「{name}」は削除されます。この操作は元に戻すことができません。",
-      "delete-warning-with-resources": "ロール「{name}」は次のユーザーに割り当てられています:"
+      "delete-warning-with-resources": "ロール「{name}」は次のユーザーに割り当てられています:",
+      "delete-warning-retry": "これらのユーザーからロールを削除して、もう一度お試しください。"
     },
     "select": "役割の選択",
     "select-roles": "役割の選択",
@@ -3404,7 +3436,7 @@
     }
   },
   "export-center": {
-    "self": "輸出センター",
+    "self": "エクスポートセンター",
     "permission-denied": "この操作を実行する権限がありません"
   },
   "review-center": {
@@ -3478,6 +3510,7 @@
       "description-tips": "条件は、式を通じて設定されるルールです。たとえば、「環境は本番」という条件は、「本番」環境で実行されたチケットと一致します。",
       "add": "条件を追加する",
       "add-group": "条件グループの追加",
+      "add-raw-expression": "生の表現を追加する",
       "group": {
         "or": {
           "description": "次のいずれかが当てはまります…"
@@ -3615,6 +3648,9 @@
     },
     "last-update": {
       "self": "最後の更新"
+    },
+    "source-branch": {
+      "self": "ソースブランチ"
     }
   }
 }

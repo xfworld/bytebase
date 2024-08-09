@@ -60,7 +60,6 @@ type FindInstanceMessage struct {
 	ResourceID  *string
 	ResourceIDs *[]string
 	ShowDeleted bool
-	ProjectUID  *int
 }
 
 // GetInstanceV2 gets an instance by the resource_id.
@@ -197,7 +196,9 @@ func (s *Store) CreateInstanceV2(ctx context.Context, instanceCreate *InstanceMe
 		}
 	}
 
-	dataSources, err := s.listDataSourceV2(ctx, tx, instanceCreate.ResourceID)
+	instanceDataSourcesMap, err := s.listInstanceDataSourceMap(ctx, tx, &FindDataSourceMessage{
+		InstanceID: &instanceCreate.ResourceID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +214,7 @@ func (s *Store) CreateInstanceV2(ctx context.Context, instanceCreate *InstanceMe
 		Title:         instanceCreate.Title,
 		Engine:        instanceCreate.Engine,
 		ExternalLink:  instanceCreate.ExternalLink,
-		DataSources:   dataSources,
+		DataSources:   instanceDataSourcesMap[instanceCreate.ResourceID],
 		Activation:    instanceCreate.Activation,
 		Options:       instanceCreate.Options,
 		Metadata:      instanceCreate.Metadata,
@@ -346,11 +347,13 @@ func (s *Store) UpdateInstanceV2(ctx context.Context, patch *UpdateInstanceMessa
 		}
 	}
 	instance.Deleted = convertRowStatusToDeleted(rowStatus)
-	dataSourceList, err := s.listDataSourceV2(ctx, tx, patch.ResourceID)
+	instanceDataSourcesMap, err := s.listInstanceDataSourceMap(ctx, tx, &FindDataSourceMessage{
+		InstanceID: &patch.ResourceID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	instance.DataSources = dataSourceList
+	instance.DataSources = instanceDataSourcesMap[patch.ResourceID]
 	var instanceOptions storepb.InstanceOptions
 	if err := common.ProtojsonUnmarshaler.Unmarshal(options, &instanceOptions); err != nil {
 		return nil, err
@@ -383,15 +386,12 @@ func (s *Store) listInstanceImplV2(ctx context.Context, tx *Tx, find *FindInstan
 	if v := find.UID; v != nil {
 		where, args = append(where, fmt.Sprintf("instance.id = $%d", len(args)+1)), append(args, *v)
 	}
-	if v := find.ProjectUID; v != nil {
-		where, args = append(where, fmt.Sprintf("instance.id IN (SELECT DISTINCT instance_id FROM db WHERE project_id = $%d)", len(args)+1)), append(args, *v)
-	}
 	if !find.ShowDeleted {
 		where, args = append(where, fmt.Sprintf("instance.row_status = $%d", len(args)+1)), append(args, api.Normal)
 	}
 
 	var instanceMessages []*InstanceMessage
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
 		SELECT
 			id,
 			resource_id,
@@ -405,7 +405,8 @@ func (s *Store) listInstanceImplV2(ctx context.Context, tx *Tx, find *FindInstan
 			options,
 			metadata
 		FROM instance
-		WHERE `+strings.Join(where, " AND "),
+		WHERE %s
+		ORDER BY resource_id`, strings.Join(where, " AND ")),
 		args...,
 	)
 	if err != nil {
@@ -458,12 +459,17 @@ func (s *Store) listInstanceImplV2(ctx context.Context, tx *Tx, find *FindInstan
 		return nil, err
 	}
 
+	// Use a single query to list all data sources if there are more than one instance to look at.
+	dataSourceFind := &FindDataSourceMessage{}
+	if len(instanceMessages) == 1 {
+		dataSourceFind.InstanceID = &instanceMessages[0].ResourceID
+	}
+	instanceDataSourcesMap, err := s.listInstanceDataSourceMap(ctx, tx, dataSourceFind)
+	if err != nil {
+		return nil, err
+	}
 	for _, instanceMessage := range instanceMessages {
-		dataSourceList, err := s.listDataSourceV2(ctx, tx, instanceMessage.ResourceID)
-		if err != nil {
-			return nil, err
-		}
-		instanceMessage.DataSources = dataSourceList
+		instanceMessage.DataSources = instanceDataSourcesMap[instanceMessage.ResourceID]
 	}
 
 	return instanceMessages, nil

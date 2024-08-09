@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -28,7 +29,6 @@ import (
 	api "github.com/bytebase/bytebase/backend/legacyapi"
 	webhookplugin "github.com/bytebase/bytebase/backend/plugin/webhook"
 	"github.com/bytebase/bytebase/backend/store"
-	"github.com/bytebase/bytebase/backend/utils"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
@@ -85,15 +85,27 @@ func (s *ProjectService) SearchProjects(ctx context.Context, request *v1pb.Searc
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
+
+	ok, err = s.iamManager.CheckPermission(ctx, iam.PermissionProjectsGet, user)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check permission, error %v", err)
+	}
+	if !ok {
+		var ps []*store.ProjectMessage
+		for _, project := range projects {
+			ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionProjectsGet, user, project.ResourceID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to check permission for project %q: %v", project.ResourceID, err)
+			}
+			if ok {
+				ps = append(ps, project)
+			}
+		}
+		projects = ps
+	}
+
 	response := &v1pb.SearchProjectsResponse{}
 	for _, project := range projects {
-		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionProjectsGet, user, project.ResourceID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check permission for project %q: %v", project.ResourceID, err)
-		}
-		if !ok {
-			continue
-		}
 		response.Projects = append(response.Projects, convertToProject(project))
 	}
 	return response, nil
@@ -302,7 +314,7 @@ func (s *ProjectService) UndeleteProject(ctx context.Context, request *v1pb.Unde
 
 // GetIamPolicy returns the IAM policy for a project.
 func (s *ProjectService) GetIamPolicy(ctx context.Context, request *v1pb.GetIamPolicyRequest) (*v1pb.IamPolicy, error) {
-	projectID, err := common.GetProjectID(request.Project)
+	projectID, err := common.GetProjectID(request.Resource)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -321,7 +333,7 @@ func (s *ProjectService) GetIamPolicy(ctx context.Context, request *v1pb.GetIamP
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	return s.convertToV1IamPolicy(ctx, policy)
+	return convertToV1IamPolicy(ctx, s.store, policy)
 }
 
 // BatchGetIamPolicy returns the IAM policy for projects in batch.
@@ -347,7 +359,7 @@ func (s *ProjectService) BatchGetIamPolicy(ctx context.Context, request *v1pb.Ba
 			return nil, status.Errorf(codes.Internal, err.Error())
 		}
 
-		iamPolicy, err := s.convertToV1IamPolicy(ctx, policy)
+		iamPolicy, err := convertToV1IamPolicy(ctx, s.store, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +373,9 @@ func (s *ProjectService) BatchGetIamPolicy(ctx context.Context, request *v1pb.Ba
 
 // SetIamPolicy sets the IAM policy for a project.
 func (s *ProjectService) SetIamPolicy(ctx context.Context, request *v1pb.SetIamPolicyRequest) (*v1pb.IamPolicy, error) {
-	projectID, err := common.GetProjectID(request.Project)
+	var oldIamPolicyMsg *store.IamPolicyMessage
+
+	projectID, err := common.GetProjectID(request.Resource)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -369,17 +383,11 @@ func (s *ProjectService) SetIamPolicy(ctx context.Context, request *v1pb.SetIamP
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "cannot get principal ID from context")
 	}
-	roleMessages, err := s.store.ListRoles(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list roles: %v", err)
-	}
-	roles, err := convertToRoles(ctx, s.iamManager, roleMessages)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to convert to roles: %v", err)
-	}
-	if err := s.validateIAMPolicy(ctx, request.Policy, roles); err != nil {
+
+	if err := s.validateIAMPolicy(ctx, request.Policy); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
+
 	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
 		ResourceID: &projectID,
 	})
@@ -387,16 +395,25 @@ func (s *ProjectService) SetIamPolicy(ctx context.Context, request *v1pb.SetIamP
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", request.Project)
+		return nil, status.Errorf(codes.NotFound, "project %q not found", request.Resource)
 	}
 	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", request.Project)
+		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", request.Resource)
 	}
 
-	policy, err := s.convertToStoreIamPolicy(ctx, request.Policy)
+	policy, err := convertToStoreIamPolicy(ctx, s.store, request.Policy)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
+
+	policyMessage, err := s.store.GetProjectIamPolicy(ctx, project.UID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find project iam policy with error: %v", err.Error())
+	}
+	if request.Etag != policyMessage.Etag {
+		return nil, status.Errorf(codes.Aborted, "there is concurrent update to the project iam policy, please refresh and try again.")
+	}
+	oldIamPolicyMsg = policyMessage
 
 	policyPayload, err := protojson.Marshal(policy)
 	if err != nil {
@@ -406,7 +423,7 @@ func (s *ProjectService) SetIamPolicy(ctx context.Context, request *v1pb.SetIamP
 		ResourceUID:       project.UID,
 		ResourceType:      api.PolicyResourceTypeProject,
 		Payload:           string(policyPayload),
-		Type:              api.PolicyTypeProjectIAM,
+		Type:              api.PolicyTypeIAM,
 		InheritFromParent: false,
 		// Enforce cannot be false while creating a policy.
 		Enforce: true,
@@ -418,7 +435,129 @@ func (s *ProjectService) SetIamPolicy(ctx context.Context, request *v1pb.SetIamP
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
-	return s.convertToV1IamPolicy(ctx, iamPolicyMessage)
+
+	if setServiceData, ok := common.GetSetServiceDataFromContext(ctx); ok {
+		deltas := findIamPolicyDeltas(oldIamPolicyMsg.Policy, iamPolicyMessage.Policy)
+		p, err := convertToProtoAny(deltas)
+		if err != nil {
+			slog.Warn("audit: failed to convert to anypb.Any")
+		}
+		setServiceData(p)
+	}
+
+	return convertToV1IamPolicy(ctx, s.store, iamPolicyMessage)
+}
+
+func convertToProtoAny(i any) (*anypb.Any, error) {
+	switch deltas := i.(type) {
+	case []*v1pb.BindingDelta:
+		auditData := v1pb.AuditData{
+			PolicyDelta: &v1pb.PolicyDelta{
+				BindingDeltas: deltas,
+			},
+		}
+		return anypb.New(&auditData)
+	default:
+		return &anypb.Any{}, nil
+	}
+}
+
+type bindMapKey struct {
+	User string
+	Role string
+}
+
+type condMap map[string]bool
+
+func findIamPolicyDeltas(oriIamPolicy *storepb.IamPolicy, newIamPolicy *storepb.IamPolicy) []*v1pb.BindingDelta {
+	var deltas []*v1pb.BindingDelta
+	oriBindMap := make(map[bindMapKey]condMap)
+	newBindMap := make(map[bindMapKey]condMap)
+
+	// build map.
+	for _, binding := range oriIamPolicy.Bindings {
+		if binding.Condition == nil {
+			continue
+		}
+		for _, mem := range binding.Members {
+			key := bindMapKey{
+				User: mem,
+				Role: binding.Role,
+			}
+
+			exprBytes, err := protojson.Marshal(binding.Condition)
+			if err != nil {
+				return nil
+			}
+			expr := string(exprBytes)
+			if condMap, ok := oriBindMap[key]; ok && condMap != nil {
+				if _, ok := condMap[expr]; ok {
+					continue
+				}
+				oriBindMap[key][expr] = true
+				continue
+			}
+			condMap := make(condMap)
+			condMap[expr] = true
+			oriBindMap[key] = condMap
+		}
+	}
+
+	// find added items.
+	for _, binding := range newIamPolicy.Bindings {
+		for _, mem := range binding.Members {
+			key := bindMapKey{
+				User: mem,
+				Role: binding.Role,
+			}
+			exprBytes, err := protojson.Marshal(binding.Condition)
+			if err != nil {
+				return nil
+			}
+			expr := string(exprBytes)
+
+			// ensure the array is unique.
+			if condMap, ok := newBindMap[key]; ok && condMap != nil {
+				if _, ok := condMap[expr]; ok {
+					continue
+				}
+			}
+			tmpCondMap := make(condMap)
+			tmpCondMap[expr] = true
+			newBindMap[key] = tmpCondMap
+
+			if condMap, ok := oriBindMap[key]; ok && condMap != nil {
+				if _, ok := condMap[expr]; ok {
+					delete(oriBindMap[key], expr)
+					continue
+				}
+			}
+			deltas = append(deltas, &v1pb.BindingDelta{
+				Action:    v1pb.BindingDelta_ADD,
+				Member:    mem,
+				Role:      binding.Role,
+				Condition: binding.Condition,
+			})
+		}
+	}
+
+	// find removed items.
+	for bindMapKey, condMap := range oriBindMap {
+		for cond := range condMap {
+			expr := &expr.Expr{}
+			if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(cond), expr); err != nil {
+				return nil
+			}
+			deltas = append(deltas, &v1pb.BindingDelta{
+				Action:    v1pb.BindingDelta_REMOVE,
+				Member:    bindMapKey.User,
+				Role:      bindMapKey.Role,
+				Condition: expr,
+			})
+		}
+	}
+
+	return deltas
 }
 
 // GetDeploymentConfig returns the deployment config for a project.
@@ -450,10 +589,10 @@ func (s *ProjectService) GetDeploymentConfig(ctx context.Context, request *v1pb.
 
 // UpdateDeploymentConfig updates the deployment config for a project.
 func (s *ProjectService) UpdateDeploymentConfig(ctx context.Context, request *v1pb.UpdateDeploymentConfigRequest) (*v1pb.DeploymentConfig, error) {
-	if request.Config == nil {
+	if request.DeploymentConfig == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "deployment config is required")
 	}
-	projectID, _, err := common.GetProjectIDDeploymentConfigID(request.Config.Name)
+	projectID, _, err := common.GetProjectIDDeploymentConfigID(request.DeploymentConfig.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -470,7 +609,7 @@ func (s *ProjectService) UpdateDeploymentConfig(ctx context.Context, request *v1
 		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", projectID)
 	}
 
-	storeDeploymentConfig, err := validateAndConvertToStoreDeploymentSchedule(request.Config)
+	storeDeploymentConfig, err := validateAndConvertToStoreDeploymentSchedule(request.DeploymentConfig)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -718,398 +857,6 @@ func (s *ProjectService) TestWebhook(ctx context.Context, request *v1pb.TestWebh
 	return resp, nil
 }
 
-// CreateDatabaseGroup creates a database group.
-func (s *ProjectService) CreateDatabaseGroup(ctx context.Context, request *v1pb.CreateDatabaseGroupRequest) (*v1pb.DatabaseGroup, error) {
-	if err := s.licenseService.IsFeatureEnabled(api.FeatureDatabaseGrouping); err != nil {
-		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}
-	projectResourceID, err := common.GetProjectID(request.Parent)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", request.Parent)
-	}
-	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", request.Parent)
-	}
-
-	if !isValidResourceID(request.DatabaseGroupId) {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid database group id %q", request.DatabaseGroupId)
-	}
-	if request.DatabaseGroup.DatabasePlaceholder == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "database group database placeholder is required")
-	}
-	if request.DatabaseGroup.DatabaseExpr == nil || request.DatabaseGroup.DatabaseExpr.Expression == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "database group database expression is required")
-	}
-	if _, err := common.ValidateGroupCELExpr(request.DatabaseGroup.DatabaseExpr.Expression); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid database group expression: %v", err)
-	}
-
-	storeDatabaseGroup := &store.DatabaseGroupMessage{
-		ResourceID:  request.DatabaseGroupId,
-		ProjectUID:  project.UID,
-		Placeholder: request.DatabaseGroup.DatabasePlaceholder,
-		Expression:  request.DatabaseGroup.DatabaseExpr,
-	}
-	if request.DatabaseGroup.Multitenancy {
-		storeDatabaseGroup.Payload = &storepb.DatabaseGroupPayload{
-			Multitenancy: true,
-		}
-	}
-	if request.ValidateOnly {
-		return s.convertStoreToAPIDatabaseGroupFull(ctx, storeDatabaseGroup, projectResourceID)
-	}
-
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
-	}
-	databaseGroup, err := s.store.CreateDatabaseGroup(ctx, principalID, storeDatabaseGroup)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	return convertStoreToAPIDatabaseGroupBasic(databaseGroup, projectResourceID), nil
-}
-
-// UpdateDatabaseGroup updates a database group.
-func (s *ProjectService) UpdateDatabaseGroup(ctx context.Context, request *v1pb.UpdateDatabaseGroupRequest) (*v1pb.DatabaseGroup, error) {
-	if err := s.licenseService.IsFeatureEnabled(api.FeatureDatabaseGrouping); err != nil {
-		return nil, status.Errorf(codes.PermissionDenied, err.Error())
-	}
-	projectResourceID, databaseGroupResourceID, err := common.GetProjectIDDatabaseGroupID(request.DatabaseGroup.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-	}
-	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", projectResourceID)
-	}
-	existedDatabaseGroup, err := s.store.GetDatabaseGroup(ctx, &store.FindDatabaseGroupMessage{
-		ProjectUID: &project.UID,
-		ResourceID: &databaseGroupResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if existedDatabaseGroup == nil {
-		return nil, status.Errorf(codes.NotFound, "database group %q not found", databaseGroupResourceID)
-	}
-
-	var updateDatabaseGroup store.UpdateDatabaseGroupMessage
-	for _, path := range request.UpdateMask.Paths {
-		switch path {
-		case "database_placeholder":
-			if request.DatabaseGroup.DatabasePlaceholder == "" {
-				return nil, status.Errorf(codes.InvalidArgument, "database group database placeholder is required")
-			}
-			updateDatabaseGroup.Placeholder = &request.DatabaseGroup.DatabasePlaceholder
-		case "database_expr":
-			if request.DatabaseGroup.DatabaseExpr == nil || request.DatabaseGroup.DatabaseExpr.Expression == "" {
-				return nil, status.Errorf(codes.InvalidArgument, "database group expr is required")
-			}
-			if _, err := common.ValidateGroupCELExpr(request.DatabaseGroup.DatabaseExpr.Expression); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid database group expression: %v", err)
-			}
-			updateDatabaseGroup.Expression = request.DatabaseGroup.DatabaseExpr
-		case "multitenancy":
-			updateDatabaseGroup.Payload = &storepb.DatabaseGroupPayload{
-				Multitenancy: request.DatabaseGroup.Multitenancy,
-			}
-		default:
-			return nil, status.Errorf(codes.InvalidArgument, "unsupported path: %q", path)
-		}
-	}
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
-	}
-	databaseGroup, err := s.store.UpdateDatabaseGroup(ctx, principalID, existedDatabaseGroup.UID, &updateDatabaseGroup)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	return convertStoreToAPIDatabaseGroupBasic(databaseGroup, projectResourceID), nil
-}
-
-// DeleteDatabaseGroup deletes a database group.
-func (s *ProjectService) DeleteDatabaseGroup(ctx context.Context, request *v1pb.DeleteDatabaseGroupRequest) (*emptypb.Empty, error) {
-	projectResourceID, databaseGroupResourceID, err := common.GetProjectIDDatabaseGroupID(request.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-	}
-	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", projectResourceID)
-	}
-	existedDatabaseGroup, err := s.store.GetDatabaseGroup(ctx, &store.FindDatabaseGroupMessage{
-		ProjectUID: &project.UID,
-		ResourceID: &databaseGroupResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if existedDatabaseGroup == nil {
-		return nil, status.Errorf(codes.NotFound, "database group %q not found", databaseGroupResourceID)
-	}
-
-	err = s.store.DeleteDatabaseGroup(ctx, existedDatabaseGroup.UID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	return &emptypb.Empty{}, nil
-}
-
-// ListDatabaseGroups lists database groups.
-func (s *ProjectService) ListDatabaseGroups(ctx context.Context, request *v1pb.ListDatabaseGroupsRequest) (*v1pb.ListDatabaseGroupsResponse, error) {
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-
-	projectResourceID, err := common.GetProjectID(request.Parent)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-
-	find := &store.FindDatabaseGroupMessage{}
-	if projectResourceID != "-" {
-		project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			ResourceID: &projectResourceID,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
-		if project == nil {
-			return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-		}
-		find.ProjectUID = &project.UID
-	}
-	databaseGroups, err := s.store.ListDatabaseGroups(ctx, find)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list database groups, err: %v", err)
-	}
-
-	var apiDatabaseGroups []*v1pb.DatabaseGroup
-	for _, databaseGroup := range databaseGroups {
-		project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			UID: &databaseGroup.ProjectUID,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
-		}
-		if project == nil {
-			return nil, status.Errorf(codes.DataLoss, "project %d not found", databaseGroup.ProjectUID)
-		}
-		if project.Deleted {
-			continue
-		}
-		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionProjectsGet, user, project.ResourceID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-		}
-		if !ok {
-			continue
-		}
-		apiDatabaseGroups = append(apiDatabaseGroups, convertStoreToAPIDatabaseGroupBasic(databaseGroup, project.ResourceID))
-	}
-	return &v1pb.ListDatabaseGroupsResponse{
-		DatabaseGroups: apiDatabaseGroups,
-	}, nil
-}
-
-// GetDatabaseGroup gets a database group.
-func (s *ProjectService) GetDatabaseGroup(ctx context.Context, request *v1pb.GetDatabaseGroupRequest) (*v1pb.DatabaseGroup, error) {
-	projectResourceID, databaseGroupResourceID, err := common.GetProjectIDDatabaseGroupID(request.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-	}
-	databaseGroup, err := s.store.GetDatabaseGroup(ctx, &store.FindDatabaseGroupMessage{
-		ProjectUID: &project.UID,
-		ResourceID: &databaseGroupResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if databaseGroup == nil {
-		return nil, status.Errorf(codes.NotFound, "database group %q not found", databaseGroupResourceID)
-	}
-	if request.View == v1pb.DatabaseGroupView_DATABASE_GROUP_VIEW_BASIC || request.View == v1pb.DatabaseGroupView_DATABASE_GROUP_VIEW_UNSPECIFIED {
-		return convertStoreToAPIDatabaseGroupBasic(databaseGroup, projectResourceID), nil
-	}
-	return s.convertStoreToAPIDatabaseGroupFull(ctx, databaseGroup, projectResourceID)
-}
-
-// GetProjectProtectionRules gets a project protection rules.
-func (s *ProjectService) GetProjectProtectionRules(ctx context.Context, request *v1pb.GetProjectProtectionRulesRequest) (*v1pb.ProtectionRules, error) {
-	projectName, err := common.TrimSuffix(request.Name, common.ProtectionRulesSuffix)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	projectResourceID, err := common.GetProjectID(projectName)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-	}
-	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", projectResourceID)
-	}
-
-	resp := convertProtectionRules(project)
-	return resp, nil
-}
-
-// UpdateProjectProtectionRules updates a project protection rules.
-func (s *ProjectService) UpdateProjectProtectionRules(ctx context.Context, request *v1pb.UpdateProjectProtectionRulesRequest) (*v1pb.ProtectionRules, error) {
-	if request.ProtectionRules == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "protection rules must be set")
-	}
-	projectName, err := common.TrimSuffix(request.ProtectionRules.Name, common.ProtectionRulesSuffix)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	projectResourceID, err := common.GetProjectID(projectName)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", projectResourceID)
-	}
-	if project.Deleted {
-		return nil, status.Errorf(codes.NotFound, "project %q has been deleted", projectResourceID)
-	}
-
-	var rules []*storepb.ProtectionRule
-	for _, rule := range request.ProtectionRules.Rules {
-		rules = append(rules, &storepb.ProtectionRule{
-			Id:           rule.Id,
-			Target:       storepb.ProtectionRule_Target(rule.Target),
-			NameFilter:   rule.NameFilter,
-			BranchSource: storepb.ProtectionRule_BranchSource(rule.BranchSource),
-			AllowedRoles: rule.AllowedRoles,
-		})
-	}
-
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
-	}
-	setting := project.Setting
-	setting.ProtectionRules = rules
-	project, err = s.store.UpdateProjectV2(ctx, &store.UpdateProjectMessage{
-		UpdaterID:  principalID,
-		ResourceID: project.ResourceID,
-		Setting:    setting,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
-	resp := convertProtectionRules(project)
-	return resp, nil
-}
-
-func convertProtectionRules(project *store.ProjectMessage) *v1pb.ProtectionRules {
-	resp := &v1pb.ProtectionRules{
-		Name: fmt.Sprintf("%s%s%s", common.ProjectNamePrefix, project.ResourceID, common.ProtectionRulesSuffix),
-	}
-	if project.Setting != nil {
-		for _, rule := range project.Setting.ProtectionRules {
-			resp.Rules = append(resp.Rules, &v1pb.ProtectionRule{
-				Id:           rule.Id,
-				Target:       v1pb.ProtectionRule_Target(rule.Target),
-				NameFilter:   rule.NameFilter,
-				BranchSource: v1pb.ProtectionRule_BranchSource(rule.GetBranchSource()),
-				AllowedRoles: rule.AllowedRoles,
-			})
-		}
-	}
-	return resp
-}
-
-func (s *ProjectService) convertStoreToAPIDatabaseGroupFull(ctx context.Context, databaseGroup *store.DatabaseGroupMessage, projectResourceID string) (*v1pb.DatabaseGroup, error) {
-	databases, err := s.store.ListDatabases(ctx, &store.FindDatabaseMessage{
-		ProjectID: &projectResourceID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
-	ret := convertStoreToAPIDatabaseGroupBasic(databaseGroup, projectResourceID)
-	matches, unmatches, err := utils.GetMatchedAndUnmatchedDatabasesInDatabaseGroup(ctx, databaseGroup, databases)
-	if err != nil {
-		return nil, err
-	}
-	for _, database := range matches {
-		ret.MatchedDatabases = append(ret.MatchedDatabases, &v1pb.DatabaseGroup_Database{
-			Name: fmt.Sprintf("%s%s/%s%s", common.InstanceNamePrefix, database.InstanceID, common.DatabaseIDPrefix, database.DatabaseName),
-		})
-	}
-	for _, database := range unmatches {
-		ret.UnmatchedDatabases = append(ret.UnmatchedDatabases, &v1pb.DatabaseGroup_Database{
-			Name: fmt.Sprintf("%s%s/%s%s", common.InstanceNamePrefix, database.InstanceID, common.DatabaseIDPrefix, database.DatabaseName),
-		})
-	}
-	return ret, nil
-}
-
-func convertStoreToAPIDatabaseGroupBasic(databaseGroup *store.DatabaseGroupMessage, projectResourceID string) *v1pb.DatabaseGroup {
-	databaseGroupV1 := &v1pb.DatabaseGroup{
-		Name:                fmt.Sprintf("%s%s/%s%s", common.ProjectNamePrefix, projectResourceID, common.DatabaseGroupNamePrefix, databaseGroup.ResourceID),
-		DatabasePlaceholder: databaseGroup.Placeholder,
-		DatabaseExpr:        databaseGroup.Expression,
-	}
-	if databaseGroup.Payload != nil {
-		databaseGroupV1.Multitenancy = databaseGroup.Payload.Multitenancy
-	}
-	return databaseGroupV1
-}
-
 func convertToStoreProjectWebhookMessage(webhook *v1pb.Webhook) (*store.ProjectWebhookMessage, error) {
 	tp, err := convertToAPIWebhookTypeString(webhook.Type)
 	if err != nil {
@@ -1331,16 +1078,10 @@ func (s *ProjectService) getProjectMessage(ctx context.Context, name string) (*s
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	projectUID, isNumber := isNumber(projectID)
 	find := &store.FindProjectMessage{
+		ResourceID:  &projectID,
 		ShowDeleted: true,
 	}
-	if isNumber {
-		find.UID = &projectUID
-	} else {
-		find.ResourceID = &projectID
-	}
-
 	project, err := s.store.GetProjectV2(ctx, find)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
@@ -1352,10 +1093,10 @@ func (s *ProjectService) getProjectMessage(ctx context.Context, name string) (*s
 	return project, nil
 }
 
-func (s *ProjectService) convertToV1IamPolicy(ctx context.Context, iamPolicy *storepb.ProjectIamPolicy) (*v1pb.IamPolicy, error) {
+func convertToV1IamPolicy(ctx context.Context, stores *store.Store, iamPolicy *store.IamPolicyMessage) (*v1pb.IamPolicy, error) {
 	var bindings []*v1pb.Binding
 
-	for _, binding := range iamPolicy.Bindings {
+	for _, binding := range iamPolicy.Policy.Bindings {
 		var members []string
 		for _, member := range binding.Members {
 			if strings.HasPrefix(member, common.UserNamePrefix) {
@@ -1363,7 +1104,7 @@ func (s *ProjectService) convertToV1IamPolicy(ctx context.Context, iamPolicy *st
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "failed to parse user id from member %s with error: %v", member, err)
 				}
-				user, err := s.store.GetUserByID(ctx, userUID)
+				user, err := stores.GetUserByID(ctx, userUID)
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "failed to get user %s with error: %v", member, err)
 				}
@@ -1371,8 +1112,8 @@ func (s *ProjectService) convertToV1IamPolicy(ctx context.Context, iamPolicy *st
 					continue
 				}
 				members = append(members, fmt.Sprintf("user:%s", user.Email))
-			} else if strings.HasPrefix(member, common.UserGroupPrefix) {
-				email, err := common.GetUserGroupEmail(member)
+			} else if strings.HasPrefix(member, common.GroupPrefix) {
+				email, err := common.GetGroupEmail(member)
 				if err != nil {
 					return nil, status.Errorf(codes.Internal, "failed to parse group email from member %s with error: %v", member, err)
 				}
@@ -1410,33 +1151,21 @@ func (s *ProjectService) convertToV1IamPolicy(ctx context.Context, iamPolicy *st
 
 	return &v1pb.IamPolicy{
 		Bindings: bindings,
+		Etag:     iamPolicy.Etag,
 	}, nil
 }
 
-func (s *ProjectService) convertToStoreIamPolicy(ctx context.Context, iamPolicy *v1pb.IamPolicy) (*storepb.ProjectIamPolicy, error) {
+func convertToStoreIamPolicy(ctx context.Context, stores *store.Store, iamPolicy *v1pb.IamPolicy) (*storepb.IamPolicy, error) {
 	var bindings []*storepb.Binding
 
 	for _, binding := range iamPolicy.Bindings {
 		var members []string
 		for _, member := range binding.Members {
-			if strings.HasPrefix(member, "user:") {
-				email := strings.TrimPrefix(member, "user:")
-				user, err := s.store.GetUserByEmail(ctx, email)
-				if err != nil {
-					return nil, status.Errorf(codes.Internal, err.Error())
-				}
-				if user == nil {
-					return nil, status.Errorf(codes.NotFound, "user %q not found", member)
-				}
-				members = append(members, common.FormatUserUID(user.ID))
-			} else if strings.HasPrefix(member, "group:") {
-				email := strings.TrimPrefix(member, "group:")
-				members = append(members, common.FormatGroupEmail(email))
-			} else if member == api.AllUsers {
-				members = append(members, member)
-			} else {
-				return nil, status.Errorf(codes.InvalidArgument, "unsupport member %s", member)
+			storeMember, err := convertToStoreIamPolicyMember(ctx, stores, member)
+			if err != nil {
+				return nil, err
 			}
+			members = append(members, storeMember)
 		}
 
 		storeBinding := &storepb.Binding{
@@ -1450,9 +1179,29 @@ func (s *ProjectService) convertToStoreIamPolicy(ctx context.Context, iamPolicy 
 		bindings = append(bindings, storeBinding)
 	}
 
-	return &storepb.ProjectIamPolicy{
+	return &storepb.IamPolicy{
 		Bindings: bindings,
 	}, nil
+}
+
+func convertToStoreIamPolicyMember(ctx context.Context, stores *store.Store, member string) (string, error) {
+	if strings.HasPrefix(member, "user:") {
+		email := strings.TrimPrefix(member, "user:")
+		user, err := stores.GetUserByEmail(ctx, email)
+		if err != nil {
+			return "", status.Errorf(codes.Internal, err.Error())
+		}
+		if user == nil {
+			return "", status.Errorf(codes.NotFound, "user %q not found", member)
+		}
+		return common.FormatUserUID(user.ID), nil
+	} else if strings.HasPrefix(member, "group:") {
+		email := strings.TrimPrefix(member, "group:")
+		return common.FormatGroupEmail(email), nil
+	} else if member == api.AllUsers {
+		return member, nil
+	}
+	return "", status.Errorf(codes.InvalidArgument, "unsupport member %s", member)
 }
 
 func convertToProject(projectMessage *store.ProjectMessage) *v1pb.Project {
@@ -1659,10 +1408,11 @@ func convertToStoreLabelSelectorOperator(operator v1pb.OperatorType) (store.Oper
 	return store.OperatorType(""), errors.Errorf("invalid operator type: %v", operator)
 }
 
-func (s *ProjectService) validateIAMPolicy(ctx context.Context, policy *v1pb.IamPolicy, roles []*v1pb.Role) error {
+func (s *ProjectService) validateIAMPolicy(ctx context.Context, policy *v1pb.IamPolicy) error {
 	if policy == nil {
 		return errors.Errorf("IAM Policy is required")
 	}
+
 	generalSetting, err := s.store.GetWorkspaceGeneralSetting(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to get workspace general setting")
@@ -1671,6 +1421,14 @@ func (s *ProjectService) validateIAMPolicy(ctx context.Context, policy *v1pb.Iam
 	if generalSetting != nil {
 		maximumRoleExpiration = generalSetting.MaximumRoleExpiration
 	}
+
+	roleMessages, err := s.store.ListRoles(ctx)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to list roles: %v", err)
+	}
+	roleMessages = append(roleMessages, s.iamManager.PredefinedRoles...)
+	roles := convertToRoles(roleMessages)
+
 	return s.validateBindings(policy.Bindings, roles, maximumRoleExpiration)
 }
 

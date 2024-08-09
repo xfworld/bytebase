@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -36,14 +35,13 @@ import (
 	"github.com/bytebase/bytebase/backend/runner/schemasync"
 	"github.com/bytebase/bytebase/backend/store"
 	"github.com/bytebase/bytebase/backend/store/model"
-	"github.com/bytebase/bytebase/backend/utils"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
 
 const (
 	filterKeyEnvironment = "environment"
-	filterKeyProject     = "project"
+	filterKeyDatabase    = "database"
 	filterKeyStartTime   = "start_time"
 
 	// Support order by count, latest_log_time, average_query_time, maximum_query_time,
@@ -85,23 +83,18 @@ func (s *DatabaseService) GetDatabase(ctx context.Context, request *v1pb.GetData
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	find := &store.FindDatabaseMessage{}
-	databaseUID, isNumber := isNumber(databaseName)
-	if instanceID == "-" && isNumber {
-		// Expected format: "instances/-/database/{uid}"
-		find.UID = &databaseUID
-	} else {
-		// Expected format: "instances/{instance}/database/{database}"
-		find.InstanceID = &instanceID
-		find.DatabaseName = &databaseName
-		instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
-		}
-		if instance == nil {
-			return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
-		}
-		find.IgnoreCaseSensitive = store.IgnoreDatabaseAndTableCaseSensitive(instance)
+	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
+	}
+	if instance == nil {
+		return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
+	}
+
+	find := &store.FindDatabaseMessage{
+		InstanceID:          &instanceID,
+		DatabaseName:        &databaseName,
+		IgnoreCaseSensitive: store.IgnoreDatabaseAndTableCaseSensitive(instance),
 	}
 	databaseMessage, err := s.store.GetDatabaseV2(ctx, find)
 	if err != nil {
@@ -118,6 +111,7 @@ func (s *DatabaseService) GetDatabase(ctx context.Context, request *v1pb.GetData
 	return database, nil
 }
 
+// Deprecated.
 func (s *DatabaseService) SearchDatabases(ctx context.Context, request *v1pb.SearchDatabasesRequest) (*v1pb.SearchDatabasesResponse, error) {
 	find, err := getDatabaseFind(request.Filter)
 	if err != nil {
@@ -148,7 +142,7 @@ func (s *DatabaseService) SearchDatabases(ctx context.Context, request *v1pb.Sea
 		}
 	}
 
-	databaseMessages, err := filterDatabasesV2(ctx, s.store, s.iamManager, databases, iam.PermissionDatabasesGet)
+	databaseMessages, err := filterDatabasesV2(ctx, s.iamManager, databases)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to filter databases, error: %v", err)
 	}
@@ -166,16 +160,8 @@ func (s *DatabaseService) SearchDatabases(ctx context.Context, request *v1pb.Sea
 	return response, nil
 }
 
-func searchDatabases(ctx context.Context, s *store.Store, iamManager *iam.Manager, find *store.FindDatabaseMessage) ([]*store.DatabaseMessage, error) {
-	databases, err := s.ListDatabases(ctx, find)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	return filterDatabasesV2(ctx, s, iamManager, databases, iam.PermissionDatabasesGet)
-}
-
-// ListDatabases lists all databases.
-func (s *DatabaseService) ListDatabases(ctx context.Context, request *v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error) {
+// ListInstanceDatabases lists all databases for an instance.
+func (s *DatabaseService) ListInstanceDatabases(ctx context.Context, request *v1pb.ListInstanceDatabasesRequest) (*v1pb.ListInstanceDatabasesResponse, error) {
 	instanceID, err := common.GetInstanceID(request.Parent)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
@@ -188,13 +174,15 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, request *v1pb.ListD
 	limitPlusOne := limit + 1
 
 	find := &store.FindDatabaseMessage{
-		Limit:  &limitPlusOne,
-		Offset: &offset,
-	}
-	if instanceID != "-" {
-		find.InstanceID = &instanceID
+		InstanceID: &instanceID,
+		Limit:      &limitPlusOne,
+		Offset:     &offset,
 	}
 
+	// Deprecated. Remove this later.
+	if instanceID == "-" {
+		find.InstanceID = nil
+	}
 	if request.Filter != "" {
 		projectFilter, err := getProjectFilter(request.Filter)
 		if err != nil {
@@ -206,6 +194,7 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, request *v1pb.ListD
 		}
 		find.ProjectID = &projectID
 	}
+
 	databaseMessages, err := s.store.ListDatabases(ctx, find)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
@@ -222,9 +211,60 @@ func (s *DatabaseService) ListDatabases(ctx context.Context, request *v1pb.ListD
 		}
 	}
 
-	databaseMessages, err = filterDatabasesV2(ctx, s.store, s.iamManager, databaseMessages, iam.PermissionDatabasesList)
+	response := &v1pb.ListInstanceDatabasesResponse{
+		NextPageToken: nextPageToken,
+	}
+	for _, databaseMessage := range databaseMessages {
+		database, err := s.convertToDatabase(ctx, databaseMessage)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to convert database, error: %v", err)
+		}
+		response.Databases = append(response.Databases, database)
+	}
+	return response, nil
+}
+
+// ListDatabases lists all databases.
+func (s *DatabaseService) ListDatabases(ctx context.Context, request *v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error) {
+	var projectID *string
+	switch {
+	case strings.HasPrefix(request.Parent, common.ProjectNamePrefix):
+		p, err := common.GetProjectID(request.Parent)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid project parent %q", request.Parent)
+		}
+		projectID = &p
+	case strings.HasPrefix(request.Parent, common.WorkspacePrefix):
+		// List all databases in a workspace.
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "invalid parent %q", request.Parent)
+	}
+
+	limit, offset, err := parseLimitAndOffset(request.PageToken, int(request.PageSize))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to filter databases, error: %v", err)
+		return nil, err
+	}
+	limitPlusOne := limit + 1
+
+	find := &store.FindDatabaseMessage{
+		ProjectID: projectID,
+		Limit:     &limitPlusOne,
+		Offset:    &offset}
+
+	databaseMessages, err := s.store.ListDatabases(ctx, find)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+
+	nextPageToken := ""
+	if len(databaseMessages) == limitPlusOne {
+		databaseMessages = databaseMessages[:limit]
+		if nextPageToken, err = marshalPageToken(&storepb.PageToken{
+			Limit:  int32(limit),
+			Offset: int32(limit + offset),
+		}); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to marshal next page token, error: %v", err)
+		}
 	}
 
 	response := &v1pb.ListDatabasesResponse{
@@ -277,20 +317,18 @@ func getDatabaseFind(filter string) (*store.FindDatabaseMessage, error) {
 	return find, nil
 }
 
-func filterDatabasesV2(ctx context.Context, s *store.Store, iamManager *iam.Manager, databases []*store.DatabaseMessage, needPermission iam.Permission) ([]*store.DatabaseMessage, error) {
+func filterDatabasesV2(ctx context.Context, iamManager *iam.Manager, databases []*store.DatabaseMessage) ([]*store.DatabaseMessage, error) {
 	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
 
-	for _, role := range user.Roles {
-		permissions, err := iamManager.GetPermissions(ctx, common.FormatRole(role.String()))
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get permissions")
-		}
-		if slices.Contains(permissions, needPermission) {
-			return databases, nil
-		}
+	ok, err := iamManager.CheckPermission(ctx, iam.PermissionDatabasesGet, user)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check permissions")
+	}
+	if ok {
+		return databases, nil
 	}
 
 	projectDatabases := make(map[string][]*store.DatabaseMessage)
@@ -299,71 +337,15 @@ func filterDatabasesV2(ctx context.Context, s *store.Store, iamManager *iam.Mana
 	}
 	var filteredDatabases []*store.DatabaseMessage
 	for projectID, dbs := range projectDatabases {
-		filteredProjectDatabases, err := filterProjectDatabasesV2(ctx, s, iamManager, user, projectID, dbs, needPermission)
+		ok, err := iamManager.CheckPermission(ctx, iam.PermissionDatabasesGet, user, projectID)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to filter databases in project %q", projectID)
+			return nil, errors.Wrapf(err, "failed to check permissions")
 		}
-		filteredDatabases = append(filteredDatabases, filteredProjectDatabases...)
-	}
-	return filteredDatabases, nil
-}
-
-func filterProjectDatabasesV2(ctx context.Context, s *store.Store, iamManager *iam.Manager, user *store.UserMessage, projectID string, databases []*store.DatabaseMessage, needPermission iam.Permission) ([]*store.DatabaseMessage, error) {
-	project, err := s.GetProjectV2(ctx, &store.FindProjectMessage{
-		ResourceID: &projectID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if project == nil {
-		return nil, errors.Errorf("cannot found project %s", projectID)
-	}
-
-	policy, err := s.GetProjectIamPolicy(ctx, project.UID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get project policy for project %q", projectID)
-	}
-
-	expressionDBsFromAllRoles := make(map[string]bool)
-	bindings := utils.GetUserIAMPolicyBindings(ctx, s, user, policy)
-
-	for _, binding := range bindings {
-		permissions, err := iamManager.GetPermissions(ctx, binding.Role)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get permissions")
-		}
-		if !slices.Contains(permissions, needPermission) {
-			continue
-		}
-
-		expressionDBs := getDatabasesFromExpression(binding.Condition.Expression)
-		if len(expressionDBs) == 0 {
-			return databases, nil
-		}
-		for db := range expressionDBs {
-			expressionDBsFromAllRoles[db] = true
-		}
-	}
-
-	var filteredDatabases []*store.DatabaseMessage
-	for _, database := range databases {
-		databaseName := common.FormatDatabase(database.InstanceID, database.DatabaseName)
-		if expressionDBsFromAllRoles[databaseName] {
-			filteredDatabases = append(filteredDatabases, database)
+		if ok {
+			filteredDatabases = append(filteredDatabases, dbs...)
 		}
 	}
 	return filteredDatabases, nil
-}
-
-var databaseNamePattern = regexp.MustCompile(`"instances/[^/]+/databases/[^"]+"`)
-
-func getDatabasesFromExpression(expression string) map[string]bool {
-	matches := databaseNamePattern.FindAllString(expression, -1)
-	databaseNames := make(map[string]bool)
-	for _, m := range matches {
-		databaseNames[m[1:len(m)-1]] = true
-	}
-	return databaseNames
 }
 
 // UpdateDatabase updates a database.
@@ -479,23 +461,18 @@ func (s *DatabaseService) SyncDatabase(ctx context.Context, request *v1pb.SyncDa
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	find := &store.FindDatabaseMessage{}
-	databaseUID, isNumber := isNumber(databaseName)
-	if instanceID == "-" && isNumber {
-		// Expected format: "instances/{ignored_value}/database/{uid}"
-		find.UID = &databaseUID
-	} else {
-		// Expected format: "instances/{instance}/database/{database}"
-		find.InstanceID = &instanceID
-		find.DatabaseName = &databaseName
-		instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
-		}
-		if instance == nil {
-			return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
-		}
-		find.IgnoreCaseSensitive = store.IgnoreDatabaseAndTableCaseSensitive(instance)
+	instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get instance %s", instanceID)
+	}
+	if instance == nil {
+		return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
+	}
+
+	find := &store.FindDatabaseMessage{
+		InstanceID:          &instanceID,
+		DatabaseName:        &databaseName,
+		IgnoreCaseSensitive: store.IgnoreDatabaseAndTableCaseSensitive(instance),
 	}
 	database, err := s.store.GetDatabaseV2(ctx, find)
 	if err != nil {
@@ -1221,17 +1198,23 @@ func convertToChangedResources(r *storepb.ChangedResources) *v1pb.ChangedResourc
 	result := &v1pb.ChangedResources{}
 	for _, database := range r.Databases {
 		v1Database := &v1pb.ChangedResourceDatabase{
-			Name:    database.Name,
-			Schemas: []*v1pb.ChangedResourceSchema{},
+			Name: database.Name,
 		}
 		for _, schema := range database.Schemas {
 			v1Schema := &v1pb.ChangedResourceSchema{
-				Name:   schema.Name,
-				Tables: []*v1pb.ChangedResourceTable{},
+				Name: schema.Name,
 			}
 			for _, table := range schema.Tables {
+				var ranges []*v1pb.Range
+				for _, r := range table.Ranges {
+					ranges = append(ranges, &v1pb.Range{
+						Start: r.Start,
+						End:   r.End,
+					})
+				}
 				v1Schema.Tables = append(v1Schema.Tables, &v1pb.ChangedResourceTable{
-					Name: table.Name,
+					Name:   table.Name,
+					Ranges: ranges,
 				})
 			}
 			sort.Slice(v1Schema.Tables, func(i, j int) bool {
@@ -1507,24 +1490,13 @@ type totalValue struct {
 
 // ListSlowQueries lists the slow queries.
 func (s *DatabaseService) ListSlowQueries(ctx context.Context, request *v1pb.ListSlowQueriesRequest) (*v1pb.ListSlowQueriesResponse, error) {
-	findDatabase := &store.FindDatabaseMessage{}
-	instanceID, databaseName, err := common.GetInstanceDatabaseID(request.Parent)
+	projectID, err := common.GetProjectID(request.Parent)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	if instanceID != "-" {
-		findDatabase.InstanceID = &instanceID
-	}
-	if databaseName != "-" {
-		instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
-		}
-		if instance == nil {
-			return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
-		}
-		findDatabase.DatabaseName = &databaseName
-		findDatabase.IgnoreCaseSensitive = store.IgnoreDatabaseAndTableCaseSensitive(instance)
+
+	findDatabase := &store.FindDatabaseMessage{
+		ProjectID: &projectID,
 	}
 
 	filters, err := parseFilter(request.Filter)
@@ -1542,13 +1514,21 @@ func (s *DatabaseService) ListSlowQueries(ctx context.Context, request *v1pb.Lis
 				return nil, status.Errorf(codes.InvalidArgument, "invalid environment filter %q", expr.value)
 			}
 			findDatabase.EffectiveEnvironmentID = &match[1]
-		case filterKeyProject:
-			reg := regexp.MustCompile(`^projects/(.+)`)
-			match := reg.FindStringSubmatch(expr.value)
-			if len(match) != 2 {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid project filter %q", expr.value)
+		case filterKeyDatabase:
+			instanceID, databaseName, err := common.GetInstanceDatabaseID(expr.value)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, err.Error())
 			}
-			findDatabase.ProjectID = &match[1]
+			instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			}
+			if instance == nil {
+				return nil, status.Errorf(codes.NotFound, "instance %q not found", instanceID)
+			}
+			findDatabase.InstanceID = &instanceID
+			findDatabase.DatabaseName = &databaseName
+			findDatabase.IgnoreCaseSensitive = store.IgnoreDatabaseAndTableCaseSensitive(instance)
 		case filterKeyStartTime:
 			switch expr.operator {
 			case comparatorTypeGreater:
@@ -1612,38 +1592,10 @@ func (s *DatabaseService) ListSlowQueries(ctx context.Context, request *v1pb.Lis
 		return nil, status.Errorf(codes.Internal, "failed to find database list %q", err.Error())
 	}
 
-	var canAccessDBs []*store.DatabaseMessage
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "role not found")
-	}
-
-	switch role {
-	case api.WorkspaceAdmin, api.WorkspaceDBA:
-		canAccessDBs = databases
-	case api.WorkspaceMember:
-		for _, database := range databases {
-			ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionSlowQueriesList, user, database.ProjectID)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to check permission, err: %v", err.Error())
-			}
-			if ok {
-				canAccessDBs = append(canAccessDBs, database)
-			}
-		}
-	default:
-		return nil, status.Errorf(codes.PermissionDenied, "unknown role %q", role)
-	}
-
 	result := &v1pb.ListSlowQueriesResponse{}
 	instanceMap := make(map[string]*totalValue)
 
-	for _, database := range canAccessDBs {
+	for _, database := range databases {
 		instance, err := s.store.GetInstanceV2(ctx, &store.FindInstanceMessage{
 			ResourceID: &database.InstanceID,
 		})

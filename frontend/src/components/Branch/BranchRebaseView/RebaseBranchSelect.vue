@@ -40,13 +40,13 @@
       />
       <DatabaseSelect
         v-if="sourceType === 'DATABASE'"
-        :database="sourceDatabase?.uid"
-        :project="project.uid"
+        :database-name="sourceDatabase?.name"
+        :project-name="project.name"
         :allowed-engine-type-list="headBranch ? [headBranch.engine] : undefined"
         :filter="databaseFilter"
         :loading="isPreparingDatabaseGroups"
         style="width: 100%"
-        @update:database="$emit('update:source-database-uid', $event)"
+        @update:database-name="$emit('update:source-database-name', $event)"
       />
     </div>
   </div>
@@ -54,12 +54,13 @@
 
 <script setup lang="ts">
 import { MoveLeftIcon } from "lucide-vue-next";
-import { NRadioGroup } from "naive-ui";
+import { NRadio, NRadioGroup } from "naive-ui";
 import { computed, toRef } from "vue";
 import { DatabaseSelect } from "@/components/v2";
 import { useDatabaseInGroupFilter, useDatabaseV1Store } from "@/store";
 import type { ComposedDatabase, ComposedProject } from "@/types";
 import type { Branch } from "@/types/proto/v1/branch_service";
+import BranchSelector from "../BranchSelector.vue";
 import type { RebaseSourceType } from "./types";
 
 const props = defineProps<{
@@ -77,7 +78,7 @@ defineEmits<{
   (event: "update:source-type", type: RebaseSourceType): void;
   (event: "update:head-branch-name", branch: string | undefined): void;
   (event: "update:source-branch-name", branch: string | undefined): void;
-  (event: "update:source-database-uid", uid: string | undefined): void;
+  (event: "update:source-database-name", uid: string | undefined): void;
 }>();
 
 const referencedDatabase = computed(() => {

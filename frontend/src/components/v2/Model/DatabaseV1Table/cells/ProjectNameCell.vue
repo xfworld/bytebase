@@ -7,6 +7,10 @@
       :keyword="keyword"
     />
 
+    <slot name="suffix">
+      {{ suffix }}
+    </slot>
+
     <NTooltip v-if="project.workflow === Workflow.VCS">
       <template #trigger>
         <GitIcon class="w-4 h-4 text-control" />
@@ -32,6 +36,7 @@
 
 <script setup lang="ts">
 import { NTooltip } from "naive-ui";
+import GitIcon from "@/components/GitIcon.vue";
 import { ProjectV1Name } from "@/components/v2";
 import { State } from "@/types/proto/v1/common";
 import type { Project } from "@/types/proto/v1/project_service";
@@ -44,11 +49,13 @@ withDefaults(
     mode?: Mode;
     link?: boolean;
     keyword?: string;
+    suffix?: string;
   }>(),
   {
     mode: "ALL",
     link: false,
     keyword: undefined,
+    suffix: "",
   }
 );
 </script>

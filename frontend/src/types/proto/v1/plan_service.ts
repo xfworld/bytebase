@@ -8,6 +8,7 @@ import {
   exportFormatFromJSON,
   exportFormatToJSON,
   exportFormatToNumber,
+  Position,
   VCSType,
   vCSTypeFromJSON,
   vCSTypeToJSON,
@@ -222,8 +223,6 @@ export interface Plan_ChangeDatabaseConfig {
    * The resource name of the target.
    * Format: instances/{instance-id}/databases/{database-name}.
    * Format: projects/{project}/databaseGroups/{databaseGroup}.
-   * Format: projects/{project}/deploymentConfigs/default. The plan should
-   * have a single step and single spec for the deployment configuration type.
    */
   target: string;
   /**
@@ -394,6 +393,8 @@ export interface ListPlanCheckRunsRequest {
    * the call that provided the page token.
    */
   pageToken: string;
+  /** If set to true, only the latest plan check run will be returned. */
+  latestOnly: boolean;
 }
 
 export interface ListPlanCheckRunsResponse {
@@ -415,6 +416,23 @@ export interface RunPlanChecksRequest {
 }
 
 export interface RunPlanChecksResponse {
+}
+
+export interface BatchCancelPlanCheckRunsRequest {
+  /**
+   * The name of the parent of the planChecks.
+   * Format: projects/{project}/plans/{plan}
+   */
+  parent: string;
+  /**
+   * TODO(d): update this API.
+   * The planCheckRuns to cancel.
+   * Format: projects/{project}/plans/{plan}/planCheckRuns/{planCheckRun}
+   */
+  planCheckRuns: string[];
+}
+
+export interface BatchCancelPlanCheckRunsResponse {
 }
 
 export interface PlanCheckRun {
@@ -664,6 +682,12 @@ export interface PlanCheckRun_Result_SqlReviewReport {
   detail: string;
   /** Code from sql review. */
   code: number;
+  /**
+   * 1-based Position of the SQL statement.
+   * To supersede `line` and `column` above.
+   */
+  startPosition: Position | undefined;
+  endPosition: Position | undefined;
 }
 
 function createBaseGetPlanRequest(): GetPlanRequest {
@@ -2551,7 +2575,7 @@ export const Plan_VCSSource = {
 };
 
 function createBaseListPlanCheckRunsRequest(): ListPlanCheckRunsRequest {
-  return { parent: "", pageSize: 0, pageToken: "" };
+  return { parent: "", pageSize: 0, pageToken: "", latestOnly: false };
 }
 
 export const ListPlanCheckRunsRequest = {
@@ -2564,6 +2588,9 @@ export const ListPlanCheckRunsRequest = {
     }
     if (message.pageToken !== "") {
       writer.uint32(26).string(message.pageToken);
+    }
+    if (message.latestOnly === true) {
+      writer.uint32(32).bool(message.latestOnly);
     }
     return writer;
   },
@@ -2596,6 +2623,13 @@ export const ListPlanCheckRunsRequest = {
 
           message.pageToken = reader.string();
           continue;
+        case 4:
+          if (tag !== 32) {
+            break;
+          }
+
+          message.latestOnly = reader.bool();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2610,6 +2644,7 @@ export const ListPlanCheckRunsRequest = {
       parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
       pageSize: isSet(object.pageSize) ? globalThis.Number(object.pageSize) : 0,
       pageToken: isSet(object.pageToken) ? globalThis.String(object.pageToken) : "",
+      latestOnly: isSet(object.latestOnly) ? globalThis.Boolean(object.latestOnly) : false,
     };
   },
 
@@ -2624,6 +2659,9 @@ export const ListPlanCheckRunsRequest = {
     if (message.pageToken !== "") {
       obj.pageToken = message.pageToken;
     }
+    if (message.latestOnly === true) {
+      obj.latestOnly = message.latestOnly;
+    }
     return obj;
   },
 
@@ -2635,6 +2673,7 @@ export const ListPlanCheckRunsRequest = {
     message.parent = object.parent ?? "";
     message.pageSize = object.pageSize ?? 0;
     message.pageToken = object.pageToken ?? "";
+    message.latestOnly = object.latestOnly ?? false;
     return message;
   },
 };
@@ -2811,6 +2850,125 @@ export const RunPlanChecksResponse = {
   },
   fromPartial(_: DeepPartial<RunPlanChecksResponse>): RunPlanChecksResponse {
     const message = createBaseRunPlanChecksResponse();
+    return message;
+  },
+};
+
+function createBaseBatchCancelPlanCheckRunsRequest(): BatchCancelPlanCheckRunsRequest {
+  return { parent: "", planCheckRuns: [] };
+}
+
+export const BatchCancelPlanCheckRunsRequest = {
+  encode(message: BatchCancelPlanCheckRunsRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.parent !== "") {
+      writer.uint32(10).string(message.parent);
+    }
+    for (const v of message.planCheckRuns) {
+      writer.uint32(18).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): BatchCancelPlanCheckRunsRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBatchCancelPlanCheckRunsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.parent = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.planCheckRuns.push(reader.string());
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): BatchCancelPlanCheckRunsRequest {
+    return {
+      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
+      planCheckRuns: globalThis.Array.isArray(object?.planCheckRuns)
+        ? object.planCheckRuns.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: BatchCancelPlanCheckRunsRequest): unknown {
+    const obj: any = {};
+    if (message.parent !== "") {
+      obj.parent = message.parent;
+    }
+    if (message.planCheckRuns?.length) {
+      obj.planCheckRuns = message.planCheckRuns;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<BatchCancelPlanCheckRunsRequest>): BatchCancelPlanCheckRunsRequest {
+    return BatchCancelPlanCheckRunsRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<BatchCancelPlanCheckRunsRequest>): BatchCancelPlanCheckRunsRequest {
+    const message = createBaseBatchCancelPlanCheckRunsRequest();
+    message.parent = object.parent ?? "";
+    message.planCheckRuns = object.planCheckRuns?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseBatchCancelPlanCheckRunsResponse(): BatchCancelPlanCheckRunsResponse {
+  return {};
+}
+
+export const BatchCancelPlanCheckRunsResponse = {
+  encode(_: BatchCancelPlanCheckRunsResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): BatchCancelPlanCheckRunsResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBatchCancelPlanCheckRunsResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): BatchCancelPlanCheckRunsResponse {
+    return {};
+  },
+
+  toJSON(_: BatchCancelPlanCheckRunsResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create(base?: DeepPartial<BatchCancelPlanCheckRunsResponse>): BatchCancelPlanCheckRunsResponse {
+    return BatchCancelPlanCheckRunsResponse.fromPartial(base ?? {});
+  },
+  fromPartial(_: DeepPartial<BatchCancelPlanCheckRunsResponse>): BatchCancelPlanCheckRunsResponse {
+    const message = createBaseBatchCancelPlanCheckRunsResponse();
     return message;
   },
 };
@@ -3268,7 +3426,7 @@ export const PlanCheckRun_Result_SqlSummaryReport = {
 };
 
 function createBasePlanCheckRun_Result_SqlReviewReport(): PlanCheckRun_Result_SqlReviewReport {
-  return { line: 0, column: 0, detail: "", code: 0 };
+  return { line: 0, column: 0, detail: "", code: 0, startPosition: undefined, endPosition: undefined };
 }
 
 export const PlanCheckRun_Result_SqlReviewReport = {
@@ -3284,6 +3442,12 @@ export const PlanCheckRun_Result_SqlReviewReport = {
     }
     if (message.code !== 0) {
       writer.uint32(32).int32(message.code);
+    }
+    if (message.startPosition !== undefined) {
+      Position.encode(message.startPosition, writer.uint32(42).fork()).ldelim();
+    }
+    if (message.endPosition !== undefined) {
+      Position.encode(message.endPosition, writer.uint32(50).fork()).ldelim();
     }
     return writer;
   },
@@ -3323,6 +3487,20 @@ export const PlanCheckRun_Result_SqlReviewReport = {
 
           message.code = reader.int32();
           continue;
+        case 5:
+          if (tag !== 42) {
+            break;
+          }
+
+          message.startPosition = Position.decode(reader, reader.uint32());
+          continue;
+        case 6:
+          if (tag !== 50) {
+            break;
+          }
+
+          message.endPosition = Position.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3338,6 +3516,8 @@ export const PlanCheckRun_Result_SqlReviewReport = {
       column: isSet(object.column) ? globalThis.Number(object.column) : 0,
       detail: isSet(object.detail) ? globalThis.String(object.detail) : "",
       code: isSet(object.code) ? globalThis.Number(object.code) : 0,
+      startPosition: isSet(object.startPosition) ? Position.fromJSON(object.startPosition) : undefined,
+      endPosition: isSet(object.endPosition) ? Position.fromJSON(object.endPosition) : undefined,
     };
   },
 
@@ -3355,6 +3535,12 @@ export const PlanCheckRun_Result_SqlReviewReport = {
     if (message.code !== 0) {
       obj.code = Math.round(message.code);
     }
+    if (message.startPosition !== undefined) {
+      obj.startPosition = Position.toJSON(message.startPosition);
+    }
+    if (message.endPosition !== undefined) {
+      obj.endPosition = Position.toJSON(message.endPosition);
+    }
     return obj;
   },
 
@@ -3367,6 +3553,12 @@ export const PlanCheckRun_Result_SqlReviewReport = {
     message.column = object.column ?? 0;
     message.detail = object.detail ?? "";
     message.code = object.code ?? 0;
+    message.startPosition = (object.startPosition !== undefined && object.startPosition !== null)
+      ? Position.fromPartial(object.startPosition)
+      : undefined;
+    message.endPosition = (object.endPosition !== undefined && object.endPosition !== null)
+      ? Position.fromPartial(object.endPosition)
+      : undefined;
     return message;
   },
 };
@@ -3385,6 +3577,8 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [new Uint8Array([12, 98, 98, 46, 112, 108, 97, 110, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               31,
@@ -3433,6 +3627,8 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [new Uint8Array([13, 98, 98, 46, 112, 108, 97, 110, 115, 46, 108, 105, 115, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               31,
@@ -3472,6 +3668,7 @@ export const PlanServiceDefinition = {
         },
       },
     },
+    /** Search for plans that the caller has the bb.plans.get permission on and also satisfy the specified filter & query. */
     searchPlans: {
       name: "SearchPlans",
       requestType: SearchPlansRequest,
@@ -3481,6 +3678,8 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [new Uint8Array([12, 98, 98, 46, 112, 108, 97, 110, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               38,
@@ -3536,6 +3735,8 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([11, 112, 97, 114, 101, 110, 116, 44, 112, 108, 97, 110])],
+          800010: [new Uint8Array([15, 98, 98, 46, 112, 108, 97, 110, 115, 46, 99, 114, 101, 97, 116, 101])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               37,
@@ -3581,6 +3782,10 @@ export const PlanServiceDefinition = {
         },
       },
     },
+    /**
+     * UpdatePlan updates the plan.
+     * The plan creator and the user with bb.plans.update permission on the project can update the plan.
+     */
     updatePlan: {
       name: "UpdatePlan",
       requestType: UpdatePlanRequest,
@@ -3590,6 +3795,8 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([16, 112, 108, 97, 110, 44, 117, 112, 100, 97, 116, 101, 95, 109, 97, 115, 107])],
+          800010: [new Uint8Array([15, 98, 98, 46, 112, 108, 97, 110, 115, 46, 117, 112, 100, 97, 116, 101])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               42,
@@ -3649,6 +3856,33 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              21,
+              98,
+              98,
+              46,
+              112,
+              108,
+              97,
+              110,
+              67,
+              104,
+              101,
+              99,
+              107,
+              82,
+              117,
+              110,
+              115,
+              46,
+              108,
+              105,
+              115,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               47,
@@ -3713,6 +3947,32 @@ export const PlanServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [
+            new Uint8Array([
+              20,
+              98,
+              98,
+              46,
+              112,
+              108,
+              97,
+              110,
+              67,
+              104,
+              101,
+              99,
+              107,
+              82,
+              117,
+              110,
+              115,
+              46,
+              114,
+              117,
+              110,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               48,
@@ -3764,6 +4024,111 @@ export const PlanServiceDefinition = {
               99,
               107,
               115,
+            ]),
+          ],
+        },
+      },
+    },
+    batchCancelPlanCheckRuns: {
+      name: "BatchCancelPlanCheckRuns",
+      requestType: BatchCancelPlanCheckRunsRequest,
+      requestStream: false,
+      responseType: BatchCancelPlanCheckRunsResponse,
+      responseStream: false,
+      options: {
+        _unknownFields: {
+          8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              20,
+              98,
+              98,
+              46,
+              112,
+              108,
+              97,
+              110,
+              67,
+              104,
+              101,
+              99,
+              107,
+              82,
+              117,
+              110,
+              115,
+              46,
+              114,
+              117,
+              110,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          578365826: [
+            new Uint8Array([
+              62,
+              58,
+              1,
+              42,
+              34,
+              57,
+              47,
+              118,
+              49,
+              47,
+              123,
+              112,
+              97,
+              114,
+              101,
+              110,
+              116,
+              61,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              47,
+              42,
+              47,
+              112,
+              108,
+              97,
+              110,
+              115,
+              47,
+              42,
+              125,
+              47,
+              112,
+              108,
+              97,
+              110,
+              67,
+              104,
+              101,
+              99,
+              107,
+              82,
+              117,
+              110,
+              115,
+              58,
+              98,
+              97,
+              116,
+              99,
+              104,
+              67,
+              97,
+              110,
+              99,
+              101,
+              108,
             ]),
           ],
         },

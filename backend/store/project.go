@@ -176,7 +176,7 @@ func (s *Store) CreateProjectV2(ctx context.Context, create *ProjectMessage, cre
 		return nil, err
 	}
 
-	policy := &storepb.ProjectIamPolicy{
+	policy := &storepb.IamPolicy{
 		Bindings: []*storepb.Binding{
 			{
 				Role: common.FormatRole(api.ProjectOwner.String()),
@@ -195,7 +195,7 @@ func (s *Store) CreateProjectV2(ctx context.Context, create *ProjectMessage, cre
 		ResourceUID:       project.UID,
 		ResourceType:      api.PolicyResourceTypeProject,
 		Payload:           string(policyPayload),
-		Type:              api.PolicyTypeProjectIAM,
+		Type:              api.PolicyTypeIAM,
 		InheritFromParent: false,
 		// Enforce cannot be false while creating a policy.
 		Enforce: true,
@@ -283,7 +283,7 @@ func (s *Store) listProjectImplV2(ctx context.Context, tx *Tx, find *FindProject
 	}
 
 	var projectMessages []*ProjectMessage
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
 		SELECT
 			id,
 			resource_id,
@@ -294,8 +294,8 @@ func (s *Store) listProjectImplV2(ctx context.Context, tx *Tx, find *FindProject
 			setting,
 			row_status
 		FROM project
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY project.id`,
+		WHERE %s
+		ORDER BY project.resource_id`, strings.Join(where, " AND ")),
 		args...,
 	)
 	if err != nil {

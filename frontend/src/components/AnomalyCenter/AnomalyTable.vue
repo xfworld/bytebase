@@ -76,13 +76,15 @@
 </template>
 
 <script lang="ts" setup>
+import { NButton } from "naive-ui";
 import type { PropType } from "vue";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBModal, BBTable, BBTableCell, BBTableHeaderCell } from "@/bbkit";
 import type { BBTableSectionDataSource } from "@/bbkit/types";
 import { INSTANCE_ROUTE_DETAIL } from "@/router/dashboard/instance";
-import { useDatabaseV1Store, useInstanceV1Store } from "@/store";
+import { useDatabaseV1Store } from "@/store";
 import type { Anomaly } from "@/types/proto/v1/anomaly_service";
 import {
   Anomaly_AnomalyType,
@@ -174,13 +176,12 @@ const detail = (anomaly: Anomaly): string => {
 const action = (anomaly: Anomaly): Action => {
   switch (anomaly.type) {
     case Anomaly_AnomalyType.INSTANCE_CONNECTION: {
-      const instance = useInstanceV1Store().getInstanceByName(anomaly.resource);
       return {
         onClick: () => {
           router.push({
             name: INSTANCE_ROUTE_DETAIL,
             params: {
-              instanceId: extractInstanceResourceName(instance.name),
+              instanceId: extractInstanceResourceName(anomaly.resource),
             },
           });
         },
@@ -188,13 +189,12 @@ const action = (anomaly: Anomaly): Action => {
       };
     }
     case Anomaly_AnomalyType.MIGRATION_SCHEMA: {
-      const instance = useInstanceV1Store().getInstanceByName(anomaly.resource);
       return {
         onClick: () => {
           router.push({
             name: INSTANCE_ROUTE_DETAIL,
             params: {
-              instanceId: extractInstanceResourceName(instance.name),
+              instanceId: extractInstanceResourceName(anomaly.resource),
             },
           });
         },
@@ -202,15 +202,14 @@ const action = (anomaly: Anomaly): Action => {
       };
     }
     case Anomaly_AnomalyType.DATABASE_CONNECTION: {
-      const instance = useInstanceV1Store().getInstanceByName(
-        extractDatabaseResourceName(anomaly.resource).instance
-      );
       return {
         onClick: () => {
           router.push({
             name: INSTANCE_ROUTE_DETAIL,
             params: {
-              instanceId: extractInstanceResourceName(instance.name),
+              instanceId: extractInstanceResourceName(
+                extractDatabaseResourceName(anomaly.resource).instance
+              ),
             },
           });
         },

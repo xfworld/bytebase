@@ -91,10 +91,15 @@ import {
   ArrowRightLeftIcon,
   DownloadIcon,
 } from "lucide-vue-next";
+import { NButton, NTooltip } from "naive-ui";
 import type { VNode } from "vue";
 import { computed, h, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBAlert } from "@/bbkit";
+import SchemaEditorModal from "@/components/AlterSchemaPrepForm/SchemaEditorModal.vue";
+import LabelEditorDrawer from "@/components/LabelEditorDrawer.vue";
+import TransferOutDatabaseForm from "@/components/TransferOutDatabaseForm";
 import { Drawer } from "@/components/v2";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import {
@@ -105,10 +110,10 @@ import {
   useGracefulRequest,
   useDBSchemaV1Store,
   pushNotification,
-  usePageMode,
+  useAppFeature,
 } from "@/store";
-import type { ComposedDatabase, ProjectPermission } from "@/types";
-import { DEFAULT_PROJECT_V1_NAME, DEFAULT_PROJECT_UID } from "@/types";
+import type { ComposedDatabase, Permission } from "@/types";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import {
   Database,
   DatabaseMetadataView,
@@ -143,9 +148,9 @@ interface LocalState {
 const props = withDefaults(
   defineProps<{
     databases: ComposedDatabase[];
-    projectUid?: string;
+    projectName?: string;
   }>(),
-  { projectUid: "" }
+  { projectName: "" }
 );
 
 const state = reactive<LocalState>({
@@ -168,16 +173,17 @@ const projectStore = useProjectV1Store();
 const dbSchemaStore = useDBSchemaV1Store();
 const currentUserV1 = useCurrentUserV1();
 const currentUserIamPolicy = useCurrentUserIamPolicy();
-const pageMode = usePageMode();
-
-const isStandaloneMode = computed(() => pageMode.value === "STANDALONE");
+const disableSchemaEditor = useAppFeature(
+  "bb.feature.issue.disable-schema-editor"
+);
+const operations = useAppFeature("bb.feature.databases.operations");
 
 const selectedProjectNames = computed(() => {
   return new Set(props.databases.map((db) => db.project));
 });
 
 const assignedDatabases = computed(() => {
-  return props.databases.filter((db) => db.project !== DEFAULT_PROJECT_V1_NAME);
+  return props.databases.filter((db) => db.project !== DEFAULT_PROJECT_NAME);
 });
 
 const getDisabledTooltip = (action: string) => {
@@ -186,7 +192,7 @@ const getDisabledTooltip = (action: string) => {
       action,
     });
   }
-  if (selectedProjectNames.value.has(DEFAULT_PROJECT_V1_NAME)) {
+  if (selectedProjectNames.value.has(DEFAULT_PROJECT_NAME)) {
     return t("database.batch-action-disabled-for-unassigned", {
       action,
     });
@@ -194,20 +200,20 @@ const getDisabledTooltip = (action: string) => {
   return "";
 };
 
-const selectedProjectUid = computed(() => {
-  if (props.projectUid) {
-    return props.projectUid;
+const selectedProjectName = computed(() => {
+  if (props.projectName) {
+    return props.projectName;
   }
   if (selectedProjectNames.value.size !== 1) {
     return "";
   }
   const project = [...selectedProjectNames.value][0];
-  return projectStore.getProjectByName(project).uid;
+  return projectStore.getProjectByName(project).name;
 });
 
 const canEditDatabase = (
   db: ComposedDatabase,
-  requiredProjectPermission: ProjectPermission
+  requiredProjectPermission: Permission
 ): boolean => {
   if (isArchivedDatabaseV1(db)) {
     return false;
@@ -295,7 +301,7 @@ const generateMultiDb = async (
     props.databases.length === 1 &&
     type === "bb.issue.database.schema.update" &&
     allowUsingSchemaEditor(props.databases) &&
-    !isStandaloneMode.value
+    !disableSchemaEditor.value
   ) {
     schemaEditorContext.value.databaseIdList = [
       ...selectedDatabaseUidList.value,
@@ -313,11 +319,10 @@ const generateMultiDb = async (
     ),
     databaseList: props.databases.map((db) => db.name).join(","),
   };
-  const project = useProjectV1Store().getProjectByUID(selectedProjectUid.value);
   router.push({
     name: PROJECT_V1_ROUTE_ISSUE_DETAIL,
     params: {
-      projectId: extractProjectResourceName(project.name),
+      projectId: extractProjectResourceName(selectedProjectName.value),
       issueSlug: "create",
     },
     query,
@@ -372,7 +377,7 @@ const unAssignDatabases = async () => {
     state.loading = true;
     await useDatabaseV1Store().transferDatabases(
       assignedDatabases.value,
-      DEFAULT_PROJECT_V1_NAME
+      DEFAULT_PROJECT_NAME
     );
     pushNotification({
       module: "bytebase",
@@ -390,55 +395,59 @@ const unAssignDatabases = async () => {
   }
 };
 
-const operationsInProjectDetail = computed(() => !!props.projectUid);
+const operationsInProjectDetail = computed(() => !!props.projectName);
 
 const isInDefaultProject = computed(
-  () => props.projectUid === `${DEFAULT_PROJECT_UID}`
+  () => props.projectName === DEFAULT_PROJECT_NAME
 );
 
 const actions = computed((): DatabaseAction[] => {
   const resp: DatabaseAction[] = [];
-  if (!isStandaloneMode.value) {
-    resp.push(
-      {
-        icon: h(DownloadIcon),
-        text: t("custom-approval.risk-rule.risk.namespace.data_export"),
-        disabled: !allowExportData.value || props.databases.length !== 1,
-        click: () => generateMultiDb("bb.issue.database.data.export"),
-        tooltip: (action) => {
-          if (!allowExportData.value) {
-            return t("database.batch-action-permission-denied", {
-              action,
-            });
-          }
-          if (props.databases.length > 1) {
-            return t("database.data-export-action-disabled");
-          }
-          return "";
-        },
+  if (operations.value.has("EXPORT-DATA")) {
+    resp.push({
+      icon: h(DownloadIcon),
+      text: t("custom-approval.risk-rule.risk.namespace.data_export"),
+      disabled: !allowExportData.value || props.databases.length !== 1,
+      click: () => generateMultiDb("bb.issue.database.data.export"),
+      tooltip: (action) => {
+        if (!allowExportData.value) {
+          return t("database.batch-action-permission-denied", {
+            action,
+          });
+        }
+        if (props.databases.length > 1) {
+          return t("database.data-export-action-disabled");
+        }
+        return "";
       },
-      {
-        icon: h(RefreshCcwIcon),
-        text: t("common.sync"),
-        disabled: !allowSyncDatabases.value || props.databases.length < 1,
-        click: syncSchema,
-        tooltip: (action) => getDisabledTooltip(action),
+    });
+  }
+  if (operations.value.has("SYNC-SCHEMA")) {
+    resp.push({
+      icon: h(RefreshCcwIcon),
+      text: t("common.sync"),
+      disabled: !allowSyncDatabases.value || props.databases.length < 1,
+      click: syncSchema,
+      tooltip: (action) => getDisabledTooltip(action),
+    });
+  }
+  if (operations.value.has("EDIT-LABELS")) {
+    resp.push({
+      icon: h(TagIcon),
+      text: t("database.edit-labels"),
+      disabled: !allowEditLabels.value || props.databases.length < 1,
+      click: () => (state.showLabelEditorDrawer = true),
+      tooltip: (action) => {
+        if (!allowEditLabels.value) {
+          return t("database.batch-action-permission-denied", {
+            action,
+          });
+        }
+        return getDisabledTooltip(action);
       },
-      {
-        icon: h(TagIcon),
-        text: t("database.edit-labels"),
-        disabled: !allowEditLabels.value || props.databases.length < 1,
-        click: () => (state.showLabelEditorDrawer = true),
-        tooltip: (action) => {
-          if (!allowEditLabels.value) {
-            return t("database.batch-action-permission-denied", {
-              action,
-            });
-          }
-          return getDisabledTooltip(action);
-        },
-      }
-    );
+    });
+  }
+  if (operations.value.has("TRANSFER")) {
     if (!operationsInProjectDetail.value) {
       resp.push({
         icon: h(ArrowRightLeftIcon),
@@ -471,16 +480,36 @@ const actions = computed((): DatabaseAction[] => {
       });
     }
   }
-  resp.unshift(
-    {
+  if (operations.value.has("CHANGE-DATA")) {
+    resp.unshift({
+      icon: h(PencilIcon),
+      text: t("database.change-data"),
+      disabled:
+        !allowChangeData.value ||
+        !selectedProjectName.value ||
+        props.databases.length < 1 ||
+        selectedProjectNames.value.has(DEFAULT_PROJECT_NAME),
+      click: () => generateMultiDb("bb.issue.database.data.update"),
+      tooltip: (action) => {
+        if (!allowChangeData.value) {
+          return t("database.batch-action-permission-denied", {
+            action,
+          });
+        }
+        return getDisabledTooltip(action);
+      },
+    });
+  }
+  if (operations.value.has("EDIT-SCHEMA")) {
+    resp.unshift({
       icon: h(PenSquareIcon),
       text: t("database.edit-schema"),
       disabled:
         !databaseSupportAlterSchema.value ||
         !allowEditSchema.value ||
-        !selectedProjectUid.value ||
+        !selectedProjectName.value ||
         props.databases.length < 1 ||
-        selectedProjectNames.value.has(DEFAULT_PROJECT_V1_NAME),
+        selectedProjectNames.value.has(DEFAULT_PROJECT_NAME),
       click: () => generateMultiDb("bb.issue.database.schema.update"),
       tooltip: (action) => {
         if (!databaseSupportAlterSchema.value) {
@@ -493,26 +522,8 @@ const actions = computed((): DatabaseAction[] => {
         }
         return getDisabledTooltip(action);
       },
-    },
-    {
-      icon: h(PencilIcon),
-      text: t("database.change-data"),
-      disabled:
-        !allowChangeData.value ||
-        !selectedProjectUid.value ||
-        props.databases.length < 1 ||
-        selectedProjectNames.value.has(DEFAULT_PROJECT_V1_NAME),
-      click: () => generateMultiDb("bb.issue.database.data.update"),
-      tooltip: (action) => {
-        if (!allowChangeData.value) {
-          return t("database.batch-action-permission-denied", {
-            action,
-          });
-        }
-        return getDisabledTooltip(action);
-      },
-    }
-  );
+    });
+  }
 
   return resp;
 });

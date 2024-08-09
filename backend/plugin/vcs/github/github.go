@@ -3,6 +3,8 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -269,6 +271,7 @@ func (p *Provider) ListPullRequestFile(ctx context.Context, repositoryID, pullRe
 		page++
 	}
 
+	prURL := fmt.Sprintf("%s/%s/pull/%s", p.instanceURL, repositoryID, pullRequestID)
 	var res []*vcs.PullRequestFile
 	for _, file := range allPRFiles {
 		u, err := url.Parse(file.ContentsURL)
@@ -295,10 +298,23 @@ func (p *Provider) ListPullRequestFile(ctx context.Context, repositoryID, pullRe
 			continue
 		}
 
+		// Get web url for changed file in the PR.
+		// https://github.com/orgs/community/discussions/55764
+		var fileHash string
+		hash := sha256.New()
+		if _, err := hash.Write([]byte(file.FileName)); err == nil {
+			fileHash = hex.EncodeToString(hash.Sum(nil))
+		}
+
 		res = append(res, &vcs.PullRequestFile{
 			Path:         file.FileName,
 			LastCommitID: refs[0],
 			IsDeleted:    file.Status == "removed",
+			// Web URL for file in PR:
+			// {PR web URL}/files#diff-{sha256 for file path}
+			// Web URL for file with a specific line in PR:
+			// {PR web URL}/files#diff-{sha256 for file path}R{line}
+			WebURL: fmt.Sprintf("%s/files#diff-%s", prURL, fileHash),
 		})
 	}
 
@@ -330,6 +346,7 @@ func (p *Provider) listPaginatedPullRequestFile(ctx context.Context, repositoryI
 }
 
 type Comment struct {
+	ID   int    `json:"id,omitempty"`
 	Body string `json:"body"`
 }
 
@@ -363,6 +380,71 @@ func (p *Provider) CreatePullRequestComment(ctx context.Context, repositoryID, p
 			body,
 		)
 	}
+	return nil
+}
+
+// ListPullRequestComments lists comments in a pull request.
+//
+// Docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments-for-a-repository
+func (p *Provider) ListPullRequestComments(ctx context.Context, repositoryID, pullRequestID string) ([]*vcs.PullRequestComment, error) {
+	// No need to fetch comments page by page.
+	url := fmt.Sprintf("%s/repos/%s/issues/%s/comments?per_page=100", p.APIURL(p.instanceURL), repositoryID, pullRequestID)
+
+	code, body, err := internal.Get(ctx, url, p.getAuthorization())
+	if err != nil {
+		return nil, errors.Wrapf(err, "GET %s", url)
+	}
+	if code == http.StatusNotFound {
+		return nil, common.Errorf(common.NotFound, "failed to list pull request comments from URL %s", url)
+	} else if code >= 300 {
+		return nil, errors.Errorf("failed to list pull request comments from URL %s, status code: %d, body: %s",
+			url,
+			code,
+			body,
+		)
+	}
+
+	var comments []Comment
+	if err := json.Unmarshal([]byte(body), &comments); err != nil {
+		return nil, err
+	}
+
+	var res []*vcs.PullRequestComment
+	for _, comment := range comments {
+		res = append(res, &vcs.PullRequestComment{
+			ID:      fmt.Sprintf("%d", comment.ID),
+			Content: comment.Body,
+		})
+	}
+	return res, nil
+}
+
+// UpdatePullRequestComment updates a comment in a pull request.
+//
+// Docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment
+func (p *Provider) UpdatePullRequestComment(ctx context.Context, repositoryID, _ string, comment *vcs.PullRequestComment) error {
+	url := fmt.Sprintf("%s/repos/%s/issues/comments/%s", p.APIURL(p.instanceURL), repositoryID, comment.ID)
+	commentMessage := Comment{Body: comment.Content}
+	commentCreatePayload, err := json.Marshal(commentMessage)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal request body for creating pull request comment")
+	}
+
+	code, body, err := internal.Patch(ctx, url, p.getAuthorization(), commentCreatePayload)
+	if err != nil {
+		return errors.Wrapf(err, "PATCH %s", url)
+	}
+
+	if code == http.StatusNotFound {
+		return common.Errorf(common.NotFound, "cannot found pull request comment through URL %s", url)
+	} else if code >= 300 {
+		return errors.Errorf("failed to update pull request comment through URL %s, status code: %d, body: %s",
+			url,
+			code,
+			body,
+		)
+	}
+
 	return nil
 }
 

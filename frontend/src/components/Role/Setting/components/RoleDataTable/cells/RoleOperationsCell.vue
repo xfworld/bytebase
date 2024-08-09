@@ -19,7 +19,7 @@
 </template>
 
 <script lang="tsx" setup>
-import { useDialog } from "naive-ui";
+import { NButton, useDialog } from "naive-ui";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -28,7 +28,7 @@ import {
   useUserStore,
   pushNotification,
 } from "@/store";
-import type { WorkspacePermission } from "@/types";
+import type { Permission } from "@/types";
 import type { Role } from "@/types/proto/v1/role_service";
 import { hasWorkspacePermissionV2, isCustomRole } from "@/utils";
 import { useCustomRoleSettingContext } from "../../../context";
@@ -48,7 +48,7 @@ const userStore = useUserStore();
 const $dialog = useDialog();
 const { t } = useI18n();
 
-const hasPermission = (permission: WorkspacePermission) => {
+const hasPermission = (permission: Permission) => {
   return hasWorkspacePermissionV2(currentUser.value, permission);
 };
 
@@ -68,7 +68,8 @@ const handleDeleteRole = async () => {
     title: t("common.warning"),
     style: "z-index: 100000",
     negativeText: t("common.cancel"),
-    positiveText: t("common.continue-anyway"),
+    positiveText:
+      usersWithRole.value.length === 0 ? t("common.continue-anyway") : "",
     content: () => {
       if (usersWithRole.value.length === 0) {
         return t("role.setting.delete-warning", {
@@ -89,6 +90,7 @@ const handleDeleteRole = async () => {
               </li>
             ))}
           </ul>
+          <p>{t("role.setting.delete-warning-retry")}</p>
         </div>
       );
     },

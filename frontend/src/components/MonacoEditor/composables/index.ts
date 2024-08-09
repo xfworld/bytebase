@@ -8,3 +8,5 @@ export * from "./useAdvices";
 export * from "./useLineHighlights";
 export * from "./useAutoHeight";
 export * from "./useAutoComplete";
+export * from "./useLSPConnectionState";
+export * from "./useOverrideSuggestIcons";

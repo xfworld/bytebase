@@ -10,6 +10,7 @@ import {
   maskingLevelFromJSON,
   maskingLevelToJSON,
   maskingLevelToNumber,
+  Range,
   State,
   stateFromJSON,
   stateToJSON,
@@ -143,11 +144,10 @@ export interface GetDatabaseRequest {
   name: string;
 }
 
-export interface ListDatabasesRequest {
+export interface ListInstanceDatabasesRequest {
   /**
    * The parent, which owns this collection of databases.
    * - instances/{instance}: list all databases for an instance. Use "instances/-" to list all databases.
-   * - projects/{project}: list all databases in a project.
    */
   parent: string;
   /**
@@ -166,11 +166,46 @@ export interface ListDatabasesRequest {
    */
   pageToken: string;
   /**
+   * Deprecated.
    * Filter is used to filter databases returned in the list.
    * For example, `project == "projects/{project}"` can be used to list databases in a project.
    * Note: the project filter will be moved to parent.
    */
   filter: string;
+}
+
+export interface ListInstanceDatabasesResponse {
+  /** The databases from the specified request. */
+  databases: Database[];
+  /**
+   * A token, which can be sent as `page_token` to retrieve the next page.
+   * If this field is omitted, there are no subsequent pages.
+   */
+  nextPageToken: string;
+}
+
+export interface ListDatabasesRequest {
+  /**
+   * The parent, which owns this collection of databases.
+   * - projects/{project}: list all databases in a project.
+   * - workspaces/{workspace}: list all databases in a workspace.
+   */
+  parent: string;
+  /**
+   * The maximum number of databases to return. The service may return fewer than
+   * this value.
+   * If unspecified, at most 50 databases will be returned.
+   * The maximum value is 1000; values above 1000 will be coerced to 1000.
+   */
+  pageSize: number;
+  /**
+   * A page token, received from a previous `ListDatabases` call.
+   * Provide this to retrieve the subsequent page.
+   *
+   * When paginating, all other parameters provided to `ListDatabases` must match
+   * the call that provided the page token.
+   */
+  pageToken: string;
 }
 
 export interface ListDatabasesResponse {
@@ -183,6 +218,7 @@ export interface ListDatabasesResponse {
   nextPageToken: string;
 }
 
+/** Deprecated. */
 export interface SearchDatabasesRequest {
   /**
    * The maximum number of databases to return. The service may return fewer than
@@ -214,6 +250,7 @@ export interface SearchDatabasesRequest {
   filter: string;
 }
 
+/** Deprecated. */
 export interface SearchDatabasesResponse {
   /** The databases from the specified request. */
   databases: Database[];
@@ -376,7 +413,11 @@ export interface Database {
   /** Labels will be used for deployment and policy control. */
   labels: { [key: string]: string };
   /** The instance resource. */
-  instanceResource: InstanceResource | undefined;
+  instanceResource:
+    | InstanceResource
+    | undefined;
+  /** The database is available for DML prior backup. */
+  backupAvailable: boolean;
 }
 
 export interface Database_LabelsEntry {
@@ -1084,6 +1125,11 @@ export interface TableConfig {
    * Format: users/{email}
    */
   updater: string;
+  /**
+   * The last change come from branch.
+   * Format: projcets/{project}/branches/{branch}
+   */
+  sourceBranch: string;
   /** The timestamp when the table is updated in branch. */
   updateTime: Date | undefined;
 }
@@ -1096,6 +1142,11 @@ export interface FunctionConfig {
    * Format: users/{email}
    */
   updater: string;
+  /**
+   * The last change come from branch.
+   * Format: projcets/{project}/branches/{branch}
+   */
+  sourceBranch: string;
   /** The timestamp when the function is updated in branch. */
   updateTime: Date | undefined;
 }
@@ -1108,6 +1159,11 @@ export interface ProcedureConfig {
    * Format: users/{email}
    */
   updater: string;
+  /**
+   * The last change come from branch.
+   * Format: projcets/{project}/branches/{branch}
+   */
+  sourceBranch: string;
   /** The timestamp when the procedure is updated in branch. */
   updateTime: Date | undefined;
 }
@@ -1120,6 +1176,11 @@ export interface ViewConfig {
    * Format: users/{email}
    */
   updater: string;
+  /**
+   * The last change come from branch.
+   * Format: projcets/{project}/branches/{branch}
+   */
+  sourceBranch: string;
   /** The timestamp when the view is updated in branch. */
   updateTime: Date | undefined;
 }
@@ -1146,15 +1207,15 @@ export interface DatabaseSchema {
 
 /** ListSlowQueriesRequest is the request of listing slow query. */
 export interface ListSlowQueriesRequest {
-  /** Format: instances/{instance}/databases/{database} */
+  /** Format: projects/{project} */
   parent: string;
   /**
    * The filter of the slow query log.
    * follow the [ebnf](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form) syntax.
-   * Support filter by project and start_time in SlowQueryDetails for now.
+   * Support filter by database and start_time in SlowQueryDetails for now.
    * For example:
-   * Search the slow query log of the specific project:
-   *   - the specific project: project = "projects/{project}"
+   * Search the slow query log of the specific database:
+   *   - the specific database: database = "instances/{instance}/databases/{database}"
    * Search the slow query log that start_time after 2022-01-01T12:00:00.000Z:
    *   - start_time > "2022-01-01T12:00:00.000Z"
    *   - Should use [RFC-3339 format](https://www.rfc-editor.org/rfc/rfc3339).
@@ -1608,6 +1669,8 @@ export interface ChangedResourceSchema {
 
 export interface ChangedResourceTable {
   name: string;
+  /** The ranges of sub-strings correspond to the statements on the sheet. */
+  ranges: Range[];
 }
 
 export interface ListChangeHistoriesRequest {
@@ -1745,12 +1808,12 @@ export const GetDatabaseRequest = {
   },
 };
 
-function createBaseListDatabasesRequest(): ListDatabasesRequest {
+function createBaseListInstanceDatabasesRequest(): ListInstanceDatabasesRequest {
   return { parent: "", pageSize: 0, pageToken: "", filter: "" };
 }
 
-export const ListDatabasesRequest = {
-  encode(message: ListDatabasesRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+export const ListInstanceDatabasesRequest = {
+  encode(message: ListInstanceDatabasesRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.parent !== "") {
       writer.uint32(10).string(message.parent);
     }
@@ -1766,10 +1829,10 @@ export const ListDatabasesRequest = {
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): ListDatabasesRequest {
+  decode(input: _m0.Reader | Uint8Array, length?: number): ListInstanceDatabasesRequest {
     const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseListDatabasesRequest();
+    const message = createBaseListInstanceDatabasesRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1810,7 +1873,7 @@ export const ListDatabasesRequest = {
     return message;
   },
 
-  fromJSON(object: any): ListDatabasesRequest {
+  fromJSON(object: any): ListInstanceDatabasesRequest {
     return {
       parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
       pageSize: isSet(object.pageSize) ? globalThis.Number(object.pageSize) : 0,
@@ -1819,7 +1882,7 @@ export const ListDatabasesRequest = {
     };
   },
 
-  toJSON(message: ListDatabasesRequest): unknown {
+  toJSON(message: ListInstanceDatabasesRequest): unknown {
     const obj: any = {};
     if (message.parent !== "") {
       obj.parent = message.parent;
@@ -1836,6 +1899,172 @@ export const ListDatabasesRequest = {
     return obj;
   },
 
+  create(base?: DeepPartial<ListInstanceDatabasesRequest>): ListInstanceDatabasesRequest {
+    return ListInstanceDatabasesRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ListInstanceDatabasesRequest>): ListInstanceDatabasesRequest {
+    const message = createBaseListInstanceDatabasesRequest();
+    message.parent = object.parent ?? "";
+    message.pageSize = object.pageSize ?? 0;
+    message.pageToken = object.pageToken ?? "";
+    message.filter = object.filter ?? "";
+    return message;
+  },
+};
+
+function createBaseListInstanceDatabasesResponse(): ListInstanceDatabasesResponse {
+  return { databases: [], nextPageToken: "" };
+}
+
+export const ListInstanceDatabasesResponse = {
+  encode(message: ListInstanceDatabasesResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    for (const v of message.databases) {
+      Database.encode(v!, writer.uint32(10).fork()).ldelim();
+    }
+    if (message.nextPageToken !== "") {
+      writer.uint32(18).string(message.nextPageToken);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): ListInstanceDatabasesResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListInstanceDatabasesResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.databases.push(Database.decode(reader, reader.uint32()));
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.nextPageToken = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListInstanceDatabasesResponse {
+    return {
+      databases: globalThis.Array.isArray(object?.databases)
+        ? object.databases.map((e: any) => Database.fromJSON(e))
+        : [],
+      nextPageToken: isSet(object.nextPageToken) ? globalThis.String(object.nextPageToken) : "",
+    };
+  },
+
+  toJSON(message: ListInstanceDatabasesResponse): unknown {
+    const obj: any = {};
+    if (message.databases?.length) {
+      obj.databases = message.databases.map((e) => Database.toJSON(e));
+    }
+    if (message.nextPageToken !== "") {
+      obj.nextPageToken = message.nextPageToken;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ListInstanceDatabasesResponse>): ListInstanceDatabasesResponse {
+    return ListInstanceDatabasesResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ListInstanceDatabasesResponse>): ListInstanceDatabasesResponse {
+    const message = createBaseListInstanceDatabasesResponse();
+    message.databases = object.databases?.map((e) => Database.fromPartial(e)) || [];
+    message.nextPageToken = object.nextPageToken ?? "";
+    return message;
+  },
+};
+
+function createBaseListDatabasesRequest(): ListDatabasesRequest {
+  return { parent: "", pageSize: 0, pageToken: "" };
+}
+
+export const ListDatabasesRequest = {
+  encode(message: ListDatabasesRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.parent !== "") {
+      writer.uint32(10).string(message.parent);
+    }
+    if (message.pageSize !== 0) {
+      writer.uint32(16).int32(message.pageSize);
+    }
+    if (message.pageToken !== "") {
+      writer.uint32(26).string(message.pageToken);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): ListDatabasesRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListDatabasesRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.parent = reader.string();
+          continue;
+        case 2:
+          if (tag !== 16) {
+            break;
+          }
+
+          message.pageSize = reader.int32();
+          continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.pageToken = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListDatabasesRequest {
+    return {
+      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
+      pageSize: isSet(object.pageSize) ? globalThis.Number(object.pageSize) : 0,
+      pageToken: isSet(object.pageToken) ? globalThis.String(object.pageToken) : "",
+    };
+  },
+
+  toJSON(message: ListDatabasesRequest): unknown {
+    const obj: any = {};
+    if (message.parent !== "") {
+      obj.parent = message.parent;
+    }
+    if (message.pageSize !== 0) {
+      obj.pageSize = Math.round(message.pageSize);
+    }
+    if (message.pageToken !== "") {
+      obj.pageToken = message.pageToken;
+    }
+    return obj;
+  },
+
   create(base?: DeepPartial<ListDatabasesRequest>): ListDatabasesRequest {
     return ListDatabasesRequest.fromPartial(base ?? {});
   },
@@ -1844,7 +2073,6 @@ export const ListDatabasesRequest = {
     message.parent = object.parent ?? "";
     message.pageSize = object.pageSize ?? 0;
     message.pageToken = object.pageToken ?? "";
-    message.filter = object.filter ?? "";
     return message;
   },
 };
@@ -2832,6 +3060,7 @@ function createBaseDatabase(): Database {
     effectiveEnvironment: "",
     labels: {},
     instanceResource: undefined,
+    backupAvailable: false,
   };
 }
 
@@ -2866,6 +3095,9 @@ export const Database = {
     });
     if (message.instanceResource !== undefined) {
       InstanceResource.encode(message.instanceResource, writer.uint32(82).fork()).ldelim();
+    }
+    if (message.backupAvailable === true) {
+      writer.uint32(88).bool(message.backupAvailable);
     }
     return writer;
   },
@@ -2950,6 +3182,13 @@ export const Database = {
 
           message.instanceResource = InstanceResource.decode(reader, reader.uint32());
           continue;
+        case 11:
+          if (tag !== 88) {
+            break;
+          }
+
+          message.backupAvailable = reader.bool();
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2976,6 +3215,7 @@ export const Database = {
         }, {})
         : {},
       instanceResource: isSet(object.instanceResource) ? InstanceResource.fromJSON(object.instanceResource) : undefined,
+      backupAvailable: isSet(object.backupAvailable) ? globalThis.Boolean(object.backupAvailable) : false,
     };
   },
 
@@ -3017,6 +3257,9 @@ export const Database = {
     if (message.instanceResource !== undefined) {
       obj.instanceResource = InstanceResource.toJSON(message.instanceResource);
     }
+    if (message.backupAvailable === true) {
+      obj.backupAvailable = message.backupAvailable;
+    }
     return obj;
   },
 
@@ -3042,6 +3285,7 @@ export const Database = {
     message.instanceResource = (object.instanceResource !== undefined && object.instanceResource !== null)
       ? InstanceResource.fromPartial(object.instanceResource)
       : undefined;
+    message.backupAvailable = object.backupAvailable ?? false;
     return message;
   },
 };
@@ -6013,7 +6257,7 @@ export const SchemaConfig = {
 };
 
 function createBaseTableConfig(): TableConfig {
-  return { name: "", columnConfigs: [], classificationId: "", updater: "", updateTime: undefined };
+  return { name: "", columnConfigs: [], classificationId: "", updater: "", sourceBranch: "", updateTime: undefined };
 }
 
 export const TableConfig = {
@@ -6029,6 +6273,9 @@ export const TableConfig = {
     }
     if (message.updater !== "") {
       writer.uint32(34).string(message.updater);
+    }
+    if (message.sourceBranch !== "") {
+      writer.uint32(50).string(message.sourceBranch);
     }
     if (message.updateTime !== undefined) {
       Timestamp.encode(toTimestamp(message.updateTime), writer.uint32(42).fork()).ldelim();
@@ -6071,6 +6318,13 @@ export const TableConfig = {
 
           message.updater = reader.string();
           continue;
+        case 6:
+          if (tag !== 50) {
+            break;
+          }
+
+          message.sourceBranch = reader.string();
+          continue;
         case 5:
           if (tag !== 42) {
             break;
@@ -6095,6 +6349,7 @@ export const TableConfig = {
         : [],
       classificationId: isSet(object.classificationId) ? globalThis.String(object.classificationId) : "",
       updater: isSet(object.updater) ? globalThis.String(object.updater) : "",
+      sourceBranch: isSet(object.sourceBranch) ? globalThis.String(object.sourceBranch) : "",
       updateTime: isSet(object.updateTime) ? fromJsonTimestamp(object.updateTime) : undefined,
     };
   },
@@ -6113,6 +6368,9 @@ export const TableConfig = {
     if (message.updater !== "") {
       obj.updater = message.updater;
     }
+    if (message.sourceBranch !== "") {
+      obj.sourceBranch = message.sourceBranch;
+    }
     if (message.updateTime !== undefined) {
       obj.updateTime = message.updateTime.toISOString();
     }
@@ -6128,13 +6386,14 @@ export const TableConfig = {
     message.columnConfigs = object.columnConfigs?.map((e) => ColumnConfig.fromPartial(e)) || [];
     message.classificationId = object.classificationId ?? "";
     message.updater = object.updater ?? "";
+    message.sourceBranch = object.sourceBranch ?? "";
     message.updateTime = object.updateTime ?? undefined;
     return message;
   },
 };
 
 function createBaseFunctionConfig(): FunctionConfig {
-  return { name: "", updater: "", updateTime: undefined };
+  return { name: "", updater: "", sourceBranch: "", updateTime: undefined };
 }
 
 export const FunctionConfig = {
@@ -6144,6 +6403,9 @@ export const FunctionConfig = {
     }
     if (message.updater !== "") {
       writer.uint32(18).string(message.updater);
+    }
+    if (message.sourceBranch !== "") {
+      writer.uint32(34).string(message.sourceBranch);
     }
     if (message.updateTime !== undefined) {
       Timestamp.encode(toTimestamp(message.updateTime), writer.uint32(26).fork()).ldelim();
@@ -6172,6 +6434,13 @@ export const FunctionConfig = {
 
           message.updater = reader.string();
           continue;
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sourceBranch = reader.string();
+          continue;
         case 3:
           if (tag !== 26) {
             break;
@@ -6192,6 +6461,7 @@ export const FunctionConfig = {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       updater: isSet(object.updater) ? globalThis.String(object.updater) : "",
+      sourceBranch: isSet(object.sourceBranch) ? globalThis.String(object.sourceBranch) : "",
       updateTime: isSet(object.updateTime) ? fromJsonTimestamp(object.updateTime) : undefined,
     };
   },
@@ -6203,6 +6473,9 @@ export const FunctionConfig = {
     }
     if (message.updater !== "") {
       obj.updater = message.updater;
+    }
+    if (message.sourceBranch !== "") {
+      obj.sourceBranch = message.sourceBranch;
     }
     if (message.updateTime !== undefined) {
       obj.updateTime = message.updateTime.toISOString();
@@ -6217,13 +6490,14 @@ export const FunctionConfig = {
     const message = createBaseFunctionConfig();
     message.name = object.name ?? "";
     message.updater = object.updater ?? "";
+    message.sourceBranch = object.sourceBranch ?? "";
     message.updateTime = object.updateTime ?? undefined;
     return message;
   },
 };
 
 function createBaseProcedureConfig(): ProcedureConfig {
-  return { name: "", updater: "", updateTime: undefined };
+  return { name: "", updater: "", sourceBranch: "", updateTime: undefined };
 }
 
 export const ProcedureConfig = {
@@ -6233,6 +6507,9 @@ export const ProcedureConfig = {
     }
     if (message.updater !== "") {
       writer.uint32(18).string(message.updater);
+    }
+    if (message.sourceBranch !== "") {
+      writer.uint32(34).string(message.sourceBranch);
     }
     if (message.updateTime !== undefined) {
       Timestamp.encode(toTimestamp(message.updateTime), writer.uint32(26).fork()).ldelim();
@@ -6261,6 +6538,13 @@ export const ProcedureConfig = {
 
           message.updater = reader.string();
           continue;
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sourceBranch = reader.string();
+          continue;
         case 3:
           if (tag !== 26) {
             break;
@@ -6281,6 +6565,7 @@ export const ProcedureConfig = {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       updater: isSet(object.updater) ? globalThis.String(object.updater) : "",
+      sourceBranch: isSet(object.sourceBranch) ? globalThis.String(object.sourceBranch) : "",
       updateTime: isSet(object.updateTime) ? fromJsonTimestamp(object.updateTime) : undefined,
     };
   },
@@ -6292,6 +6577,9 @@ export const ProcedureConfig = {
     }
     if (message.updater !== "") {
       obj.updater = message.updater;
+    }
+    if (message.sourceBranch !== "") {
+      obj.sourceBranch = message.sourceBranch;
     }
     if (message.updateTime !== undefined) {
       obj.updateTime = message.updateTime.toISOString();
@@ -6306,13 +6594,14 @@ export const ProcedureConfig = {
     const message = createBaseProcedureConfig();
     message.name = object.name ?? "";
     message.updater = object.updater ?? "";
+    message.sourceBranch = object.sourceBranch ?? "";
     message.updateTime = object.updateTime ?? undefined;
     return message;
   },
 };
 
 function createBaseViewConfig(): ViewConfig {
-  return { name: "", updater: "", updateTime: undefined };
+  return { name: "", updater: "", sourceBranch: "", updateTime: undefined };
 }
 
 export const ViewConfig = {
@@ -6322,6 +6611,9 @@ export const ViewConfig = {
     }
     if (message.updater !== "") {
       writer.uint32(18).string(message.updater);
+    }
+    if (message.sourceBranch !== "") {
+      writer.uint32(34).string(message.sourceBranch);
     }
     if (message.updateTime !== undefined) {
       Timestamp.encode(toTimestamp(message.updateTime), writer.uint32(26).fork()).ldelim();
@@ -6350,6 +6642,13 @@ export const ViewConfig = {
 
           message.updater = reader.string();
           continue;
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sourceBranch = reader.string();
+          continue;
         case 3:
           if (tag !== 26) {
             break;
@@ -6370,6 +6669,7 @@ export const ViewConfig = {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       updater: isSet(object.updater) ? globalThis.String(object.updater) : "",
+      sourceBranch: isSet(object.sourceBranch) ? globalThis.String(object.sourceBranch) : "",
       updateTime: isSet(object.updateTime) ? fromJsonTimestamp(object.updateTime) : undefined,
     };
   },
@@ -6381,6 +6681,9 @@ export const ViewConfig = {
     }
     if (message.updater !== "") {
       obj.updater = message.updater;
+    }
+    if (message.sourceBranch !== "") {
+      obj.sourceBranch = message.sourceBranch;
     }
     if (message.updateTime !== undefined) {
       obj.updateTime = message.updateTime.toISOString();
@@ -6395,6 +6698,7 @@ export const ViewConfig = {
     const message = createBaseViewConfig();
     message.name = object.name ?? "";
     message.updater = object.updater ?? "";
+    message.sourceBranch = object.sourceBranch ?? "";
     message.updateTime = object.updateTime ?? undefined;
     return message;
   },
@@ -8494,13 +8798,16 @@ export const ChangedResourceSchema = {
 };
 
 function createBaseChangedResourceTable(): ChangedResourceTable {
-  return { name: "" };
+  return { name: "", ranges: [] };
 }
 
 export const ChangedResourceTable = {
   encode(message: ChangedResourceTable, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.name !== "") {
       writer.uint32(10).string(message.name);
+    }
+    for (const v of message.ranges) {
+      Range.encode(v!, writer.uint32(26).fork()).ldelim();
     }
     return writer;
   },
@@ -8519,6 +8826,13 @@ export const ChangedResourceTable = {
 
           message.name = reader.string();
           continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.ranges.push(Range.decode(reader, reader.uint32()));
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8529,13 +8843,19 @@ export const ChangedResourceTable = {
   },
 
   fromJSON(object: any): ChangedResourceTable {
-    return { name: isSet(object.name) ? globalThis.String(object.name) : "" };
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      ranges: globalThis.Array.isArray(object?.ranges) ? object.ranges.map((e: any) => Range.fromJSON(e)) : [],
+    };
   },
 
   toJSON(message: ChangedResourceTable): unknown {
     const obj: any = {};
     if (message.name !== "") {
       obj.name = message.name;
+    }
+    if (message.ranges?.length) {
+      obj.ranges = message.ranges.map((e) => Range.toJSON(e));
     }
     return obj;
   },
@@ -8546,6 +8866,7 @@ export const ChangedResourceTable = {
   fromPartial(object: DeepPartial<ChangedResourceTable>): ChangedResourceTable {
     const message = createBaseChangedResourceTable();
     message.name = object.name ?? "";
+    message.ranges = object.ranges?.map((e) => Range.fromPartial(e)) || [];
     return message;
   },
 };
@@ -8873,6 +9194,8 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [new Uint8Array([16, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               36,
@@ -8917,55 +9240,20 @@ export const DatabaseServiceDefinition = {
         },
       },
     },
-    listDatabases: {
-      name: "ListDatabases",
-      requestType: ListDatabasesRequest,
+    listInstanceDatabases: {
+      name: "ListInstanceDatabases",
+      requestType: ListInstanceDatabasesRequest,
       requestStream: false,
-      responseType: ListDatabasesResponse,
+      responseType: ListInstanceDatabasesResponse,
       responseStream: false,
       options: {
         _unknownFields: {
           8410: [new Uint8Array([0])],
+          800010: [new Uint8Array([16, 98, 98, 46, 105, 110, 115, 116, 97, 110, 99, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
-              73,
-              90,
-              35,
-              18,
-              33,
-              47,
-              118,
-              49,
-              47,
-              123,
-              112,
-              97,
-              114,
-              101,
-              110,
-              116,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              125,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              115,
+              36,
               18,
               34,
               47,
@@ -9007,7 +9295,103 @@ export const DatabaseServiceDefinition = {
         },
       },
     },
-    /** Search for databases that the caller has the bb.databases.get permission on, and also satisfy the specified query. */
+    listDatabases: {
+      name: "ListDatabases",
+      requestType: ListDatabasesRequest,
+      requestStream: false,
+      responseType: ListDatabasesResponse,
+      responseStream: false,
+      options: {
+        _unknownFields: {
+          8410: [new Uint8Array([0])],
+          800010: [new Uint8Array([17, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 108, 105, 115, 116])],
+          800016: [new Uint8Array([1])],
+          578365826: [
+            new Uint8Array([
+              74,
+              90,
+              37,
+              18,
+              35,
+              47,
+              118,
+              49,
+              47,
+              123,
+              112,
+              97,
+              114,
+              101,
+              110,
+              116,
+              61,
+              119,
+              111,
+              114,
+              107,
+              115,
+              112,
+              97,
+              99,
+              101,
+              115,
+              47,
+              42,
+              125,
+              47,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              115,
+              18,
+              33,
+              47,
+              118,
+              49,
+              47,
+              123,
+              112,
+              97,
+              114,
+              101,
+              110,
+              116,
+              61,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              47,
+              42,
+              125,
+              47,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              115,
+            ]),
+          ],
+        },
+      },
+    },
+    /**
+     * Deprecated. This will be removed in the next release.
+     * Search for databases that the caller has the bb.databases.get permission on, and also satisfy the specified query.
+     */
     searchDatabases: {
       name: "SearchDatabases",
       requestType: SearchDatabasesRequest,
@@ -9017,6 +9401,8 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([0])],
+          800010: [new Uint8Array([16, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               22,
@@ -9080,6 +9466,11 @@ export const DatabaseServiceDefinition = {
               107,
             ]),
           ],
+          800010: [
+            new Uint8Array([19, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               55,
@@ -9151,6 +9542,11 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([19, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               51,
@@ -9218,6 +9614,8 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([17, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 115, 121, 110, 99])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               44,
@@ -9278,6 +9676,34 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              22,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              115,
+              46,
+              103,
+              101,
+              116,
+              83,
+              99,
+              104,
+              101,
+              109,
+              97,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               45,
@@ -9339,6 +9765,11 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([19, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               82,
@@ -9437,6 +9868,34 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              22,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              115,
+              46,
+              103,
+              101,
+              116,
+              83,
+              99,
+              104,
+              101,
+              109,
+              97,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               43,
@@ -9496,6 +9955,8 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([16, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               120,
@@ -9633,11 +10094,36 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              19,
+              98,
+              98,
+              46,
+              115,
+              108,
+              111,
+              119,
+              81,
+              117,
+              101,
+              114,
+              105,
+              101,
+              115,
+              46,
+              108,
+              105,
+              115,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
-              50,
+              37,
               18,
-              48,
+              35,
               47,
               118,
               49,
@@ -9650,26 +10136,13 @@ export const DatabaseServiceDefinition = {
               110,
               116,
               61,
-              105,
-              110,
-              115,
-              116,
-              97,
-              110,
+              112,
+              114,
+              111,
+              106,
+              101,
               99,
-              101,
-              115,
-              47,
-              42,
-              47,
-              100,
-              97,
               116,
-              97,
-              98,
-              97,
-              115,
-              101,
               115,
               47,
               42,
@@ -9700,6 +10173,35 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              23,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              83,
+              101,
+              99,
+              114,
+              101,
+              116,
+              115,
+              46,
+              108,
+              105,
+              115,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               46,
@@ -9762,6 +10264,38 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              25,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              83,
+              101,
+              99,
+              114,
+              101,
+              116,
+              115,
+              46,
+              117,
+              112,
+              100,
+              97,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               61,
@@ -9839,6 +10373,38 @@ export const DatabaseServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              25,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              83,
+              101,
+              99,
+              114,
+              101,
+              116,
+              115,
+              46,
+              100,
+              101,
+              108,
+              101,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               46,
@@ -9902,6 +10468,36 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              24,
+              98,
+              98,
+              46,
+              100,
+              97,
+              116,
+              97,
+              98,
+              97,
+              115,
+              101,
+              115,
+              46,
+              97,
+              100,
+              118,
+              105,
+              115,
+              101,
+              73,
+              110,
+              100,
+              101,
+              120,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               50,
@@ -9969,6 +10565,35 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              23,
+              98,
+              98,
+              46,
+              99,
+              104,
+              97,
+              110,
+              103,
+              101,
+              72,
+              105,
+              115,
+              116,
+              111,
+              114,
+              105,
+              101,
+              115,
+              46,
+              108,
+              105,
+              115,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               54,
@@ -10040,6 +10665,34 @@ export const DatabaseServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [
+            new Uint8Array([
+              22,
+              98,
+              98,
+              46,
+              99,
+              104,
+              97,
+              110,
+              103,
+              101,
+              72,
+              105,
+              115,
+              116,
+              111,
+              114,
+              105,
+              101,
+              115,
+              46,
+              103,
+              101,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               54,

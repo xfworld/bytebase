@@ -15,7 +15,15 @@
         <OverlayStackManager>
           <KBarWrapper>
             <NotificationContext>
-              <router-view />
+              <AuthContext>
+                <router-view v-if="actuatorStore.initialized" />
+                <div
+                  v-else
+                  class="fixed inset-0 bg-white flex flex-col items-center justify-center"
+                >
+                  <NSpin />
+                </div>
+              </AuthContext>
             </NotificationContext>
           </KBarWrapper>
         </OverlayStackManager>
@@ -27,57 +35,68 @@
 <script lang="ts" setup>
 import { cloneDeep, isEqual } from "lodash-es";
 import {
+  NSpin,
   NConfigProvider,
   NDialogProvider,
   NNotificationProvider,
 } from "naive-ui";
 import { ServerError } from "nice-grpc-common";
 import { ClientError, Status } from "nice-grpc-web";
-import { reactive, onErrorCaptured } from "vue";
+import { onErrorCaptured, onMounted } from "vue";
 import { watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Watermark from "@/components/misc/Watermark.vue";
 import { themeOverrides, dateLang, generalLang } from "../naive-ui.config";
 import { provideAppRootContext } from "./AppRootContext";
+import AuthContext from "./AuthContext.vue";
 import NotificationContext from "./NotificationContext.vue";
 import KBarWrapper from "./components/KBar/KBarWrapper.vue";
 import OverlayStackManager from "./components/misc/OverlayStackManager.vue";
 import { t } from "./plugins/i18n";
-import { AUTH_SIGNIN_MODULE } from "./router/auth";
-import { useAuthStore, useNotificationStore } from "./store";
+import {
+  useActuatorV1Store,
+  useAuthStore,
+  useNotificationStore,
+  useSubscriptionV1Store,
+} from "./store";
 import { isDev } from "./utils";
 
 // Show at most 3 notifications to prevent excessive notification when shit hits the fan.
 const MAX_NOTIFICATION_DISPLAY_COUNT = 3;
-
-// Check expiration every 30 sec and logout if expired
-const CHECK_LOGGEDIN_STATE_DURATION = 30 * 1000;
-
-interface LocalState {
-  prevLoggedIn: boolean;
-}
 
 const route = useRoute();
 const router = useRouter();
 const { key } = provideAppRootContext();
 const authStore = useAuthStore();
 const notificationStore = useNotificationStore();
+const actuatorStore = useActuatorV1Store();
 
-const state = reactive<LocalState>({
-  prevLoggedIn: authStore.isLoggedIn(),
+onMounted(async () => {
+  const initActuator = async () => {
+    actuatorStore.fetchServerInfo();
+  };
+  const initSubscription = async () => {
+    await useSubscriptionV1Store().fetchSubscription();
+  };
+  const initFeatureMatrix = async () => {
+    await useSubscriptionV1Store().fetchFeatureMatrix();
+  };
+  const restoreUser = async () => {
+    await authStore.restoreUser();
+  };
+  const initBasicModules = async () => {
+    await Promise.all([
+      initActuator(),
+      initFeatureMatrix(),
+      initSubscription(),
+      // We need to restore the basic info in order to perform route authentication.
+      restoreUser(),
+    ]);
+  };
+
+  await initBasicModules();
+  actuatorStore.initialized = true;
 });
-
-setInterval(() => {
-  const loggedIn = authStore.isLoggedIn();
-  if (state.prevLoggedIn != loggedIn) {
-    state.prevLoggedIn = loggedIn;
-    if (!loggedIn) {
-      authStore.logout().then(() => {
-        router.push({ name: AUTH_SIGNIN_MODULE });
-      });
-    }
-  }
-}, CHECK_LOGGEDIN_STATE_DURATION);
 
 onErrorCaptured((error: any /* , _, info */) => {
   // Handle grpc request error.

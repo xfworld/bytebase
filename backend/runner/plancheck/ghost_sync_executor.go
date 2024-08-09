@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/github/gh-ost/go/logic"
+	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/pkg/errors"
 
 	"github.com/bytebase/bytebase/backend/common"
@@ -56,10 +57,6 @@ func (e *GhostSyncExecutor) Run(ctx context.Context, config *storepb.PlanCheckRu
 		}
 	}()
 
-	if config.DatabaseGroupUid != nil {
-		return nil, errors.Errorf("database group is not supported")
-	}
-
 	instanceUID := int(config.InstanceUid)
 	instance, err := e.store.GetInstanceV2(ctx, &store.FindInstanceMessage{UID: &instanceUID})
 	if err != nil {
@@ -108,6 +105,12 @@ func (e *GhostSyncExecutor) Run(ctx context.Context, config *storepb.PlanCheckRu
 	if err != nil {
 		return nil, common.Wrapf(err, common.Internal, "failed to create migration context")
 	}
+	defer func() {
+		// Use migrationContext.Uuid as the tls_config_key by convention.
+		// We need to deregister it when gh-ost exits.
+		// https://github.com/bytebase/gh-ost2/pull/4
+		gomysql.DeregisterTLSConfig(migrationContext.Uuid)
+	}()
 
 	migrator := logic.NewMigrator(migrationContext, "bb")
 

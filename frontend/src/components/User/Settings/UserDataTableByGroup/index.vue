@@ -17,8 +17,8 @@ import { computed, h } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUserStore } from "@/store";
 import { getUserEmailFromIdentifier } from "@/store/modules/v1/common";
-import type { User } from "@/types/proto/v1/auth_service";
-import { UserGroup, UserGroupMember_Role } from "@/types/proto/v1/user_group";
+import type { ComposedUser } from "@/types";
+import { Group, GroupMember_Role } from "@/types/proto/v1/group";
 import GroupMemberNameCell from "./cells/GroupMemberNameCell.vue";
 import GroupNameCell from "./cells/GroupNameCell.vue";
 import GroupOperationsCell from "./cells/GroupOperationsCell.vue";
@@ -26,20 +26,20 @@ import GroupOperationsCell from "./cells/GroupOperationsCell.vue";
 interface GroupRowData {
   type: "group";
   name: string;
-  group: UserGroup;
+  group: Group;
   children: UserRowData[];
 }
 
 interface UserRowData {
   type: "user";
   name: string;
-  user: User;
-  role: UserGroupMember_Role;
+  user: ComposedUser;
+  role: GroupMember_Role;
 }
 
 const props = withDefaults(
   defineProps<{
-    groups: UserGroup[];
+    groups: Group[];
     showGroupRole?: boolean;
     allowEdit: boolean;
   }>(),
@@ -50,7 +50,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (event: "update-group", group: UserGroup): void;
+  (event: "update-group", group: Group): void;
 }>();
 
 const { t } = useI18n();
@@ -124,7 +124,7 @@ const userListByGroup = computed(() => {
       children: orderBy(
         members,
         [
-          (member) => (member.role === UserGroupMember_Role.OWNER ? 1 : 0),
+          (member) => (member.role === GroupMember_Role.OWNER ? 1 : 0),
           (member) => member.user.name,
         ],
         ["desc", "desc"]

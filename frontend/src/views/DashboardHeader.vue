@@ -10,7 +10,7 @@
       >
         <div class="min-w-[8rem] text-left">
           <ProjectNameCell
-            v-if="project.uid !== `${UNKNOWN_ID}`"
+            v-if="isValidProjectName(project.name)"
             mode="ALL_SHORT"
             :project="project"
           />
@@ -99,7 +99,9 @@ import { storeToRefs } from "pinia";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import ProjectSwitchModal from "@/components/Project/ProjectSwitchModal.vue";
 import { useCurrentProject } from "@/components/Project/useCurrentProject";
+import WeChatQRModal from "@/components/WeChatQRModal.vue";
 import { ProjectNameCell } from "@/components/v2/Model/DatabaseV1Table/cells";
 import { SETTING_ROUTE_WORKSPACE_GENERAL } from "@/router/dashboard/workspaceSetting";
 import {
@@ -113,7 +115,7 @@ import BytebaseLogo from "../components/BytebaseLogo.vue";
 import ProfileBrandingLogo from "../components/ProfileBrandingLogo.vue";
 import ProfileDropdown from "../components/ProfileDropdown.vue";
 import { useLanguage } from "../composables/useLanguage";
-import { UNKNOWN_ID, UNKNOWN_PROJECT_NAME } from "../types";
+import { isValidProjectName } from "../types";
 
 interface LocalState {
   showQRCodeModal: boolean;
@@ -154,7 +156,7 @@ const hasGetSettingPermission = computed(() => {
 });
 
 const sqlEditorLink = computed(() => {
-  if (project.value.name !== UNKNOWN_PROJECT_NAME) {
+  if (isValidProjectName(project.value.name)) {
     return router.resolve({
       name: SQL_EDITOR_PROJECT_MODULE,
       params: {

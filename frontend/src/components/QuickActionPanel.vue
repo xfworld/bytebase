@@ -42,18 +42,18 @@
     </InstanceForm>
     <CreateDatabasePrepPanel
       v-if="state.quickActionType === 'quickaction.bb.database.create'"
-      :project-id="project?.uid"
+      :project-name="project?.name"
       @dismiss="state.quickActionType = undefined"
     />
     <AlterSchemaPrepForm
       v-if="state.quickActionType === 'quickaction.bb.database.schema.update'"
-      :project-id="project?.uid"
+      :project-name="project?.name"
       :type="'bb.issue.database.schema.update'"
       @dismiss="state.quickActionType = undefined"
     />
     <AlterSchemaPrepForm
       v-if="state.quickActionType === 'quickaction.bb.database.data.update'"
-      :project-id="project?.uid"
+      :project-name="project?.name"
       :type="'bb.issue.database.data.update'"
       @dismiss="state.quickActionType = undefined"
     />
@@ -62,33 +62,34 @@
         project &&
         state.quickActionType === 'quickaction.bb.project.database.transfer'
       "
-      :project-id="project.uid"
+      :project-name="project.name"
       @dismiss="state.quickActionType = undefined"
     />
   </Drawer>
 
-  <DatabaseGroupPanel
-    v-if="project"
-    :show="
-      state.quickActionType === 'quickaction.bb.group.database-group.create'
-    "
-    :project="project"
-    @close="state.quickActionType = undefined"
-    @created="onDatabaseGroupCreated"
-  />
+  <template v-if="project">
+    <DatabaseGroupPanel
+      :show="
+        state.quickActionType === 'quickaction.bb.group.database-group.create'
+      "
+      :project="project"
+      @close="state.quickActionType = undefined"
+      @created="onDatabaseGroupCreated"
+    />
 
-  <RequestQueryPanel
-    v-if="state.showRequestQueryPanel"
-    :project-id="project?.uid"
-    @close="state.showRequestQueryPanel = false"
-  />
+    <RequestQueryPanel
+      v-if="state.showRequestQueryPanel"
+      :project-name="project.name"
+      @close="state.showRequestQueryPanel = false"
+    />
 
-  <RequestExportPanel
-    v-if="state.showRequestExportPanel"
-    :redirect-to-issue-page="true"
-    :project-id="project?.uid"
-    @close="state.showRequestExportPanel = false"
-  />
+    <RequestExportPanel
+      v-if="state.showRequestExportPanel"
+      :redirect-to-issue-page="true"
+      :project-name="project.name"
+      @close="state.showRequestExportPanel = false"
+    />
+  </template>
 
   <FeatureModal
     :open="!!state.feature"
@@ -126,16 +127,15 @@ import RequestExportPanel from "@/components/Issue/panel/RequestExportPanel/inde
 import RequestQueryPanel from "@/components/Issue/panel/RequestQueryPanel/index.vue";
 import ProjectCreatePanel from "@/components/Project/ProjectCreatePanel.vue";
 import TransferDatabaseForm from "@/components/TransferDatabaseForm.vue";
-import { Drawer } from "@/components/v2";
+import { Drawer, DrawerContent } from "@/components/v2";
 import { PROJECT_V1_ROUTE_DATABASE_GROUP_DETAIL } from "@/router/dashboard/projectV1";
 import { PROJECT_V1_ROUTE_DASHBOARD } from "@/router/dashboard/workspaceRoutes";
 import {
-  useInstanceV1Store,
   useCommandStore,
   useCurrentUserIamPolicy,
   useSubscriptionV1Store,
   useProjectV1Store,
-  useProjectV1List,
+  useInstanceResourceList,
 } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import type {
@@ -143,6 +143,8 @@ import type {
   DatabaseGroupQuickActionType,
   FeatureType,
 } from "@/types";
+import DatabaseGroupPanel from "./DatabaseGroup/DatabaseGroupPanel.vue";
+import { FeatureModal } from "./FeatureGuard";
 
 interface LocalState {
   feature?: FeatureType;
@@ -205,9 +207,8 @@ const project = computed(() => {
 
 // Only show alter schema and change data if the user has permission to alter schema of at least one project.
 const shouldShowAlterDatabaseEntries = computed(() => {
-  const { projectList } = useProjectV1List();
   const currentUserIamPolicy = useCurrentUserIamPolicy();
-  return projectList.value
+  return projectStore.projectList
     .map((project) => {
       return currentUserIamPolicy.allowToChangeDatabaseOfProject(project.name);
     })
@@ -227,8 +228,8 @@ const transferDatabase = () => {
 };
 
 const createInstance = () => {
-  const instanceList = useInstanceV1Store().activeInstanceList;
-  if (subscriptionStore.instanceCountLimit <= instanceList.length) {
+  const instanceList = useInstanceResourceList();
+  if (subscriptionStore.instanceCountLimit <= instanceList.value.length) {
     state.feature = "bb.feature.instance-count";
     return;
   }

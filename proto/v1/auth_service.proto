@@ -5,49 +5,71 @@ package bytebase.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 
 option go_package = "generated-go/v1";
 
 service AuthService {
+  // Get the user.
+  // Any authenticated user can get the user.
   rpc GetUser(GetUserRequest) returns (User) {
     option (google.api.http) = {get: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
+  // List all users.
+  // Any authenticated user can list users.
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
     option (google.api.http) = {get: "/v1/users"};
     option (google.api.method_signature) = "parent";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
+  // Create a user.
+  // When Disallow Signup is enabled, only the caller with bb.users.create on the workspace can create a user.
+  // Otherwise, any unauthenticated user can create a user.
   rpc CreateUser(CreateUserRequest) returns (User) {
     option (google.api.http) = {
       post: "/v1/users"
       body: "user"
     };
     option (google.api.method_signature) = "user";
+    option (bytebase.v1.allow_without_credential) = true;
+    option (bytebase.v1.auth_method) = CUSTOM;
+    option (bytebase.v1.audit) = true;
   }
 
+  // Only the user itself and the user with bb.users.update permission on the workspace can update the user.
   rpc UpdateUser(UpdateUserRequest) returns (User) {
     option (google.api.http) = {
       patch: "/v1/{user.name=users/*}"
       body: "user"
     };
     option (google.api.method_signature) = "user,update_mask";
+    option (bytebase.v1.auth_method) = CUSTOM;
+    option (bytebase.v1.audit) = true;
   }
 
+  // Only the user with bb.users.delete permission on the workspace can delete the user.
+  // The last remaining workspace admin cannot be deleted.
   rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=users/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
+  // Only the user with bb.users.undelete permission on the workspace can undelete the user.
   rpc UndeleteUser(UndeleteUserRequest) returns (User) {
     option (google.api.http) = {
       post: "/v1/{name=users/*}:undelete"
       body: "*"
     };
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
   rpc Login(LoginRequest) returns (LoginResponse) {
@@ -55,6 +77,8 @@ service AuthService {
       post: "/v1/auth/login"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
+    option (bytebase.v1.audit) = true;
   }
 
   rpc Logout(LogoutRequest) returns (google.protobuf.Empty) {
@@ -62,13 +86,17 @@ service AuthService {
       post: "/v1/auth/logout"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
   }
 }
 
 message GetUserRequest {
   // The name of the user to retrieve.
   // Format: users/{user uid or user email}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/User"}
+  ];
 }
 
 message ListUsersRequest {
@@ -127,13 +155,19 @@ message UpdateUserRequest {
 message DeleteUserRequest {
   // The name of the user to delete.
   // Format: users/{user}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/User"}
+  ];
 }
 
 message UndeleteUserRequest {
   // The name of the deleted user.
   // Format: users/{user}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/User"}
+  ];
 }
 
 message LoginRequest {
@@ -183,7 +217,10 @@ message LoginResponse {
 message LogoutRequest {}
 
 message User {
-  reserved 6;
+  option (google.api.resource) = {
+    type: "bytebase.com/User"
+    pattern: "users/{user}"
+  };
 
   // The name of the user.
   // Format: users/{user}. {user} is a system-generated unique ID.
@@ -213,10 +250,6 @@ message User {
   // Should be a valid E.164 compliant phone number.
   // Could be empty.
   string phone = 12;
-
-  // The roles of the user.
-  // This filed is to supersede the `user_role` field.
-  repeated string roles = 13;
 }
 
 enum UserType {

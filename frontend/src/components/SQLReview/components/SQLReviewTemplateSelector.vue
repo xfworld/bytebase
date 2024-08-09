@@ -95,35 +95,30 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, watch } from "vue";
+import { computed } from "vue";
+import { BBBadge } from "@/bbkit";
 import { useSQLReviewPolicyList } from "@/store";
 import type { SQLReviewPolicyTemplateV2 } from "@/types";
 import { TEMPLATE_LIST_V2 as builtInTemplateList } from "@/types";
 import { SQLReviewRuleLevel } from "@/types/proto/v1/org_policy_service";
+import SQLReviewAttachedResource from "./SQLReviewAttachedResource.vue";
 import { rulesToTemplate } from "./utils";
 
 const props = withDefaults(
   defineProps<{
     title?: string;
     required?: boolean;
-    selectedTemplate?: SQLReviewPolicyTemplateV2 | undefined;
+    selectedTemplateId?: string | undefined;
   }>(),
   {
     title: "",
     required: true,
-    selectedTemplate: undefined,
+    selectedTemplateId: undefined,
   }
 );
 
-const emit = defineEmits<{
+defineEmits<{
   (event: "select-template", template: SQLReviewPolicyTemplateV2): void;
-  (
-    event: "templates-change",
-    templateList: {
-      policy: SQLReviewPolicyTemplateV2[];
-      builtin: SQLReviewPolicyTemplateV2[];
-    }
-  ): void;
 }>();
 
 const reviewPolicyList = useSQLReviewPolicyList();
@@ -133,7 +128,7 @@ const reviewPolicyTemplateList = computed(() => {
 });
 
 const isSelectedTemplate = (template: SQLReviewPolicyTemplateV2) => {
-  return template.id === props.selectedTemplate?.id;
+  return template.id === props.selectedTemplateId;
 };
 
 const enabledRuleCount = (template: SQLReviewPolicyTemplateV2) => {
@@ -145,15 +140,4 @@ const enabledRuleCount = (template: SQLReviewPolicyTemplateV2) => {
 const getTemplateImage = (id: string) => {
   return new URL(`../../../assets/${id}.webp`, import.meta.url).href;
 };
-
-watch(
-  reviewPolicyTemplateList,
-  () => {
-    emit("templates-change", {
-      policy: reviewPolicyTemplateList.value,
-      builtin: builtInTemplateList,
-    });
-  },
-  { immediate: true }
-);
 </script>

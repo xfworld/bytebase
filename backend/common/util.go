@@ -27,17 +27,19 @@ const (
 	MaxSheetCheckSize = 1024 * 1024
 	// The maximum number of bytes for sql results in response body.
 	// 100 MB.
-	MaximumSQLResultSize = 100 * 1024 * 1024
+	DefaultMaximumSQLResultSize = 100 * 1024 * 1024
 	// MaximumCommands is the maximum number of commands that can be executed in a single transaction.
 	MaximumCommands = 200
+	// MaximumAdvicePerStatus is the maximum number of advice that can be returned per status.
+	MaximumAdvicePerStatus = 50
+	MaximumLintExplainSize = 10
 
 	// ExternalURLPlaceholder is the docs link to configure --external-url.
 	ExternalURLPlaceholder = "https://www.bytebase.com/docs/get-started/install/external-url"
 )
 
 var (
-	MaximumSQLResultSizeExceeded = fmt.Sprintf("Output of query exceeds max allowed output size of %dMB", MaximumSQLResultSize/1024/1024)
-	StatementAdviseEngines       = map[storepb.Engine]bool{
+	StatementAdviseEngines = map[storepb.Engine]bool{
 		storepb.Engine_MYSQL:            true,
 		storepb.Engine_TIDB:             true,
 		storepb.Engine_POSTGRES:         true,
@@ -241,4 +243,8 @@ func SanitizeUTF8String(s string) string {
 	}
 
 	return b.String()
+}
+
+func FormatMaximumSQLResultSizeMessage(limit int64) string {
+	return fmt.Sprintf("Output of query exceeds max allowed output size of %dMB", limit/1024/1024)
 }

@@ -1,9 +1,7 @@
 import axios from "axios";
-import { isEqual } from "lodash-es";
 import { defineStore } from "pinia";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { authServiceClient } from "@/grpcweb";
-import type { SignupInfo, ActivateInfo } from "@/types";
 import { unknownUser } from "@/types";
 import type {
   LoginRequest,
@@ -12,98 +10,95 @@ import type {
 } from "@/types/proto/v1/auth_service";
 import { UserType } from "@/types/proto/v1/auth_service";
 import { getIntCookie } from "@/utils";
-import { useUserStore } from ".";
+import { useUserStore, useWorkspaceV1Store } from ".";
 
-interface AuthState {
-  currentUser: User;
-}
+export const useAuthStore = defineStore("auth_v1", () => {
+  const userStore = useUserStore();
+  const currentUserId = ref<number | undefined>();
 
-export const useAuthStore = defineStore("auth_v1", {
-  state: (): AuthState => ({
-    currentUser: unknownUser(),
-  }),
-  actions: {
-    isLoggedIn: () => {
-      return getIntCookie("user") != undefined;
-    },
-    async login(request: Partial<LoginRequest>) {
-      const {
-        data: { mfaTempToken },
-      } = await axios.post<LoginResponse>("/v1/auth/login", request);
-      if (mfaTempToken) {
-        return mfaTempToken;
-      }
+  const currentUser = computed(() => {
+    if (currentUserId.value) {
+      return userStore.getUserById(`${currentUserId.value}`) ?? unknownUser();
+    }
+    return unknownUser();
+  });
 
-      const userId = getIntCookie("user");
-      if (userId) {
-        const loggedInUser = await useUserStore().getOrFetchUserById(
-          String(userId)
-        );
-        this.currentUser = loggedInUser;
-      }
-    },
-    async signup(signupInfo: SignupInfo) {
-      await authServiceClient.createUser({
-        user: {
-          email: signupInfo.email,
-          title: signupInfo.name,
-          password: signupInfo.password,
-          userType: UserType.USER,
-        },
-      });
-      await this.login({
-        email: signupInfo.email,
-        password: signupInfo.password,
-        web: true,
-      });
-    },
-    async logout() {
-      const unknown = unknownUser();
-      try {
-        await axios.post("/v1/auth/logout");
-      } finally {
-        this.currentUser = unknown;
-      }
-      return unknown;
-    },
-    async activate(activateInfo: ActivateInfo) {
-      const activatedUser = (
-        await axios.post("/api/auth/activate", {
-          data: { type: "activateInfo", attributes: activateInfo },
-        })
-      ).data.data;
+  const isLoggedIn = () => {
+    return getUserIdFromCookie() != undefined;
+  };
 
-      // Refresh the corresponding user.
-      const user = await useUserStore().getOrFetchUserById(
-        String(activatedUser.id)
+  const getUserIdFromCookie = () => {
+    return getIntCookie("user");
+  };
+
+  const login = async (request: Partial<LoginRequest>) => {
+    const {
+      data: { mfaTempToken },
+    } = await axios.post<LoginResponse>("/v1/auth/login", request);
+    if (mfaTempToken) {
+      return mfaTempToken;
+    }
+
+    await restoreUser();
+  };
+
+  const signup = async (request: Partial<User>) => {
+    await authServiceClient.createUser({
+      user: {
+        email: request.email,
+        title: request.name,
+        password: request.password,
+        userType: UserType.USER,
+      },
+    });
+    await login({
+      email: request.email,
+      password: request.password,
+      web: true,
+    });
+    await useWorkspaceV1Store().fetchIamPolicy();
+  };
+
+  const logout = async () => {
+    try {
+      await axios.post("/v1/auth/logout");
+      currentUserId.value = undefined;
+    } catch {
+      // nothing
+    }
+  };
+
+  const restoreUser = async () => {
+    currentUserId.value = getUserIdFromCookie();
+    if (currentUserId.value) {
+      await useUserStore().getOrFetchUserById(
+        String(currentUserId.value),
+        true // silent
       );
-      this.currentUser = user;
-      return user;
-    },
-    async restoreUser() {
-      const userId = getIntCookie("user");
-      if (userId) {
-        const loggedInUser = await useUserStore().getOrFetchUserById(
-          String(userId),
-          true // silent
-        );
-        this.currentUser = loggedInUser;
-        return loggedInUser;
-      }
-      return unknownUser();
-    },
-    async refreshUserIfNeeded(name: string) {
-      if (name === this.currentUser.name) {
-        const refreshedUser = await useUserStore().fetchUser(
-          name,
-          true // silent
-        );
-        if (!isEqual(refreshedUser, this.currentUser)) {
-          this.currentUser = refreshedUser;
-        }
-      }
-    },
-  },
+      await useWorkspaceV1Store().fetchIamPolicy();
+    }
+  };
+
+  const refreshUserIfNeeded = async (name: string) => {
+    if (name === currentUser.value.name) {
+      await useUserStore().fetchUser(
+        name,
+        true // silent
+      );
+    }
+  };
+
+  return {
+    currentUser,
+    currentUserId,
+    isLoggedIn,
+    getUserIdFromCookie,
+    login,
+    signup,
+    logout,
+    restoreUser,
+    refreshUserIfNeeded,
+  };
 });
 
 export const useCurrentUserV1 = () => {

@@ -1,6 +1,7 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -20,13 +21,12 @@ var (
 	schemaDiffers           = make(map[storepb.Engine]SchemaDiffFunc)
 	completers              = make(map[storepb.Engine]CompletionFunc)
 	spans                   = make(map[storepb.Engine]GetQuerySpanFunc)
-	affectedRows            = make(map[storepb.Engine]GetAffectedRowsFunc)
 	transformDMLToSelect    = make(map[storepb.Engine]TransformDMLToSelectFunc)
 	generateRestoreSQL      = make(map[storepb.Engine]GenerateRestoreSQLFunc)
 )
 
-type ValidateSQLForEditorFunc func(string) (bool, error)
-type ExtractChangedResourcesFunc func(string, string, any) ([]SchemaResource, error)
+type ValidateSQLForEditorFunc func(string) (bool, bool, error)
+type ExtractChangedResourcesFunc func(string, string, any, string) (*ChangeSummary, error)
 type ExtractResourceListFunc func(string, string, string) ([]SchemaResource, error)
 type SplitMultiSQLFunc func(string) ([]SingleSQL, error)
 type SchemaDiffFunc func(ctx DiffContext, oldStmt, newStmt string) (string, error)
@@ -34,9 +34,6 @@ type CompletionFunc func(ctx context.Context, cCtx CompletionContext, statement 
 
 // GetQuerySpanFunc is the interface of getting the query span for a query.
 type GetQuerySpanFunc func(ctx context.Context, gCtx GetQuerySpanContext, statement, database, schema string, ignoreCaseSensitive bool) (*QuerySpan, error)
-
-// GetAffectedRows is the interface of getting the affected rows for a statement.
-type GetAffectedRowsFunc func(ctx context.Context, stmt any, getAffectedRowsByQuery GetAffectedRowsCountByQueryFunc, getTableDataSizeFunc GetTableDataSizeFunc) (int64, error)
 
 // TransformDMLToSelectFunc is the interface of transforming DML statements to SELECT statements.
 type TransformDMLToSelectFunc func(ctx TransformContext, statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]BackupStatement, error)
@@ -57,10 +54,11 @@ func RegisterQueryValidator(engine storepb.Engine, f ValidateSQLForEditorFunc) {
 // 1. EXPLAIN statement, except EXPLAIN ANALYZE
 // 2. SELECT statement
 // We also support CTE with SELECT statements, but not with DML statements.
-func ValidateSQLForEditor(engine storepb.Engine, statement string) (bool, error) {
+// The first bool indicates whether the query can run in read-only mode, and the second bool determines whether all queries return data.
+func ValidateSQLForEditor(engine storepb.Engine, statement string) (bool, bool, error) {
 	f, ok := queryValidators[engine]
 	if !ok {
-		return true, nil
+		return true, true, nil
 	}
 	return f(statement)
 }
@@ -92,12 +90,12 @@ func RegisterExtractChangedResourcesFunc(engine storepb.Engine, f ExtractChanged
 }
 
 // ExtractChangedResources extracts the changed resources from the SQL.
-func ExtractChangedResources(engine storepb.Engine, currentDatabase string, currentSchema string, ast any) ([]SchemaResource, error) {
+func ExtractChangedResources(engine storepb.Engine, currentDatabase string, currentSchema string, ast any, statement string) (*ChangeSummary, error) {
 	f, ok := changedResourcesGetters[engine]
 	if !ok {
 		return nil, errors.Errorf("engine %s is not supported", engine)
 	}
-	return f(currentDatabase, currentSchema, ast)
+	return f(currentDatabase, currentSchema, ast, statement)
 }
 
 func RegisterSplitterFunc(engine storepb.Engine, f SplitMultiSQLFunc) {
@@ -196,25 +194,6 @@ func GetQuerySpan(ctx context.Context, gCtx GetQuerySpanContext, engine storepb.
 	return results, nil
 }
 
-// RegisterGetAffectedRows registers the getAffectedRows function for the engine.
-func RegisterGetAffectedRows(engine storepb.Engine, f GetAffectedRowsFunc) {
-	mux.Lock()
-	defer mux.Unlock()
-	if _, dup := affectedRows[engine]; dup {
-		panic(fmt.Sprintf("Register called twice %s", engine))
-	}
-	affectedRows[engine] = f
-}
-
-// GetAffectedRows returns the affected rows for the parse result.
-func GetAffectedRows(ctx context.Context, engine storepb.Engine, stmt any, getAffectedRowsByQueryFunc GetAffectedRowsCountByQueryFunc, getTableDataSizeFunc GetTableDataSizeFunc) (int64, error) {
-	f, ok := affectedRows[engine]
-	if !ok {
-		return 0, errors.Errorf("engine %s is not supported", engine)
-	}
-	return f(ctx, stmt, getAffectedRowsByQueryFunc, getTableDataSizeFunc)
-}
-
 // RegisterTransformDMLToSelect registers the transformDMLToSelect function for the engine.
 func RegisterTransformDMLToSelect(engine storepb.Engine, f TransformDMLToSelectFunc) {
 	mux.Lock()
@@ -249,4 +228,37 @@ func GenerateRestoreSQL(engine storepb.Engine, statement string, backupDatabase 
 		return "", errors.Errorf("engine %s is not supported", engine)
 	}
 	return f(statement, backupDatabase, backupTable, originalDatabase, originalTable)
+}
+
+type ChangeSummary struct {
+	ResourceChanges []*ResourceChange
+	SampleDMLS      []string
+	DMLCount        int
+}
+
+type ResourceChange struct {
+	Resource    SchemaResource
+	Ranges      []Range
+	AffectTable bool
+}
+
+// String implements fmt.Stringer interface.
+func (r ResourceChange) String() string {
+	return r.Resource.String()
+}
+
+type Range struct {
+	Start int32
+	End   int32
+}
+
+// NewRange creates a new Range with index range of singleSQL in statement.
+func NewRange(statement, singleSQL string) Range {
+	statementBytes := []byte(statement)
+	singleSQLBytes := []byte(singleSQL)
+	start := bytes.Index(statementBytes, singleSQLBytes)
+	return Range{
+		Start: int32(start),
+		End:   int32(start + len(singleSQLBytes)),
+	}
 }

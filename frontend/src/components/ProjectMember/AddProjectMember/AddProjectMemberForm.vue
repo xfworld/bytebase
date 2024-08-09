@@ -35,7 +35,7 @@
           </template>
         </NButton>
       </div>
-      <UserGroupSelect
+      <GroupSelect
         v-model:value="state.memberList"
         class="mt-2"
         :multiple="true"
@@ -64,7 +64,7 @@
     >
       <span class="block mb-2">{{ $t("common.databases") }}</span>
       <QuerierDatabaseResourceForm
-        :project-id="project.uid"
+        :project-name="project.name"
         :database-resources="state.databaseResources"
         @update:condition="state.databaseResourceCondition = $event"
         @update:database-resources="state.databaseResources = $event"
@@ -75,11 +75,7 @@
         <span class="mb-2">
           {{ $t("issue.grant-request.export-rows") }}
         </span>
-        <NInputNumber
-          v-model:value="state.maxRowCount"
-          required
-          :placeholder="$t('issue.grant-request.export-rows')"
-        />
+        <MaxRowCountSelect v-model:value="state.maxRowCount" />
       </div>
     </template>
 
@@ -98,18 +94,23 @@
 /* eslint-disable vue/no-mutating-props */
 import dayjs from "dayjs";
 import { head } from "lodash-es";
-import { NInputNumber, NInput, NRadioGroup, NRadio } from "naive-ui";
+import { NInput, NRadioGroup, NRadio, NButton } from "naive-ui";
 import { computed, reactive, watch } from "vue";
 import ExpirationSelector from "@/components/ExpirationSelector.vue";
+import MaxRowCountSelect from "@/components/Issue/panel/RequestExportPanel/MaxRowCountSelect.vue";
 import QuerierDatabaseResourceForm from "@/components/Issue/panel/RequestQueryPanel/DatabaseResourceForm/index.vue";
-import { ProjectRoleSelect, UserGroupSelect } from "@/components/v2/Select";
+import {
+  ProjectRoleSelect,
+  GroupSelect,
+  UserSelect,
+} from "@/components/v2/Select";
 import {
   useUserStore,
-  useUserGroupStore,
+  useGroupStore,
   extractGroupEmail,
   useSettingV1Store,
 } from "@/store";
-import { userGroupNamePrefix } from "@/store/modules/v1/common";
+import { groupNamePrefix } from "@/store/modules/v1/common";
 import type { ComposedProject, DatabaseResource } from "@/types";
 import {
   getUserEmailInBinding,
@@ -207,7 +208,7 @@ const maximumRoleExpiration = computed(() => {
 });
 
 const userStore = useUserStore();
-const groupStore = useUserGroupStore();
+const groupStore = useGroupStore();
 const settingV1Store = useSettingV1Store();
 const state = reactive<LocalState>(getInitialState());
 
@@ -216,12 +217,10 @@ watch(
   (type) => {
     if (
       type === "MEMBER" &&
-      !state.memberList.every((m) => !m.startsWith(userGroupNamePrefix))
+      !state.memberList.every((m) => !m.startsWith(groupNamePrefix))
     ) {
       state.memberList = [];
-    } else if (
-      !state.memberList.every((m) => m.startsWith(userGroupNamePrefix))
-    ) {
+    } else if (!state.memberList.every((m) => m.startsWith(groupNamePrefix))) {
       state.memberList = [];
     }
   }

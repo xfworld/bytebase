@@ -19,9 +19,9 @@
 
   <RequestQueryPanel
     v-if="state.showRequestQueryPanel"
-    :project-id="database?.projectEntity.uid"
+    :project-name="database.project"
     :database="database"
-    :redirect-to-issue-page="pageMode === 'BUNDLED'"
+    :redirect-to-issue-page="!disallowNavigateToConsole"
     @close="state.showRequestQueryPanel = false"
   />
 </template>
@@ -33,9 +33,13 @@ import { reactive } from "vue";
 import { useRouter } from "vue-router";
 import RequestQueryPanel from "@/components/Issue/panel/RequestQueryPanel/index.vue";
 import { SQL_EDITOR_DATABASE_MODULE } from "@/router/sqlEditor";
-import { useCurrentUserV1, usePageMode, useSQLEditorTreeStore } from "@/store";
+import {
+  useCurrentUserV1,
+  useAppFeature,
+  useSQLEditorTreeStore,
+} from "@/store";
 import type { ComposedDatabase } from "@/types";
-import { DEFAULT_PROJECT_V1_NAME, defaultProject } from "@/types";
+import { DEFAULT_PROJECT_NAME, defaultProject } from "@/types";
 import type { VueClass } from "@/utils";
 import {
   hasProjectPermissionV2,
@@ -49,7 +53,7 @@ interface LocalState {
 
 const props = withDefaults(
   defineProps<{
-    database?: ComposedDatabase;
+    database: ComposedDatabase;
     table?: string;
     schema?: string;
     label?: boolean;
@@ -58,7 +62,6 @@ const props = withDefaults(
     class?: VueClass;
   }>(),
   {
-    database: undefined,
     label: false,
     disabled: false,
     tooltip: false,
@@ -74,7 +77,9 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const currentUserV1 = useCurrentUserV1();
-const pageMode = usePageMode();
+const disallowNavigateToConsole = useAppFeature(
+  "bb.feature.disallow-navigate-to-console"
+);
 const state = reactive<LocalState>({
   showRequestQueryPanel: false,
 });
@@ -102,7 +107,7 @@ const gotoSQLEditor = () => {
   }
 
   const database = props.database as ComposedDatabase;
-  if (database.project === DEFAULT_PROJECT_V1_NAME) {
+  if (database.project === DEFAULT_PROJECT_NAME) {
     if (
       !hasProjectPermissionV2(
         defaultProject(),

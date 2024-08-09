@@ -22,9 +22,6 @@ import (
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
 
-// defaultWorkspaceResourceID is a placeholder for resource id in workspace level IAM policy.
-var defaultWorkspaceResourceID = 1
-
 // OrgPolicyService implements the workspace policy service.
 type OrgPolicyService struct {
 	v1pb.UnimplementedOrgPolicyServiceServer
@@ -208,7 +205,7 @@ func (s *OrgPolicyService) findPolicyMessage(ctx context.Context, policyName str
 	if err != nil {
 		return nil, policyParent, err
 	}
-	if resourceID == nil {
+	if resourceID == nil && resourceType != api.PolicyResourceTypeWorkspace {
 		return nil, policyParent, status.Errorf(codes.InvalidArgument, "resource id for %s must be specific", resourceType)
 	}
 
@@ -234,7 +231,7 @@ func (s *OrgPolicyService) findPolicyMessage(ctx context.Context, policyName str
 
 func (s *OrgPolicyService) getPolicyResourceTypeAndID(ctx context.Context, requestName string) (api.PolicyResourceType, *int, error) {
 	if requestName == "" {
-		return api.PolicyResourceTypeWorkspace, &defaultWorkspaceResourceID, nil
+		return api.PolicyResourceTypeWorkspace, nil, nil
 	}
 
 	if strings.HasPrefix(requestName, common.ProjectNamePrefix) {
@@ -384,7 +381,7 @@ func (s *OrgPolicyService) createPolicyMessage(ctx context.Context, creatorID in
 	if err != nil {
 		return nil, err
 	}
-	if resourceID == nil {
+	if resourceID == nil && resourceType != api.PolicyResourceTypeWorkspace {
 		return nil, status.Errorf(codes.InvalidArgument, "resource id for %s must be specific", resourceType)
 	}
 
@@ -406,15 +403,19 @@ func (s *OrgPolicyService) createPolicyMessage(ctx context.Context, creatorID in
 		return nil, err
 	}
 
-	p, err := s.store.CreatePolicyV2(ctx, &store.PolicyMessage{
-		ResourceUID:       *resourceID,
+	create := &store.PolicyMessage{
 		ResourceType:      resourceType,
 		Payload:           payloadStr,
 		Type:              policyType,
 		InheritFromParent: policy.InheritFromParent,
 		// Enforce cannot be false while creating a policy.
 		Enforce: true,
-	}, creatorID)
+	}
+	if resourceID != nil {
+		create.ResourceUID = *resourceID
+	}
+
+	p, err := s.store.CreatePolicyV2(ctx, create, creatorID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
@@ -577,7 +578,11 @@ func (s *OrgPolicyService) convertPolicyPayloadToString(ctx context.Context, pol
 		if err != nil {
 			return "", status.Errorf(codes.InvalidArgument, err.Error())
 		}
-		return payload.String()
+		payloadBytes, err := protojson.Marshal(payload)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to marshal masking policy")
+		}
+		return string(payloadBytes), nil
 	case v1pb.PolicyType_DISABLE_COPY_DATA:
 		if err := s.licenseService.IsFeatureEnabled(api.FeatureAccessControl); err != nil {
 			return "", status.Errorf(codes.PermissionDenied, err.Error())
@@ -586,7 +591,11 @@ func (s *OrgPolicyService) convertPolicyPayloadToString(ctx context.Context, pol
 		if err != nil {
 			return "", status.Errorf(codes.InvalidArgument, err.Error())
 		}
-		return payload.String()
+		payloadBytes, err := protojson.Marshal(payload)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to marshal masking policy")
+		}
+		return string(payloadBytes), nil
 	case v1pb.PolicyType_MASKING_RULE:
 		if err := s.licenseService.IsFeatureEnabled(api.FeatureSensitiveData); err != nil {
 			return "", status.Errorf(codes.PermissionDenied, err.Error())
@@ -621,7 +630,24 @@ func (s *OrgPolicyService) convertPolicyPayloadToString(ctx context.Context, pol
 		if err != nil {
 			return "", status.Errorf(codes.InvalidArgument, err.Error())
 		}
-		return payload.String()
+		payloadBytes, err := protojson.Marshal(payload)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to marshal restrict issue creation for SQL review policy")
+		}
+		return string(payloadBytes), nil
+	case v1pb.PolicyType_DATA_SOURCE_QUERY:
+		if err := s.licenseService.IsFeatureEnabled(api.FeatureAccessControl); err != nil {
+			return "", status.Errorf(codes.PermissionDenied, err.Error())
+		}
+		payload, err := convertToDataSourceQueryPayload(policy.GetDataSourceQueryPolicy())
+		if err != nil {
+			return "", status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		payloadBytes, err := protojson.Marshal(payload)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to marshal data source query policy")
+		}
+		return string(payloadBytes), nil
 	}
 
 	return "", status.Errorf(codes.InvalidArgument, "invalid policy %v", policy.Type)
@@ -717,6 +743,13 @@ func (s *OrgPolicyService) convertToPolicy(ctx context.Context, parentPath strin
 	case api.PolicyTypeRestrictIssueCreationForSQLReview:
 		pType = v1pb.PolicyType_RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
 		payload, err := convertToV1PBRestrictIssueCreationForSQLReviewPolicy(policyMessage.Payload)
+		if err != nil {
+			return nil, err
+		}
+		policy.Policy = payload
+	case api.PolicyTypeDataSourceQuery:
+		pType = v1pb.PolicyType_DATA_SOURCE_QUERY
+		payload, err := convertToV1PBDataSourceQueryPolicy(policyMessage.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -900,9 +933,9 @@ func convertToStorePBRolloutPolicy(policy *v1pb.RolloutPolicy) *storepb.RolloutP
 }
 
 func convertToV1PBSlowQueryPolicy(payloadStr string) (*v1pb.Policy_SlowQueryPolicy, error) {
-	payload, err := api.UnmarshalSlowQueryPolicy(payloadStr)
-	if err != nil {
-		return nil, err
+	payload := &storepb.SlowQueryPolicy{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(payloadStr), payload); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal slow query policy payload")
 	}
 	return &v1pb.Policy_SlowQueryPolicy{
 		SlowQueryPolicy: &v1pb.SlowQueryPolicy{
@@ -911,16 +944,16 @@ func convertToV1PBSlowQueryPolicy(payloadStr string) (*v1pb.Policy_SlowQueryPoli
 	}, nil
 }
 
-func convertToSlowQueryPolicyPayload(policy *v1pb.SlowQueryPolicy) (*api.SlowQueryPolicy, error) {
-	return &api.SlowQueryPolicy{
+func convertToSlowQueryPolicyPayload(policy *v1pb.SlowQueryPolicy) (*storepb.SlowQueryPolicy, error) {
+	return &storepb.SlowQueryPolicy{
 		Active: policy.Active,
 	}, nil
 }
 
 func convertToV1PBDisableCopyDataPolicy(payloadStr string) (*v1pb.Policy_DisableCopyDataPolicy, error) {
-	payload, err := api.UnmarshalSlowQueryPolicy(payloadStr)
-	if err != nil {
-		return nil, err
+	payload := &storepb.DisableCopyDataPolicy{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(payloadStr), payload); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal disable copy policy payload")
 	}
 	return &v1pb.Policy_DisableCopyDataPolicy{
 		DisableCopyDataPolicy: &v1pb.DisableCopyDataPolicy{
@@ -929,8 +962,8 @@ func convertToV1PBDisableCopyDataPolicy(payloadStr string) (*v1pb.Policy_Disable
 	}, nil
 }
 
-func convertToDisableCopyDataPolicyPayload(policy *v1pb.DisableCopyDataPolicy) (*api.DisableCopyDataPolicy, error) {
-	return &api.DisableCopyDataPolicy{
+func convertToDisableCopyDataPolicyPayload(policy *v1pb.DisableCopyDataPolicy) (*storepb.DisableCopyDataPolicy, error) {
+	return &storepb.DisableCopyDataPolicy{
 		Active: policy.Active,
 	}, nil
 }
@@ -1028,7 +1061,7 @@ func (s *OrgPolicyService) convertToV1PBMaskingExceptionPolicyPayload(ctx contex
 			}
 			member = fmt.Sprintf("user:%s", user.Email)
 		} else {
-			email, err := common.GetUserGroupEmail(member)
+			email, err := common.GetGroupEmail(member)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to parse group email from member %s with error: %v", member, err)
 			}
@@ -1053,8 +1086,8 @@ func (s *OrgPolicyService) convertToV1PBMaskingExceptionPolicyPayload(ctx contex
 }
 
 func convertToV1PBRestrictIssueCreationForSQLReviewPolicy(payloadStr string) (*v1pb.Policy_RestrictIssueCreationForSqlReviewPolicy, error) {
-	payload, err := api.UnmarshalRestrictIssueCreationForSQLReviewPolicy(payloadStr)
-	if err != nil {
+	payload := &storepb.RestrictIssueCreationForSQLReviewPolicy{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(payloadStr), payload); err != nil {
 		return nil, err
 	}
 	return &v1pb.Policy_RestrictIssueCreationForSqlReviewPolicy{
@@ -1064,9 +1097,27 @@ func convertToV1PBRestrictIssueCreationForSQLReviewPolicy(payloadStr string) (*v
 	}, nil
 }
 
-func convertToRestrictIssueCreationForSQLReviewPayload(policy *v1pb.RestrictIssueCreationForSQLReviewPolicy) (*api.RestrictIssueCreationForSQLReviewPolicy, error) {
-	return &api.RestrictIssueCreationForSQLReviewPolicy{
+func convertToRestrictIssueCreationForSQLReviewPayload(policy *v1pb.RestrictIssueCreationForSQLReviewPolicy) (*storepb.RestrictIssueCreationForSQLReviewPolicy, error) {
+	return &storepb.RestrictIssueCreationForSQLReviewPolicy{
 		Disallow: policy.Disallow,
+	}, nil
+}
+
+func convertToV1PBDataSourceQueryPolicy(payloadStr string) (*v1pb.Policy_DataSourceQueryPolicy, error) {
+	payload := &storepb.DataSourceQueryPolicy{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(payloadStr), payload); err != nil {
+		return nil, err
+	}
+	return &v1pb.Policy_DataSourceQueryPolicy{
+		DataSourceQueryPolicy: &v1pb.DataSourceQueryPolicy{
+			AdminDataSourceRestriction: v1pb.DataSourceQueryPolicy_Restriction(payload.AdminDataSourceRestriction),
+		},
+	}, nil
+}
+
+func convertToDataSourceQueryPayload(policy *v1pb.DataSourceQueryPolicy) (*storepb.DataSourceQueryPolicy, error) {
+	return &storepb.DataSourceQueryPolicy{
+		AdminDataSourceRestriction: storepb.DataSourceQueryPolicy_Restriction(policy.AdminDataSourceRestriction),
 	}, nil
 }
 
@@ -1089,6 +1140,8 @@ func convertPolicyType(pType string) (api.PolicyType, error) {
 		return api.PolicyTypeDisableCopyData, nil
 	case v1pb.PolicyType_RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW.String():
 		return api.PolicyTypeRestrictIssueCreationForSQLReview, nil
+	case v1pb.PolicyType_DATA_SOURCE_QUERY.String():
+		return api.PolicyTypeDataSourceQuery, nil
 	}
 	return policyType, errors.Errorf("invalid policy type %v", pType)
 }

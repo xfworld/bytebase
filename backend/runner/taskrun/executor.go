@@ -172,9 +172,9 @@ func getMigrationInfo(ctx context.Context, stores *store.Store, profile *config.
 	return mi, nil
 }
 
-func getCreateTaskRunLog(ctx context.Context, taskRunUID int, s *store.Store) func(t time.Time, e *storepb.TaskRunLog) error {
+func getCreateTaskRunLog(ctx context.Context, taskRunUID int, s *store.Store, profile *config.Profile) func(t time.Time, e *storepb.TaskRunLog) error {
 	return func(t time.Time, e *storepb.TaskRunLog) error {
-		return s.CreateTaskRunLog(ctx, taskRunUID, t.UTC(), e)
+		return s.CreateTaskRunLog(ctx, taskRunUID, t.UTC(), profile.DeployID, e)
 	}
 }
 
@@ -218,7 +218,14 @@ func executeMigration(
 	var migrationID string
 	opts := db.ExecuteOptions{}
 
-	if profile.ExecuteDetail && stateCfg != nil {
+	opts.SetConnectionID = func(id string) {
+		stateCfg.TaskRunConnectionID.Store(taskRunUID, id)
+	}
+	opts.DeleteConnectionID = func() {
+		stateCfg.TaskRunConnectionID.Delete(taskRunUID)
+	}
+
+	if stateCfg != nil {
 		switch task.Type {
 		case api.TaskDatabaseSchemaUpdate, api.TaskDatabaseDataUpdate:
 			switch instance.Engine {
@@ -235,7 +242,7 @@ func executeMigration(
 							UpdateTime:      time.Now(),
 						})
 				}
-				opts.CreateTaskRunLog = getCreateTaskRunLog(ctx, taskRunUID, stores)
+				opts.CreateTaskRunLog = getCreateTaskRunLog(ctx, taskRunUID, stores, profile)
 			default:
 				// do nothing
 			}
@@ -287,7 +294,7 @@ func postMigration(ctx context.Context, stores *store.Store, task *store.TaskMes
 			if err != nil {
 				slog.Error("Failed to get database config from store", slog.Int("sheetID", *sheetID), slog.Int("databaseUID", *task.DatabaseID), log.BBError(err))
 			} else {
-				updatedDatabaseConfig := utils.MergeDatabaseConfig(sheet.Payload.BaselineDatabaseConfig, databaseSchema.GetConfig(), sheet.Payload.DatabaseConfig)
+				updatedDatabaseConfig := utils.MergeDatabaseConfig(sheet.Payload.DatabaseConfig, sheet.Payload.BaselineDatabaseConfig, databaseSchema.GetConfig())
 				err = stores.UpdateDBSchema(ctx, *task.DatabaseID, &store.UpdateDBSchemaMessage{
 					Config: updatedDatabaseConfig,
 				}, api.SystemBotID)

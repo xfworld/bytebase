@@ -1,9 +1,9 @@
 import { computedAsync } from "@vueuse/core";
-import { isEqual } from "lodash-es";
+import { head, isEqual } from "lodash-es";
 import { defineStore } from "pinia";
 import type { MaybeRef } from "vue";
 import { computed, ref, unref } from "vue";
-import { projectServiceClient } from "@/grpcweb";
+import { databaseGroupServiceClient } from "@/grpcweb";
 import type { ConditionGroupExpr } from "@/plugins/cel";
 import {
   buildCELExpr,
@@ -18,8 +18,8 @@ import type {
 } from "@/types";
 import { ParsedExpr } from "@/types/proto/google/api/expr/v1alpha1/syntax";
 import { Expr } from "@/types/proto/google/type/expr";
-import { DatabaseGroup } from "@/types/proto/v1/project_service";
-import { DatabaseGroupView } from "@/types/proto/v1/project_service";
+import { DatabaseGroup } from "@/types/proto/v1/database_group_service";
+import { DatabaseGroupView } from "@/types/proto/v1/database_group_service";
 import {
   batchConvertParsedExprToCELString,
   batchConvertCELStringToParsedExpr,
@@ -81,20 +81,6 @@ export const useDBGroupStore = defineStore("db-group", () => {
   const dbGroupMapByName = ref<Map<string, ComposedDatabaseGroup>>(new Map());
   const cachedProjectNameSet = ref<Set<string>>(new Set());
 
-  const fetchAllDatabaseGroupList = async () => {
-    const { databaseGroups } = await projectServiceClient.listDatabaseGroups({
-      parent: `${projectNamePrefix}-`,
-    });
-    const composedList = [];
-    const composeDatabaseGroups =
-      await batchComposeDatabaseGroup(databaseGroups);
-    for (const composedData of composeDatabaseGroups) {
-      dbGroupMapByName.value.set(composedData.name, composedData);
-      composedList.push(composedData);
-    }
-    return composedList;
-  };
-
   const getAllDatabaseGroupList = () => {
     return Array.from(dbGroupMapByName.value.values());
   };
@@ -120,7 +106,7 @@ export const useDBGroupStore = defineStore("db-group", () => {
       if (cached) return cached;
     }
 
-    const databaseGroup = await projectServiceClient.getDatabaseGroup(
+    const databaseGroup = await databaseGroupServiceClient.getDatabaseGroup(
       {
         name,
         view,
@@ -141,9 +127,10 @@ export const useDBGroupStore = defineStore("db-group", () => {
       );
     }
 
-    const { databaseGroups } = await projectServiceClient.listDatabaseGroups({
-      parent: projectName,
-    });
+    const { databaseGroups } =
+      await databaseGroupServiceClient.listDatabaseGroups({
+        parent: projectName,
+      });
     const composedList = [];
     const composeDatabaseGroups =
       await batchComposeDatabaseGroup(databaseGroups);
@@ -181,14 +168,18 @@ export const useDBGroupStore = defineStore("db-group", () => {
     databaseGroupId: string;
     validateOnly?: boolean;
   }) => {
-    const createdDatabaseGroup = await projectServiceClient.createDatabaseGroup(
-      {
-        parent: projectName,
-        databaseGroup,
-        databaseGroupId,
-        validateOnly,
-      }
-    );
+    const createdDatabaseGroup =
+      await databaseGroupServiceClient.createDatabaseGroup(
+        {
+          parent: projectName,
+          databaseGroup,
+          databaseGroupId,
+          validateOnly,
+        },
+        {
+          silent: validateOnly,
+        }
+      );
 
     if (!validateOnly) {
       const composedData = await batchComposeDatabaseGroup([
@@ -208,10 +199,10 @@ export const useDBGroupStore = defineStore("db-group", () => {
   }) => {
     const celStrings = await batchConvertParsedExprToCELString([
       ParsedExpr.fromJSON({
-        expr: buildCELExpr(expr),
+        expr: await buildCELExpr(expr),
       }),
     ]);
-    const expression = celStrings[0] || "true";
+    const expression = head(celStrings) || "true"; // Fallback to true.
     const validateOnlyResourceId = `creating-database-group-${Date.now()}`;
 
     const result = await createDatabaseGroup({
@@ -277,12 +268,11 @@ export const useDBGroupStore = defineStore("db-group", () => {
     if (!isEqual(rawDatabaseGroup.multitenancy, databaseGroup.multitenancy)) {
       updateMask.push("multitenancy");
     }
-    const updatedDatabaseGroup = await projectServiceClient.updateDatabaseGroup(
-      {
+    const updatedDatabaseGroup =
+      await databaseGroupServiceClient.updateDatabaseGroup({
         databaseGroup,
         updateMask,
-      }
-    );
+      });
     const composedData = await batchComposeDatabaseGroup([
       updatedDatabaseGroup,
     ]);
@@ -291,14 +281,13 @@ export const useDBGroupStore = defineStore("db-group", () => {
   };
 
   const deleteDatabaseGroup = async (name: string) => {
-    await projectServiceClient.deleteDatabaseGroup({
+    await databaseGroupServiceClient.deleteDatabaseGroup({
       name: name,
     });
     dbGroupMapByName.value.delete(name);
   };
 
   return {
-    fetchAllDatabaseGroupList,
     getAllDatabaseGroupList,
     getOrFetchDBGroupByName,
     getOrFetchDBGroupListByProjectName,
@@ -319,12 +308,12 @@ export const useDatabaseInGroupFilter = (
 
   const databaseGroups = computedAsync(
     async () => {
-      const response = await projectServiceClient.listDatabaseGroups({
+      const response = await databaseGroupServiceClient.listDatabaseGroups({
         parent: unref(project).name,
       });
       return Promise.all(
         response.databaseGroups.map((group) => {
-          return projectServiceClient.getDatabaseGroup({
+          return databaseGroupServiceClient.getDatabaseGroup({
             name: group.name,
             view: DatabaseGroupView.DATABASE_GROUP_VIEW_FULL,
           });

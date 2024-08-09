@@ -22,14 +22,6 @@
           />
         </div>
       </div>
-      <div>
-        <p class="text-lg mb-2">{{ $t("common.project") }}</p>
-        <ProjectSelect
-          :project="project.uid"
-          :disabled="true"
-          style="width: auto"
-        />
-      </div>
     </div>
     <NDivider />
     <div class="w-full grid grid-cols-5 gap-x-6">
@@ -40,10 +32,17 @@
         <ExprEditor
           :expr="state.expr"
           :allow-admin="true"
+          :enable-raw-expression="true"
           :factor-list="FactorList"
           :factor-support-dropdown="factorSupportDropdown"
-          :factor-options-map="DatabaseGroupFactorOptionsMap()"
+          :factor-options-map="DatabaseGroupFactorOptionsMap(project)"
         />
+        <p
+          v-if="matchingError"
+          class="mt-2 text-sm border border-red-600 px-2 py-1 rounded-lg bg-red-50 text-red-600"
+        >
+          {{ matchingError }}
+        </p>
       </div>
       <div class="col-span-2">
         <MatchedDatabaseView
@@ -66,6 +65,10 @@
         />
         <p class="text-sm text-gray-400 pl-6 ml-0.5">
           {{ $t("database-group.multitenancy.description") }}
+          <LearnMoreLink
+            url="https://www.bytebase.com/docs/change-database/batch-change/?source=console#multitenancy"
+            class="text-sm"
+          />
         </p>
       </div>
     </div>
@@ -76,27 +79,36 @@
 import { useDebounceFn } from "@vueuse/core";
 import { cloneDeep } from "lodash-es";
 import { NCheckbox, NInput, NDivider } from "naive-ui";
-import { Status } from "nice-grpc-web";
+import { ClientError, Status } from "nice-grpc-web";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import ExprEditor from "@/components/ExprEditor";
+import LearnMoreLink from "@/components/LearnMoreLink.vue";
 import type { ConditionGroupExpr } from "@/plugins/cel";
-import { emptySimpleExpr, wrapAsGroup } from "@/plugins/cel";
-import { useDBGroupStore, useSubscriptionV1Store } from "@/store";
+import {
+  emptySimpleExpr,
+  validateSimpleExpr,
+  wrapAsGroup,
+} from "@/plugins/cel";
+import {
+  useDatabaseV1ListByProject,
+  useDBGroupStore,
+  useSubscriptionV1Store,
+} from "@/store";
 import {
   databaseGroupNamePrefix,
   getProjectNameAndDatabaseGroupName,
 } from "@/store/modules/v1/common";
 import type {
   ComposedDatabase,
-  ComposedDatabaseGroup,
   ComposedProject,
   ResourceId,
   ValidatedMessage,
 } from "@/types";
-import type { DatabaseGroup } from "@/types/proto/v1/project_service";
+import type { DatabaseGroup } from "@/types/proto/v1/database_group_service";
 import { getErrorCode } from "@/utils/grpcweb";
-import { ProjectSelect, ResourceIdField } from "../v2";
+import { FeatureAttentionForInstanceLicense } from "../FeatureGuard";
+import { ResourceIdField } from "../v2";
 import MatchedDatabaseView from "./MatchedDatabaseView.vue";
 import { factorSupportDropdown, DatabaseGroupFactorOptionsMap } from "./utils";
 import { FactorList } from "./utils";
@@ -104,7 +116,6 @@ import { FactorList } from "./utils";
 const props = defineProps<{
   project: ComposedProject;
   databaseGroup?: DatabaseGroup;
-  parentDatabaseGroup?: ComposedDatabaseGroup;
 }>();
 
 type LocalState = {
@@ -126,6 +137,7 @@ const state = reactive<LocalState>({
   expr: wrapAsGroup(emptySimpleExpr()),
   multitenancy: false,
 });
+const { databaseList } = useDatabaseV1ListByProject(props.project.name);
 const resourceIdField = ref<InstanceType<typeof ResourceIdField>>();
 
 const isCreating = computed(() => props.databaseGroup === undefined);
@@ -189,17 +201,32 @@ const validateResourceId = async (
   return [];
 };
 
+const matchingError = ref<string | undefined>(undefined);
 const matchedDatabaseList = ref<ComposedDatabase[]>([]);
 const unmatchedDatabaseList = ref<ComposedDatabase[]>([]);
 const updateDatabaseMatchingState = useDebounceFn(async () => {
-  state.isRequesting = true;
-  const result = await dbGroupStore.fetchDatabaseGroupMatchList({
-    projectName: props.project.name,
-    expr: state.expr,
-  });
+  if (!validateSimpleExpr(state.expr)) {
+    matchingError.value = undefined;
+    matchedDatabaseList.value = [];
+    unmatchedDatabaseList.value = databaseList.value;
+    return;
+  }
 
-  matchedDatabaseList.value = result.matchedDatabaseList;
-  unmatchedDatabaseList.value = result.unmatchedDatabaseList;
+  state.isRequesting = true;
+  try {
+    const result = await dbGroupStore.fetchDatabaseGroupMatchList({
+      projectName: props.project.name,
+      expr: state.expr,
+    });
+
+    matchingError.value = undefined;
+    matchedDatabaseList.value = result.matchedDatabaseList;
+    unmatchedDatabaseList.value = result.unmatchedDatabaseList;
+  } catch (error) {
+    matchingError.value = (error as ClientError).details;
+    matchedDatabaseList.value = [];
+    unmatchedDatabaseList.value = databaseList.value;
+  }
   state.isRequesting = false;
 }, 500);
 

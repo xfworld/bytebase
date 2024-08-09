@@ -26,6 +26,7 @@
     </div>
 
     <NDataTable
+      key="sso-table"
       :data="identityProviderList"
       :columns="columnList"
       :striped="true"
@@ -46,6 +47,7 @@ import type { DataTableColumn } from "naive-ui";
 import { computed, onMounted, reactive, h } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { FeatureBadge, FeatureModal } from "@/components/FeatureGuard";
 import {
   WORKSPACE_ROUTE_SSO_CREATE,
   WORKSPACE_ROUTE_SSO_DETAIL,

@@ -6,9 +6,9 @@ import {
   pushNotification,
   useDatabaseV1Store,
   useEnvironmentV1Store,
-  useInstanceV1Store,
+  useInstanceResourceByName,
 } from "@/store";
-import type { ComposedIssue, ComposedProject } from "@/types";
+import type { ComposedDatabase, ComposedIssue, ComposedProject } from "@/types";
 import { unknownDatabase, UNKNOWN_ID, unknownEnvironment } from "@/types";
 import { State } from "@/types/proto/v1/common";
 import { IssueStatus } from "@/types/proto/v1/issue_service";
@@ -68,25 +68,31 @@ const extractCoreDatabaseInfoFromDatabaseCreateTask = (
   project: ComposedProject,
   task: Task
 ) => {
-  const coreDatabaseInfo = (instance: string, databaseName: string) => {
-    const name = `${instance}/databases/${databaseName}`;
+  const coreDatabaseInfo = (
+    instanceName: string,
+    databaseName: string
+  ): ComposedDatabase => {
+    const name = `${instanceName}/databases/${databaseName}`;
     const maybeExistedDatabase = useDatabaseV1Store().getDatabaseByName(name);
     if (maybeExistedDatabase.uid !== String(UNKNOWN_ID)) {
       return maybeExistedDatabase;
     }
 
-    const instanceEntity = useInstanceV1Store().getInstanceByName(instance);
+    const environmentStore = useEnvironmentV1Store();
+    const instance = useInstanceResourceByName(instanceName);
     return {
       ...unknownDatabase(),
       name,
       uid: String(UNKNOWN_ID),
       databaseName,
-      instance,
-      instanceEntity,
+      instance: instanceName,
       project: project.name,
       projectEntity: project,
-      effectiveEnvironment: instanceEntity.environment,
-      effectiveEnvironmentEntity: instanceEntity.environmentEntity,
+      effectiveEnvironment: instance.environment,
+      effectiveEnvironmentEntity: environmentStore.getEnvironmentByName(
+        instance.environment
+      ),
+      instanceResource: instance,
     };
   };
 

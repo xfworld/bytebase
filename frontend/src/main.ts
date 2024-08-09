@@ -4,11 +4,10 @@ import Long from "long";
 import protobufjs from "protobufjs";
 import { createApp } from "vue";
 import App from "./App.vue";
-import Splash from "./Splash.vue";
 import "./assets/css/github-markdown-style.css";
 import "./assets/css/inter.css";
 import "./assets/css/tailwind.css";
-import dataSourceType from "./directives/data-source-type";
+import { overrideAppProfile } from "./customAppProfile";
 import dayjs from "./plugins/dayjs";
 import highlight from "./plugins/highlight";
 import i18n from "./plugins/i18n";
@@ -16,28 +15,17 @@ import NaiveUI from "./plugins/naive-ui";
 import { isSilent } from "./plugins/silent-request";
 import { router } from "./router";
 import { AUTH_SIGNIN_MODULE } from "./router/auth";
-import type { PageMode } from "./store";
+import { pinia, pushNotification, useAuthStore } from "./store";
 import {
-  pinia,
-  pushNotification,
-  useActuatorV1Store,
-  useAuthStore,
-  useSubscriptionV1Store,
-} from "./store";
-import {
-  environmentName,
   humanizeTs,
   humanizeDuration,
   humanizeDurationV1,
   humanizeDate,
-  instanceName,
   isDev,
   isRelease,
-  projectName,
   sizeToFit,
   urlfy,
 } from "./utils";
-import { applyCustomTheme } from "./utils/customTheme";
 
 protobufjs.util.Long = Long;
 protobufjs.configure();
@@ -144,68 +132,23 @@ app.config.globalProperties.isRelease = isRelease();
 app.config.globalProperties.sizeToFit = sizeToFit;
 app.config.globalProperties.urlfy = urlfy;
 app.config.globalProperties.isEmpty = isEmpty;
-app.config.globalProperties.environmentName = environmentName;
-app.config.globalProperties.projectName = projectName;
-app.config.globalProperties.instanceName = instanceName;
 
-app
-  // Need to use a directive on the element.
-  // The normal hljs.initHighlightingOnLoad() won't work because router change would cause vue
-  // to re-render the page and remove the event listener required for
-  .directive("data-source-type", dataSourceType)
-  .use(pinia);
+app.use(pinia);
 
-const initSearchParams = () => {
-  const actuatorStore = useActuatorV1Store();
-  const searchParams = new URLSearchParams(window.location.search);
-  const mode = searchParams.get("mode") as PageMode;
-  if (mode === "BUNDLED" || mode === "STANDALONE") {
-    actuatorStore.pageMode = mode;
-  }
-  const customTheme = searchParams.get("customTheme");
-  if (customTheme) {
-    actuatorStore.customTheme = customTheme;
-    applyCustomTheme(customTheme);
-  }
-  const lang = searchParams.get("lang");
+const overrideLang = () => {
+  const query = new URLSearchParams(window.location.search);
+  const lang = query.get("lang");
   if (lang) {
     i18n.global.locale.value = lang;
   }
 };
 
-// We need to restore the basic info in order to perform route authentication.
-// Even using the <suspense>, it's still too late, thus we do the fetch here.
-// We use finally because we always want to mount the app regardless of the error.
-const initActuator = async () => {
-  useActuatorV1Store().fetchServerInfo();
-};
-const initSubscription = async () => {
-  await useSubscriptionV1Store().fetchSubscription();
-};
-const initFeatureMatrix = async () => {
-  await useSubscriptionV1Store().fetchFeatureMatrix();
-};
-const restoreUser = async () => {
-  await useAuthStore().restoreUser();
-};
-const initBasicModules = async () => {
-  await Promise.all([
-    initActuator(),
-    initFeatureMatrix(),
-    initSubscription(),
-    restoreUser(),
-  ]);
+const initSearchParams = () => {
+  overrideAppProfile();
+  overrideLang();
 };
 
 initSearchParams();
 
-const splash = createApp(Splash);
-splash.use(pinia).use(i18n).use(NaiveUI).mount("#app");
-
-initBasicModules().finally(() => {
-  splash.unmount();
-
-  // Install router after the necessary data fetching is complete.
-  app.use(router).use(highlight).use(i18n).use(NaiveUI);
-  app.mount("#app");
-});
+app.use(router).use(highlight).use(i18n).use(NaiveUI);
+app.mount("#app");

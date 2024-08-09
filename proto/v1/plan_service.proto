@@ -5,8 +5,10 @@ package bytebase.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 import "v1/database_service.proto";
 
@@ -16,16 +18,23 @@ service PlanService {
   rpc GetPlan(GetPlanRequest) returns (Plan) {
     option (google.api.http) = {get: "/v1/{name=projects/*/plans/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.plans.get";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc ListPlans(ListPlansRequest) returns (ListPlansResponse) {
     option (google.api.http) = {get: "/v1/{parent=projects/*}/plans"};
     option (google.api.method_signature) = "parent";
+    option (bytebase.v1.permission) = "bb.plans.list";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
+  // Search for plans that the caller has the bb.plans.get permission on and also satisfy the specified filter & query.
   rpc SearchPlans(SearchPlansRequest) returns (SearchPlansResponse) {
     option (google.api.http) = {get: "/v1/{parent=projects/*}/plans:search"};
     option (google.api.method_signature) = "parent";
+    option (bytebase.v1.permission) = "bb.plans.get";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
   rpc CreatePlan(CreatePlanRequest) returns (Plan) {
@@ -34,19 +43,27 @@ service PlanService {
       body: "plan"
     };
     option (google.api.method_signature) = "parent,plan";
+    option (bytebase.v1.permission) = "bb.plans.create";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
+  // UpdatePlan updates the plan.
+  // The plan creator and the user with bb.plans.update permission on the project can update the plan.
   rpc UpdatePlan(UpdatePlanRequest) returns (Plan) {
     option (google.api.http) = {
       patch: "/v1/{plan.name=projects/*/plans/*}"
       body: "plan"
     };
     option (google.api.method_signature) = "plan,update_mask";
+    option (bytebase.v1.permission) = "bb.plans.update";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
   rpc ListPlanCheckRuns(ListPlanCheckRunsRequest) returns (ListPlanCheckRunsResponse) {
     option (google.api.http) = {get: "/v1/{parent=projects/*/plans/*}/planCheckRuns"};
     option (google.api.method_signature) = "parent";
+    option (bytebase.v1.permission) = "bb.planCheckRuns.list";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc RunPlanChecks(RunPlanChecksRequest) returns (RunPlanChecksResponse) {
@@ -55,20 +72,38 @@ service PlanService {
       body: "*"
     };
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.planCheckRuns.run";
+    option (bytebase.v1.auth_method) = IAM;
+  }
+
+  rpc BatchCancelPlanCheckRuns(BatchCancelPlanCheckRunsRequest) returns (BatchCancelPlanCheckRunsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=projects/*/plans/*}/planCheckRuns:batchCancel"
+      body: "*"
+    };
+    option (google.api.method_signature) = "parent";
+    option (bytebase.v1.permission) = "bb.planCheckRuns.run";
+    option (bytebase.v1.auth_method) = IAM;
   }
 }
 
 message GetPlanRequest {
   // The name of the plan to retrieve.
   // Format: projects/{project}/plans/{plan}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Plan"}
+  ];
 }
 
 message ListPlansRequest {
   // The parent, which owns this collection of plans.
   // Format: projects/{project}
   // Use "projects/-" to list all plans from all projects.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 
   // The maximum number of plans to return. The service may return fewer than
   // this value.
@@ -128,7 +163,10 @@ message SearchPlansResponse {
 message CreatePlanRequest {
   // The parent project where this plan will be created.
   // Format: projects/{project}
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 
   // The plan to create.
   Plan plan = 2 [(google.api.field_behavior) = REQUIRED];
@@ -146,6 +184,11 @@ message UpdatePlanRequest {
 }
 
 message Plan {
+  option (google.api.resource) = {
+    type: "bytebase.com/Plan"
+    pattern: "projects/{project}/plans/{plan}"
+  };
+
   // The name of the plan.
   // `plan` is a system generated ID.
   // Format: projects/{project}/plans/{plan}
@@ -229,8 +272,6 @@ message Plan {
     // The resource name of the target.
     // Format: instances/{instance-id}/databases/{database-name}.
     // Format: projects/{project}/databaseGroups/{databaseGroup}.
-    // Format: projects/{project}/deploymentConfigs/default. The plan should
-    // have a single step and single spec for the deployment configuration type.
     string target = 1;
     // The resource name of the sheet.
     // Format: projects/{project}/sheets/{sheet}
@@ -294,7 +335,10 @@ message Plan {
 message ListPlanCheckRunsRequest {
   // The parent, which owns this collection of plan check runs.
   // Format: projects/{project}/plans/{plan}
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Plan"}
+  ];
 
   // The maximum number of plan check runs to return. The service may return fewer than
   // this value.
@@ -308,6 +352,9 @@ message ListPlanCheckRunsRequest {
   // When paginating, all other parameters provided to `ListPlanCheckRuns` must match
   // the call that provided the page token.
   string page_token = 3;
+
+  // If set to true, only the latest plan check run will be returned.
+  bool latest_only = 4;
 }
 
 message ListPlanCheckRunsResponse {
@@ -322,10 +369,28 @@ message ListPlanCheckRunsResponse {
 message RunPlanChecksRequest {
   // The plan to run plan checks.
   // Format: projects/{project}/plans/{plan}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Plan"}
+  ];
 }
 
 message RunPlanChecksResponse {}
+
+message BatchCancelPlanCheckRunsRequest {
+  // The name of the parent of the planChecks.
+  // Format: projects/{project}/plans/{plan}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Plan"}
+  ];
+  // TODO(d): update this API.
+  // The planCheckRuns to cancel.
+  // Format: projects/{project}/plans/{plan}/planCheckRuns/{planCheckRun}
+  repeated string plan_check_runs = 2;
+}
+
+message BatchCancelPlanCheckRunsResponse {}
 
 message PlanCheckRun {
   // Format: projects/{project}/plans/{plan}/planCheckRuns/{planCheckRun}
@@ -394,6 +459,10 @@ message PlanCheckRun {
       string detail = 3;
       // Code from sql review.
       int32 code = 4;
+      // 1-based Position of the SQL statement.
+      // To supersede `line` and `column` above.
+      Position start_position = 5;
+      Position end_position = 6;
     }
   }
 }

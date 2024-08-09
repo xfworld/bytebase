@@ -2,7 +2,8 @@ import dayjs from "dayjs";
 import { v1 as uuidv1 } from "uuid";
 import {
   useDatabaseV1Store,
-  useInstanceV1Store,
+  useInstanceResourceByName,
+  usePolicyV1Store,
   useSQLEditorTabStore,
 } from "@/store";
 import type {
@@ -12,9 +13,17 @@ import type {
   SQLEditorTab,
   SQLEditorTabQueryContext,
 } from "@/types";
-import { DEFAULT_SQL_EDITOR_TAB_MODE, UNKNOWN_ID } from "@/types";
+import {
+  DEFAULT_SQL_EDITOR_TAB_MODE,
+  isValidInstanceName,
+  UNKNOWN_ID,
+} from "@/types";
 import { Engine } from "@/types/proto/v1/common";
 import type { InstanceResource } from "@/types/proto/v1/instance_service";
+import {
+  DataSourceQueryPolicy_Restriction,
+  PolicyType,
+} from "@/types/proto/v1/org_policy_service";
 import { instanceV1AllowsCrossDatabaseQuery } from "./v1/instance";
 
 export const defaultSQLEditorTab = (): SQLEditorTab => {
@@ -86,13 +95,12 @@ export const isSimilarToDefaultSQLEditorTabTitle = (title: string) => {
 export const suggestedTabTitleForSQLEditorConnection = (
   conn: SQLEditorConnection
 ) => {
-  const instance = useInstanceV1Store().getInstanceByName(conn.instance);
   const database = useDatabaseV1Store().getDatabaseByName(conn.database);
   const parts: string[] = [];
   if (database.uid !== String(UNKNOWN_ID)) {
     parts.push(database.databaseName);
-  } else if (instance.uid !== String(UNKNOWN_ID)) {
-    parts.push(instance.title);
+  } else if (isValidInstanceName(database.instance)) {
+    parts.push(database.instanceResource.title);
   }
   parts.push(defaultSQLEditorTabTitle());
   return parts.join(" ");
@@ -103,7 +111,7 @@ export const isDisconnectedSQLEditorTab = (tab: SQLEditorTab) => {
   if (!connection.instance) {
     return true;
   }
-  const instance = useInstanceV1Store().getInstanceByName(connection.instance);
+  const instance = useInstanceResourceByName(connection.instance);
   if (instanceV1AllowsCrossDatabaseQuery(instance)) {
     // Connecting to instance directly.
     return false;
@@ -162,3 +170,29 @@ export const emptySQLEditorTabQueryContext = (): SQLEditorTabQueryContext => ({
     statement: "",
   },
 });
+
+export const getAdminDataSourceRestrictionOfDatabase = (
+  database: ComposedDatabase
+) => {
+  const policyStore = usePolicyV1Store();
+  const projectLevelPolicy = policyStore.getPolicyByParentAndType({
+    parentPath: database.project,
+    policyType: PolicyType.DATA_SOURCE_QUERY,
+  });
+  const projectLevelAdminDSRestriction =
+    projectLevelPolicy?.dataSourceQueryPolicy?.adminDataSourceRestriction;
+  const envLevelPolicy = policyStore.getPolicyByParentAndType({
+    parentPath: database.effectiveEnvironment,
+    policyType: PolicyType.DATA_SOURCE_QUERY,
+  });
+  const envLevelAdminDSRestriction =
+    envLevelPolicy?.dataSourceQueryPolicy?.adminDataSourceRestriction;
+  return {
+    environmentPolicy:
+      envLevelAdminDSRestriction ??
+      DataSourceQueryPolicy_Restriction.RESTRICTION_UNSPECIFIED,
+    projectPolicy:
+      projectLevelAdminDSRestriction ??
+      DataSourceQueryPolicy_Restriction.RESTRICTION_UNSPECIFIED,
+  };
+};

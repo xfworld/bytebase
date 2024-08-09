@@ -37,6 +37,7 @@
     >
       <InstanceForm
         :instance="state.detail.instance"
+        :hide-advanced-features="hideAdvancedFeatures"
         @dismiss="state.detail.show = false"
       >
         <DrawerContent
@@ -66,6 +67,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import { useCommonSearchScopeOptions } from "@/components/AdvancedSearch/useCommonSearchScopeOptions";
+import { FeatureAttention } from "@/components/FeatureGuard";
 import {
   InstanceForm,
   Form as InstanceFormBody,
@@ -77,6 +79,7 @@ import {
   useEnvironmentV1List,
   useInstanceV1List,
   useInstanceV1Store,
+  useAppFeature,
 } from "@/store";
 import { UNKNOWN_ID } from "@/types";
 import type { Instance } from "@/types/proto/v1/instance_service";
@@ -102,9 +105,10 @@ const { t } = useI18n();
 const subscriptionStore = useSubscriptionV1Store();
 const instanceV1Store = useInstanceV1Store();
 const environmentList = useEnvironmentV1List();
-const { instanceList: rawInstanceV1List, ready } = useInstanceV1List(
-  /* showDeleted */ false,
-  /* forceUpdate */ true
+// Users are workspace admins in Bytebase Editor. So we don't need to check permission here.
+const { instanceList, ready } = useInstanceV1List();
+const hideAdvancedFeatures = useAppFeature(
+  "bb.feature.sql-editor.hide-advance-instance-features"
 );
 
 const state = reactive<LocalState>({
@@ -138,7 +142,7 @@ onMounted(() => {
   wrapRefAsPromise(ready, true).then(() => {
     const maybeInstanceName = route.hash.replace(/^#*/g, "");
     if (maybeInstanceName) {
-      const instance = rawInstanceV1List.value.find(
+      const instance = instanceList.value.find(
         (inst) => inst.name === maybeInstanceName
       );
       if (instance) {
@@ -161,7 +165,7 @@ onMounted(() => {
 });
 
 const filteredInstanceV1List = computed(() => {
-  let list = [...rawInstanceV1List.value];
+  let list = [...instanceList.value];
   if (selectedEnvironment.value !== `${UNKNOWN_ID}`) {
     list = list.filter(
       (instance) =>
@@ -182,8 +186,7 @@ const filteredInstanceV1List = computed(() => {
 const remainingInstanceCount = computed((): number => {
   return Math.max(
     0,
-    subscriptionStore.instanceCountLimit -
-      instanceV1Store.activeInstanceList.length
+    subscriptionStore.instanceCountLimit - instanceV1Store.instanceList.length
   );
 });
 

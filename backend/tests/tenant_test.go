@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/type/expr"
 
 	"github.com/bytebase/bytebase/backend/common"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -97,7 +98,7 @@ func TestTenant(t *testing.T) {
 
 	// Create deployment configuration.
 	_, err = ctl.projectServiceClient.UpdateDeploymentConfig(ctx, &v1pb.UpdateDeploymentConfigRequest{
-		Config: &v1pb.DeploymentConfig{
+		DeploymentConfig: &v1pb.DeploymentConfig{
 			Name:     common.FormatDeploymentConfig(project.Name),
 			Schedule: deploySchedule,
 		},
@@ -115,10 +116,8 @@ func TestTenant(t *testing.T) {
 		a.NoError(err)
 	}
 
-	// Getting databases for each environment.
 	resp, err := ctl.databaseServiceClient.ListDatabases(ctx, &v1pb.ListDatabasesRequest{
-		Parent: "instances/-",
-		Filter: fmt.Sprintf(`project == "%s"`, project.Name),
+		Parent: project.Name,
 	})
 	a.NoError(err)
 	databases := resp.Databases
@@ -141,9 +140,18 @@ func TestTenant(t *testing.T) {
 			}
 		}
 	}
-
 	a.Equal(testTenantNumber, len(testDatabases))
 	a.Equal(prodTenantNumber, len(prodDatabases))
+
+	databaseGroup, err := ctl.databaseGroupServiceClient.CreateDatabaseGroup(ctx, &v1pb.CreateDatabaseGroupRequest{
+		Parent:          project.Name,
+		DatabaseGroupId: "all",
+		DatabaseGroup: &v1pb.DatabaseGroup{
+			DatabasePlaceholder: "all",
+			DatabaseExpr:        &expr.Expr{Expression: "true"},
+		},
+	})
+	a.NoError(err)
 
 	sheet, err := ctl.sheetServiceClient.CreateSheet(ctx, &v1pb.CreateSheetRequest{
 		Parent: project.Name,
@@ -161,7 +169,7 @@ func TestTenant(t *testing.T) {
 				Id: uuid.NewString(),
 				Config: &v1pb.Plan_Spec_ChangeDatabaseConfig{
 					ChangeDatabaseConfig: &v1pb.Plan_ChangeDatabaseConfig{
-						Target: fmt.Sprintf("%s/deploymentConfigs/default", project.Name),
+						Target: databaseGroup.Name,
 						Sheet:  sheet.Name,
 						Type:   v1pb.Plan_ChangeDatabaseConfig_MIGRATE,
 					},

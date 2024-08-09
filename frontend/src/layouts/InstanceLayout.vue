@@ -4,7 +4,7 @@
       <ProvideInstanceContext :instance-id="instanceId">
         <template v-if="hasPermission">
           <div
-            v-if="instance.name === UNKNOWN_INSTANCE_NAME"
+            v-if="!isValidInstanceName(instance.name)"
             class="flex items-center gap-x-2 m-4"
           >
             <BBSpin :size="20" />
@@ -22,12 +22,14 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { BBSpin } from "@/bbkit";
 import ProvideInstanceContext from "@/components/ProvideInstanceContext.vue";
+import NoPermissionPlaceholder from "@/components/misc/NoPermissionPlaceholder.vue";
 import { useCurrentUserV1, useInstanceV1Store } from "@/store";
 import { instanceNamePrefix } from "@/store/modules/v1/common";
-import { UNKNOWN_INSTANCE_NAME } from "@/types";
+import { isValidInstanceName } from "@/types";
 import { hasWorkspacePermissionV2 } from "@/utils";
 
 const props = defineProps<{
@@ -47,6 +49,16 @@ const requiredPermissions = computed(() => {
 const hasPermission = computed(() => {
   return requiredPermissions.value.every((permission) =>
     hasWorkspacePermissionV2(currentUser.value, permission)
+  );
+});
+
+onMounted(() => {
+  if (!hasPermission.value) {
+    return;
+  }
+
+  instanceStore.getOrFetchInstanceByName(
+    `${instanceNamePrefix}${props.instanceId}`
   );
 });
 

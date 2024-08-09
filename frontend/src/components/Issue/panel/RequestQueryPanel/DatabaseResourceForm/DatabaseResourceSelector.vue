@@ -23,10 +23,11 @@ import { orderBy } from "lodash-es";
 import type { TransferRenderSourceList, TreeOption } from "naive-ui";
 import { NTransfer, NTree } from "naive-ui";
 import { computed, h, onMounted, ref, watch } from "vue";
+import { BBSpin } from "@/bbkit";
 import {
   useDatabaseV1Store,
   useDBSchemaV1Store,
-  useProjectV1Store,
+  useProjectByName,
 } from "@/store";
 import type { DatabaseResource } from "@/types";
 import { DatabaseMetadataView } from "@/types/proto/v1/database_service";
@@ -39,7 +40,7 @@ import {
 } from "./common";
 
 const props = defineProps<{
-  projectId: string;
+  projectName: string;
   databaseId?: string;
   databaseResources: DatabaseResource[];
 }>();
@@ -50,6 +51,7 @@ const emit = defineEmits<{
 
 const databaseStore = useDatabaseV1Store();
 const dbSchemaStore = useDBSchemaV1Store();
+const { project } = useProjectByName(props.projectName);
 const selectedValueList = ref<string[]>(
   props.databaseResources.map((databaseResource) => {
     if (databaseResource.table !== undefined) {
@@ -65,13 +67,7 @@ const defaultExpandedKeys = ref<string[]>([]);
 const loading = ref(true);
 
 onMounted(async () => {
-  const project = await useProjectV1Store().getOrFetchProjectByUID(
-    props.projectId
-  );
-  const filters = [`instance = "instances/-"`, `project = "${project.name}"`];
-  await databaseStore.searchDatabases({
-    filter: filters.join(" && "),
-  });
+  await databaseStore.listDatabases(props.projectName);
 
   await Promise.all(
     selectedValueList.value.map(async (key) => {
@@ -100,9 +96,8 @@ onMounted(async () => {
 });
 
 const databaseList = computed(() => {
-  const project = useProjectV1Store().getProjectByUID(props.projectId);
   const list = orderBy(
-    databaseStore.databaseListByProject(project.name),
+    databaseStore.databaseListByProject(project.value.name),
     [
       (db) => db.effectiveEnvironmentEntity.order,
       (db) => db.effectiveEnvironmentEntity.title,

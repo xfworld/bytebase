@@ -3,9 +3,8 @@ import Long from "long";
 import _m0 from "protobufjs/minimal";
 import { Empty } from "../google/protobuf/empty";
 import { FieldMask } from "../google/protobuf/field_mask";
-import { Expr } from "../google/type/expr";
 import { State, stateFromJSON, stateToJSON, stateToNumber } from "./common";
-import { IamPolicy } from "./iam_policy";
+import { GetIamPolicyRequest, IamPolicy, SetIamPolicyRequest } from "./iam_policy";
 
 export const protobufPackage = "bytebase.v1";
 
@@ -127,65 +126,6 @@ export function operatorTypeToNumber(object: OperatorType): number {
   }
 }
 
-export enum DatabaseGroupView {
-  /**
-   * DATABASE_GROUP_VIEW_UNSPECIFIED - The default / unset value.
-   * The API will default to the BASIC view.
-   */
-  DATABASE_GROUP_VIEW_UNSPECIFIED = "DATABASE_GROUP_VIEW_UNSPECIFIED",
-  /** DATABASE_GROUP_VIEW_BASIC - Include basic information about the database group, but exclude the list of matched databases and unmatched databases. */
-  DATABASE_GROUP_VIEW_BASIC = "DATABASE_GROUP_VIEW_BASIC",
-  /** DATABASE_GROUP_VIEW_FULL - Include everything. */
-  DATABASE_GROUP_VIEW_FULL = "DATABASE_GROUP_VIEW_FULL",
-  UNRECOGNIZED = "UNRECOGNIZED",
-}
-
-export function databaseGroupViewFromJSON(object: any): DatabaseGroupView {
-  switch (object) {
-    case 0:
-    case "DATABASE_GROUP_VIEW_UNSPECIFIED":
-      return DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED;
-    case 1:
-    case "DATABASE_GROUP_VIEW_BASIC":
-      return DatabaseGroupView.DATABASE_GROUP_VIEW_BASIC;
-    case 2:
-    case "DATABASE_GROUP_VIEW_FULL":
-      return DatabaseGroupView.DATABASE_GROUP_VIEW_FULL;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return DatabaseGroupView.UNRECOGNIZED;
-  }
-}
-
-export function databaseGroupViewToJSON(object: DatabaseGroupView): string {
-  switch (object) {
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED:
-      return "DATABASE_GROUP_VIEW_UNSPECIFIED";
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_BASIC:
-      return "DATABASE_GROUP_VIEW_BASIC";
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_FULL:
-      return "DATABASE_GROUP_VIEW_FULL";
-    case DatabaseGroupView.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
-export function databaseGroupViewToNumber(object: DatabaseGroupView): number {
-  switch (object) {
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED:
-      return 0;
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_BASIC:
-      return 1;
-    case DatabaseGroupView.DATABASE_GROUP_VIEW_FULL:
-      return 2;
-    case DatabaseGroupView.UNRECOGNIZED:
-    default:
-      return -1;
-  }
-}
-
 export interface GetProjectRequest {
   /**
    * The name of the project to retrieve.
@@ -281,14 +221,6 @@ export interface UndeleteProjectRequest {
   name: string;
 }
 
-export interface GetIamPolicyRequest {
-  /**
-   * The name of the project to get the IAM policy.
-   * Format: projects/{project}
-   */
-  project: string;
-}
-
 export interface BatchGetIamPolicyRequest {
   /** The scope of the batch get. Typically it's "projects/-". */
   scope: string;
@@ -304,15 +236,6 @@ export interface BatchGetIamPolicyResponse_PolicyResult {
   policy: IamPolicy | undefined;
 }
 
-export interface SetIamPolicyRequest {
-  /**
-   * The name of the project to set the IAM policy.
-   * Format: projects/{project}
-   */
-  project: string;
-  policy: IamPolicy | undefined;
-}
-
 export interface GetDeploymentConfigRequest {
   /**
    * The name of the resource.
@@ -322,7 +245,7 @@ export interface GetDeploymentConfigRequest {
 }
 
 export interface UpdateDeploymentConfigRequest {
-  config: DeploymentConfig | undefined;
+  deploymentConfig: DeploymentConfig | undefined;
 }
 
 export interface Label {
@@ -577,7 +500,7 @@ export enum Activity_Type {
   TYPE_ISSUE_CREATE = "TYPE_ISSUE_CREATE",
   /** TYPE_ISSUE_COMMENT_CREATE - TYPE_ISSUE_COMMENT_CREATE represents commenting on an issue. */
   TYPE_ISSUE_COMMENT_CREATE = "TYPE_ISSUE_COMMENT_CREATE",
-  /** TYPE_ISSUE_FIELD_UPDATE - TYPE_ISSUE_FIELD_UPDATE represents updating the issue field, likes title, description, assignee, etc. */
+  /** TYPE_ISSUE_FIELD_UPDATE - TYPE_ISSUE_FIELD_UPDATE represents updating the issue field, likes title, description, etc. */
   TYPE_ISSUE_FIELD_UPDATE = "TYPE_ISSUE_FIELD_UPDATE",
   /** TYPE_ISSUE_STATUS_UPDATE - TYPE_ISSUE_STATUS_UPDATE represents the issue status change, including OPEN, CLOSE, CANCEL fow now. */
   TYPE_ISSUE_STATUS_UPDATE = "TYPE_ISSUE_STATUS_UPDATE",
@@ -799,258 +722,6 @@ export function activity_TypeToNumber(object: Activity_Type): number {
     case Activity_Type.TYPE_SQL_EDITOR_QUERY:
       return 19;
     case Activity_Type.UNRECOGNIZED:
-    default:
-      return -1;
-  }
-}
-
-export interface ListDatabaseGroupsRequest {
-  /**
-   * The parent resource whose database groups are to be listed.
-   * Format: projects/{project}
-   * Using "projects/-" will list database groups across all projects.
-   */
-  parent: string;
-  /**
-   * Not used. The maximum number of anomalies to return. The service may return fewer than
-   * this value.
-   * If unspecified, at most 50 anomalies will be returned.
-   * The maximum value is 1000; values above 1000 will be coerced to 1000.
-   */
-  pageSize: number;
-  /**
-   * Not used. A page token, received from a previous `ListDatabaseGroups` call.
-   * Provide this to retrieve the subsequent page.
-   *
-   * When paginating, all other parameters provided to `ListDatabaseGroups` must match
-   * the call that provided the page token.
-   */
-  pageToken: string;
-}
-
-export interface ListDatabaseGroupsResponse {
-  /** database_groups is the list of database groups. */
-  databaseGroups: DatabaseGroup[];
-  /**
-   * Not used. A token, which can be sent as `page_token` to retrieve the next page.
-   * If this field is omitted, there are no subsequent pages.
-   */
-  nextPageToken: string;
-}
-
-export interface GetDatabaseGroupRequest {
-  /**
-   * The name of the database group to retrieve.
-   * Format: projects/{project}/databaseGroups/{databaseGroup}
-   */
-  name: string;
-  /** The view to return. Defaults to DATABASE_GROUP_VIEW_BASIC. */
-  view: DatabaseGroupView;
-}
-
-export interface CreateDatabaseGroupRequest {
-  /**
-   * The parent resource where this database group will be created.
-   * Format: projects/{project}
-   */
-  parent: string;
-  /** The database group to create. */
-  databaseGroup:
-    | DatabaseGroup
-    | undefined;
-  /**
-   * The ID to use for the database group, which will become the final component of
-   * the database group's resource name.
-   *
-   * This value should be 4-63 characters, and valid characters
-   * are /[a-z][0-9]-/.
-   */
-  databaseGroupId: string;
-  /** If set, validate the create request and preview the full database group response, but do not actually create it. */
-  validateOnly: boolean;
-}
-
-export interface UpdateDatabaseGroupRequest {
-  /**
-   * The database group to update.
-   *
-   * The database group's `name` field is used to identify the database group to update.
-   * Format: projects/{project}/databaseGroups/{databaseGroup}
-   */
-  databaseGroup:
-    | DatabaseGroup
-    | undefined;
-  /** The list of fields to update. */
-  updateMask: string[] | undefined;
-}
-
-export interface DeleteDatabaseGroupRequest {
-  /**
-   * The name of the database group to delete.
-   * Format: projects/{project}/databaseGroups/{databaseGroup}
-   */
-  name: string;
-}
-
-export interface DatabaseGroup {
-  /**
-   * The name of the database group.
-   * Format: projects/{project}/databaseGroups/{databaseGroup}
-   */
-  name: string;
-  /**
-   * The short name used in actual databases specified by users.
-   * For example, the placeholder for db1_2010, db1_2021, db1_2023 will be "db1".
-   */
-  databasePlaceholder: string;
-  /** The condition that is associated with this database group. */
-  databaseExpr:
-    | Expr
-    | undefined;
-  /** The list of databases that match the database group condition. */
-  matchedDatabases: DatabaseGroup_Database[];
-  /** The list of databases that match the database group condition. */
-  unmatchedDatabases: DatabaseGroup_Database[];
-  multitenancy: boolean;
-}
-
-export interface DatabaseGroup_Database {
-  /**
-   * The resource name of the database.
-   * Format: instances/{instance}/databases/{database}
-   */
-  name: string;
-}
-
-export interface GetProjectProtectionRulesRequest {
-  /**
-   * The name of the protection rules.
-   * Format: projects/{project}/protectionRules
-   */
-  name: string;
-}
-
-export interface UpdateProjectProtectionRulesRequest {
-  protectionRules: ProtectionRules | undefined;
-}
-
-export interface ProtectionRules {
-  /**
-   * The name of the protection rules.
-   * Format: projects/{project}/protectionRules
-   */
-  name: string;
-  rules: ProtectionRule[];
-}
-
-export interface ProtectionRule {
-  /** A unique identifier for a node in UUID format. */
-  id: string;
-  target: ProtectionRule_Target;
-  /** The name of the branch/changelist or wildcard. */
-  nameFilter: string;
-  /**
-   * The roles allowed to create branches or changelists, rebase branches, delete branches.
-   * Format: roles/projectOwner.
-   */
-  allowedRoles: string[];
-  branchSource: ProtectionRule_BranchSource;
-}
-
-/** The type of target. */
-export enum ProtectionRule_Target {
-  PROTECTION_TARGET_UNSPECIFIED = "PROTECTION_TARGET_UNSPECIFIED",
-  BRANCH = "BRANCH",
-  CHANGELIST = "CHANGELIST",
-  UNRECOGNIZED = "UNRECOGNIZED",
-}
-
-export function protectionRule_TargetFromJSON(object: any): ProtectionRule_Target {
-  switch (object) {
-    case 0:
-    case "PROTECTION_TARGET_UNSPECIFIED":
-      return ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED;
-    case 1:
-    case "BRANCH":
-      return ProtectionRule_Target.BRANCH;
-    case 2:
-    case "CHANGELIST":
-      return ProtectionRule_Target.CHANGELIST;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return ProtectionRule_Target.UNRECOGNIZED;
-  }
-}
-
-export function protectionRule_TargetToJSON(object: ProtectionRule_Target): string {
-  switch (object) {
-    case ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED:
-      return "PROTECTION_TARGET_UNSPECIFIED";
-    case ProtectionRule_Target.BRANCH:
-      return "BRANCH";
-    case ProtectionRule_Target.CHANGELIST:
-      return "CHANGELIST";
-    case ProtectionRule_Target.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
-export function protectionRule_TargetToNumber(object: ProtectionRule_Target): number {
-  switch (object) {
-    case ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED:
-      return 0;
-    case ProtectionRule_Target.BRANCH:
-      return 1;
-    case ProtectionRule_Target.CHANGELIST:
-      return 2;
-    case ProtectionRule_Target.UNRECOGNIZED:
-    default:
-      return -1;
-  }
-}
-
-export enum ProtectionRule_BranchSource {
-  BRANCH_SOURCE_UNSPECIFIED = "BRANCH_SOURCE_UNSPECIFIED",
-  DATABASE = "DATABASE",
-  UNRECOGNIZED = "UNRECOGNIZED",
-}
-
-export function protectionRule_BranchSourceFromJSON(object: any): ProtectionRule_BranchSource {
-  switch (object) {
-    case 0:
-    case "BRANCH_SOURCE_UNSPECIFIED":
-      return ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED;
-    case 1:
-    case "DATABASE":
-      return ProtectionRule_BranchSource.DATABASE;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return ProtectionRule_BranchSource.UNRECOGNIZED;
-  }
-}
-
-export function protectionRule_BranchSourceToJSON(object: ProtectionRule_BranchSource): string {
-  switch (object) {
-    case ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED:
-      return "BRANCH_SOURCE_UNSPECIFIED";
-    case ProtectionRule_BranchSource.DATABASE:
-      return "DATABASE";
-    case ProtectionRule_BranchSource.UNRECOGNIZED:
-    default:
-      return "UNRECOGNIZED";
-  }
-}
-
-export function protectionRule_BranchSourceToNumber(object: ProtectionRule_BranchSource): number {
-  switch (object) {
-    case ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED:
-      return 0;
-    case ProtectionRule_BranchSource.DATABASE:
-      return 1;
-    case ProtectionRule_BranchSource.UNRECOGNIZED:
     default:
       return -1;
   }
@@ -1675,63 +1346,6 @@ export const UndeleteProjectRequest = {
   },
 };
 
-function createBaseGetIamPolicyRequest(): GetIamPolicyRequest {
-  return { project: "" };
-}
-
-export const GetIamPolicyRequest = {
-  encode(message: GetIamPolicyRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.project !== "") {
-      writer.uint32(10).string(message.project);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetIamPolicyRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetIamPolicyRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.project = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GetIamPolicyRequest {
-    return { project: isSet(object.project) ? globalThis.String(object.project) : "" };
-  },
-
-  toJSON(message: GetIamPolicyRequest): unknown {
-    const obj: any = {};
-    if (message.project !== "") {
-      obj.project = message.project;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<GetIamPolicyRequest>): GetIamPolicyRequest {
-    return GetIamPolicyRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<GetIamPolicyRequest>): GetIamPolicyRequest {
-    const message = createBaseGetIamPolicyRequest();
-    message.project = object.project ?? "";
-    return message;
-  },
-};
-
 function createBaseBatchGetIamPolicyRequest(): BatchGetIamPolicyRequest {
   return { scope: "", names: [] };
 }
@@ -1944,82 +1558,6 @@ export const BatchGetIamPolicyResponse_PolicyResult = {
   },
 };
 
-function createBaseSetIamPolicyRequest(): SetIamPolicyRequest {
-  return { project: "", policy: undefined };
-}
-
-export const SetIamPolicyRequest = {
-  encode(message: SetIamPolicyRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.project !== "") {
-      writer.uint32(10).string(message.project);
-    }
-    if (message.policy !== undefined) {
-      IamPolicy.encode(message.policy, writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): SetIamPolicyRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseSetIamPolicyRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.project = reader.string();
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.policy = IamPolicy.decode(reader, reader.uint32());
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): SetIamPolicyRequest {
-    return {
-      project: isSet(object.project) ? globalThis.String(object.project) : "",
-      policy: isSet(object.policy) ? IamPolicy.fromJSON(object.policy) : undefined,
-    };
-  },
-
-  toJSON(message: SetIamPolicyRequest): unknown {
-    const obj: any = {};
-    if (message.project !== "") {
-      obj.project = message.project;
-    }
-    if (message.policy !== undefined) {
-      obj.policy = IamPolicy.toJSON(message.policy);
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<SetIamPolicyRequest>): SetIamPolicyRequest {
-    return SetIamPolicyRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<SetIamPolicyRequest>): SetIamPolicyRequest {
-    const message = createBaseSetIamPolicyRequest();
-    message.project = object.project ?? "";
-    message.policy = (object.policy !== undefined && object.policy !== null)
-      ? IamPolicy.fromPartial(object.policy)
-      : undefined;
-    return message;
-  },
-};
-
 function createBaseGetDeploymentConfigRequest(): GetDeploymentConfigRequest {
   return { name: "" };
 }
@@ -2078,13 +1616,13 @@ export const GetDeploymentConfigRequest = {
 };
 
 function createBaseUpdateDeploymentConfigRequest(): UpdateDeploymentConfigRequest {
-  return { config: undefined };
+  return { deploymentConfig: undefined };
 }
 
 export const UpdateDeploymentConfigRequest = {
   encode(message: UpdateDeploymentConfigRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.config !== undefined) {
-      DeploymentConfig.encode(message.config, writer.uint32(10).fork()).ldelim();
+    if (message.deploymentConfig !== undefined) {
+      DeploymentConfig.encode(message.deploymentConfig, writer.uint32(10).fork()).ldelim();
     }
     return writer;
   },
@@ -2101,7 +1639,7 @@ export const UpdateDeploymentConfigRequest = {
             break;
           }
 
-          message.config = DeploymentConfig.decode(reader, reader.uint32());
+          message.deploymentConfig = DeploymentConfig.decode(reader, reader.uint32());
           continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
@@ -2113,13 +1651,15 @@ export const UpdateDeploymentConfigRequest = {
   },
 
   fromJSON(object: any): UpdateDeploymentConfigRequest {
-    return { config: isSet(object.config) ? DeploymentConfig.fromJSON(object.config) : undefined };
+    return {
+      deploymentConfig: isSet(object.deploymentConfig) ? DeploymentConfig.fromJSON(object.deploymentConfig) : undefined,
+    };
   },
 
   toJSON(message: UpdateDeploymentConfigRequest): unknown {
     const obj: any = {};
-    if (message.config !== undefined) {
-      obj.config = DeploymentConfig.toJSON(message.config);
+    if (message.deploymentConfig !== undefined) {
+      obj.deploymentConfig = DeploymentConfig.toJSON(message.deploymentConfig);
     }
     return obj;
   },
@@ -2129,8 +1669,8 @@ export const UpdateDeploymentConfigRequest = {
   },
   fromPartial(object: DeepPartial<UpdateDeploymentConfigRequest>): UpdateDeploymentConfigRequest {
     const message = createBaseUpdateDeploymentConfigRequest();
-    message.config = (object.config !== undefined && object.config !== null)
-      ? DeploymentConfig.fromPartial(object.config)
+    message.deploymentConfig = (object.deploymentConfig !== undefined && object.deploymentConfig !== null)
+      ? DeploymentConfig.fromPartial(object.deploymentConfig)
       : undefined;
     return message;
   },
@@ -3447,1013 +2987,6 @@ export const Activity = {
   },
 };
 
-function createBaseListDatabaseGroupsRequest(): ListDatabaseGroupsRequest {
-  return { parent: "", pageSize: 0, pageToken: "" };
-}
-
-export const ListDatabaseGroupsRequest = {
-  encode(message: ListDatabaseGroupsRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.parent !== "") {
-      writer.uint32(10).string(message.parent);
-    }
-    if (message.pageSize !== 0) {
-      writer.uint32(16).int32(message.pageSize);
-    }
-    if (message.pageToken !== "") {
-      writer.uint32(26).string(message.pageToken);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): ListDatabaseGroupsRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseListDatabaseGroupsRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.parent = reader.string();
-          continue;
-        case 2:
-          if (tag !== 16) {
-            break;
-          }
-
-          message.pageSize = reader.int32();
-          continue;
-        case 3:
-          if (tag !== 26) {
-            break;
-          }
-
-          message.pageToken = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): ListDatabaseGroupsRequest {
-    return {
-      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
-      pageSize: isSet(object.pageSize) ? globalThis.Number(object.pageSize) : 0,
-      pageToken: isSet(object.pageToken) ? globalThis.String(object.pageToken) : "",
-    };
-  },
-
-  toJSON(message: ListDatabaseGroupsRequest): unknown {
-    const obj: any = {};
-    if (message.parent !== "") {
-      obj.parent = message.parent;
-    }
-    if (message.pageSize !== 0) {
-      obj.pageSize = Math.round(message.pageSize);
-    }
-    if (message.pageToken !== "") {
-      obj.pageToken = message.pageToken;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<ListDatabaseGroupsRequest>): ListDatabaseGroupsRequest {
-    return ListDatabaseGroupsRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<ListDatabaseGroupsRequest>): ListDatabaseGroupsRequest {
-    const message = createBaseListDatabaseGroupsRequest();
-    message.parent = object.parent ?? "";
-    message.pageSize = object.pageSize ?? 0;
-    message.pageToken = object.pageToken ?? "";
-    return message;
-  },
-};
-
-function createBaseListDatabaseGroupsResponse(): ListDatabaseGroupsResponse {
-  return { databaseGroups: [], nextPageToken: "" };
-}
-
-export const ListDatabaseGroupsResponse = {
-  encode(message: ListDatabaseGroupsResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    for (const v of message.databaseGroups) {
-      DatabaseGroup.encode(v!, writer.uint32(10).fork()).ldelim();
-    }
-    if (message.nextPageToken !== "") {
-      writer.uint32(18).string(message.nextPageToken);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): ListDatabaseGroupsResponse {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseListDatabaseGroupsResponse();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.databaseGroups.push(DatabaseGroup.decode(reader, reader.uint32()));
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.nextPageToken = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): ListDatabaseGroupsResponse {
-    return {
-      databaseGroups: globalThis.Array.isArray(object?.databaseGroups)
-        ? object.databaseGroups.map((e: any) => DatabaseGroup.fromJSON(e))
-        : [],
-      nextPageToken: isSet(object.nextPageToken) ? globalThis.String(object.nextPageToken) : "",
-    };
-  },
-
-  toJSON(message: ListDatabaseGroupsResponse): unknown {
-    const obj: any = {};
-    if (message.databaseGroups?.length) {
-      obj.databaseGroups = message.databaseGroups.map((e) => DatabaseGroup.toJSON(e));
-    }
-    if (message.nextPageToken !== "") {
-      obj.nextPageToken = message.nextPageToken;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<ListDatabaseGroupsResponse>): ListDatabaseGroupsResponse {
-    return ListDatabaseGroupsResponse.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<ListDatabaseGroupsResponse>): ListDatabaseGroupsResponse {
-    const message = createBaseListDatabaseGroupsResponse();
-    message.databaseGroups = object.databaseGroups?.map((e) => DatabaseGroup.fromPartial(e)) || [];
-    message.nextPageToken = object.nextPageToken ?? "";
-    return message;
-  },
-};
-
-function createBaseGetDatabaseGroupRequest(): GetDatabaseGroupRequest {
-  return { name: "", view: DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED };
-}
-
-export const GetDatabaseGroupRequest = {
-  encode(message: GetDatabaseGroupRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    if (message.view !== DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED) {
-      writer.uint32(16).int32(databaseGroupViewToNumber(message.view));
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetDatabaseGroupRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetDatabaseGroupRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-        case 2:
-          if (tag !== 16) {
-            break;
-          }
-
-          message.view = databaseGroupViewFromJSON(reader.int32());
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GetDatabaseGroupRequest {
-    return {
-      name: isSet(object.name) ? globalThis.String(object.name) : "",
-      view: isSet(object.view)
-        ? databaseGroupViewFromJSON(object.view)
-        : DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED,
-    };
-  },
-
-  toJSON(message: GetDatabaseGroupRequest): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    if (message.view !== DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED) {
-      obj.view = databaseGroupViewToJSON(message.view);
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<GetDatabaseGroupRequest>): GetDatabaseGroupRequest {
-    return GetDatabaseGroupRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<GetDatabaseGroupRequest>): GetDatabaseGroupRequest {
-    const message = createBaseGetDatabaseGroupRequest();
-    message.name = object.name ?? "";
-    message.view = object.view ?? DatabaseGroupView.DATABASE_GROUP_VIEW_UNSPECIFIED;
-    return message;
-  },
-};
-
-function createBaseCreateDatabaseGroupRequest(): CreateDatabaseGroupRequest {
-  return { parent: "", databaseGroup: undefined, databaseGroupId: "", validateOnly: false };
-}
-
-export const CreateDatabaseGroupRequest = {
-  encode(message: CreateDatabaseGroupRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.parent !== "") {
-      writer.uint32(10).string(message.parent);
-    }
-    if (message.databaseGroup !== undefined) {
-      DatabaseGroup.encode(message.databaseGroup, writer.uint32(18).fork()).ldelim();
-    }
-    if (message.databaseGroupId !== "") {
-      writer.uint32(26).string(message.databaseGroupId);
-    }
-    if (message.validateOnly === true) {
-      writer.uint32(32).bool(message.validateOnly);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): CreateDatabaseGroupRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseCreateDatabaseGroupRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.parent = reader.string();
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.databaseGroup = DatabaseGroup.decode(reader, reader.uint32());
-          continue;
-        case 3:
-          if (tag !== 26) {
-            break;
-          }
-
-          message.databaseGroupId = reader.string();
-          continue;
-        case 4:
-          if (tag !== 32) {
-            break;
-          }
-
-          message.validateOnly = reader.bool();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): CreateDatabaseGroupRequest {
-    return {
-      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
-      databaseGroup: isSet(object.databaseGroup) ? DatabaseGroup.fromJSON(object.databaseGroup) : undefined,
-      databaseGroupId: isSet(object.databaseGroupId) ? globalThis.String(object.databaseGroupId) : "",
-      validateOnly: isSet(object.validateOnly) ? globalThis.Boolean(object.validateOnly) : false,
-    };
-  },
-
-  toJSON(message: CreateDatabaseGroupRequest): unknown {
-    const obj: any = {};
-    if (message.parent !== "") {
-      obj.parent = message.parent;
-    }
-    if (message.databaseGroup !== undefined) {
-      obj.databaseGroup = DatabaseGroup.toJSON(message.databaseGroup);
-    }
-    if (message.databaseGroupId !== "") {
-      obj.databaseGroupId = message.databaseGroupId;
-    }
-    if (message.validateOnly === true) {
-      obj.validateOnly = message.validateOnly;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<CreateDatabaseGroupRequest>): CreateDatabaseGroupRequest {
-    return CreateDatabaseGroupRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<CreateDatabaseGroupRequest>): CreateDatabaseGroupRequest {
-    const message = createBaseCreateDatabaseGroupRequest();
-    message.parent = object.parent ?? "";
-    message.databaseGroup = (object.databaseGroup !== undefined && object.databaseGroup !== null)
-      ? DatabaseGroup.fromPartial(object.databaseGroup)
-      : undefined;
-    message.databaseGroupId = object.databaseGroupId ?? "";
-    message.validateOnly = object.validateOnly ?? false;
-    return message;
-  },
-};
-
-function createBaseUpdateDatabaseGroupRequest(): UpdateDatabaseGroupRequest {
-  return { databaseGroup: undefined, updateMask: undefined };
-}
-
-export const UpdateDatabaseGroupRequest = {
-  encode(message: UpdateDatabaseGroupRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.databaseGroup !== undefined) {
-      DatabaseGroup.encode(message.databaseGroup, writer.uint32(10).fork()).ldelim();
-    }
-    if (message.updateMask !== undefined) {
-      FieldMask.encode(FieldMask.wrap(message.updateMask), writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): UpdateDatabaseGroupRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseUpdateDatabaseGroupRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.databaseGroup = DatabaseGroup.decode(reader, reader.uint32());
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.updateMask = FieldMask.unwrap(FieldMask.decode(reader, reader.uint32()));
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): UpdateDatabaseGroupRequest {
-    return {
-      databaseGroup: isSet(object.databaseGroup) ? DatabaseGroup.fromJSON(object.databaseGroup) : undefined,
-      updateMask: isSet(object.updateMask) ? FieldMask.unwrap(FieldMask.fromJSON(object.updateMask)) : undefined,
-    };
-  },
-
-  toJSON(message: UpdateDatabaseGroupRequest): unknown {
-    const obj: any = {};
-    if (message.databaseGroup !== undefined) {
-      obj.databaseGroup = DatabaseGroup.toJSON(message.databaseGroup);
-    }
-    if (message.updateMask !== undefined) {
-      obj.updateMask = FieldMask.toJSON(FieldMask.wrap(message.updateMask));
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<UpdateDatabaseGroupRequest>): UpdateDatabaseGroupRequest {
-    return UpdateDatabaseGroupRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<UpdateDatabaseGroupRequest>): UpdateDatabaseGroupRequest {
-    const message = createBaseUpdateDatabaseGroupRequest();
-    message.databaseGroup = (object.databaseGroup !== undefined && object.databaseGroup !== null)
-      ? DatabaseGroup.fromPartial(object.databaseGroup)
-      : undefined;
-    message.updateMask = object.updateMask ?? undefined;
-    return message;
-  },
-};
-
-function createBaseDeleteDatabaseGroupRequest(): DeleteDatabaseGroupRequest {
-  return { name: "" };
-}
-
-export const DeleteDatabaseGroupRequest = {
-  encode(message: DeleteDatabaseGroupRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): DeleteDatabaseGroupRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseDeleteDatabaseGroupRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): DeleteDatabaseGroupRequest {
-    return { name: isSet(object.name) ? globalThis.String(object.name) : "" };
-  },
-
-  toJSON(message: DeleteDatabaseGroupRequest): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<DeleteDatabaseGroupRequest>): DeleteDatabaseGroupRequest {
-    return DeleteDatabaseGroupRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<DeleteDatabaseGroupRequest>): DeleteDatabaseGroupRequest {
-    const message = createBaseDeleteDatabaseGroupRequest();
-    message.name = object.name ?? "";
-    return message;
-  },
-};
-
-function createBaseDatabaseGroup(): DatabaseGroup {
-  return {
-    name: "",
-    databasePlaceholder: "",
-    databaseExpr: undefined,
-    matchedDatabases: [],
-    unmatchedDatabases: [],
-    multitenancy: false,
-  };
-}
-
-export const DatabaseGroup = {
-  encode(message: DatabaseGroup, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    if (message.databasePlaceholder !== "") {
-      writer.uint32(18).string(message.databasePlaceholder);
-    }
-    if (message.databaseExpr !== undefined) {
-      Expr.encode(message.databaseExpr, writer.uint32(26).fork()).ldelim();
-    }
-    for (const v of message.matchedDatabases) {
-      DatabaseGroup_Database.encode(v!, writer.uint32(34).fork()).ldelim();
-    }
-    for (const v of message.unmatchedDatabases) {
-      DatabaseGroup_Database.encode(v!, writer.uint32(42).fork()).ldelim();
-    }
-    if (message.multitenancy === true) {
-      writer.uint32(48).bool(message.multitenancy);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): DatabaseGroup {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseDatabaseGroup();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.databasePlaceholder = reader.string();
-          continue;
-        case 3:
-          if (tag !== 26) {
-            break;
-          }
-
-          message.databaseExpr = Expr.decode(reader, reader.uint32());
-          continue;
-        case 4:
-          if (tag !== 34) {
-            break;
-          }
-
-          message.matchedDatabases.push(DatabaseGroup_Database.decode(reader, reader.uint32()));
-          continue;
-        case 5:
-          if (tag !== 42) {
-            break;
-          }
-
-          message.unmatchedDatabases.push(DatabaseGroup_Database.decode(reader, reader.uint32()));
-          continue;
-        case 6:
-          if (tag !== 48) {
-            break;
-          }
-
-          message.multitenancy = reader.bool();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): DatabaseGroup {
-    return {
-      name: isSet(object.name) ? globalThis.String(object.name) : "",
-      databasePlaceholder: isSet(object.databasePlaceholder) ? globalThis.String(object.databasePlaceholder) : "",
-      databaseExpr: isSet(object.databaseExpr) ? Expr.fromJSON(object.databaseExpr) : undefined,
-      matchedDatabases: globalThis.Array.isArray(object?.matchedDatabases)
-        ? object.matchedDatabases.map((e: any) => DatabaseGroup_Database.fromJSON(e))
-        : [],
-      unmatchedDatabases: globalThis.Array.isArray(object?.unmatchedDatabases)
-        ? object.unmatchedDatabases.map((e: any) => DatabaseGroup_Database.fromJSON(e))
-        : [],
-      multitenancy: isSet(object.multitenancy) ? globalThis.Boolean(object.multitenancy) : false,
-    };
-  },
-
-  toJSON(message: DatabaseGroup): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    if (message.databasePlaceholder !== "") {
-      obj.databasePlaceholder = message.databasePlaceholder;
-    }
-    if (message.databaseExpr !== undefined) {
-      obj.databaseExpr = Expr.toJSON(message.databaseExpr);
-    }
-    if (message.matchedDatabases?.length) {
-      obj.matchedDatabases = message.matchedDatabases.map((e) => DatabaseGroup_Database.toJSON(e));
-    }
-    if (message.unmatchedDatabases?.length) {
-      obj.unmatchedDatabases = message.unmatchedDatabases.map((e) => DatabaseGroup_Database.toJSON(e));
-    }
-    if (message.multitenancy === true) {
-      obj.multitenancy = message.multitenancy;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<DatabaseGroup>): DatabaseGroup {
-    return DatabaseGroup.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<DatabaseGroup>): DatabaseGroup {
-    const message = createBaseDatabaseGroup();
-    message.name = object.name ?? "";
-    message.databasePlaceholder = object.databasePlaceholder ?? "";
-    message.databaseExpr = (object.databaseExpr !== undefined && object.databaseExpr !== null)
-      ? Expr.fromPartial(object.databaseExpr)
-      : undefined;
-    message.matchedDatabases = object.matchedDatabases?.map((e) => DatabaseGroup_Database.fromPartial(e)) || [];
-    message.unmatchedDatabases = object.unmatchedDatabases?.map((e) => DatabaseGroup_Database.fromPartial(e)) || [];
-    message.multitenancy = object.multitenancy ?? false;
-    return message;
-  },
-};
-
-function createBaseDatabaseGroup_Database(): DatabaseGroup_Database {
-  return { name: "" };
-}
-
-export const DatabaseGroup_Database = {
-  encode(message: DatabaseGroup_Database, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): DatabaseGroup_Database {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseDatabaseGroup_Database();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): DatabaseGroup_Database {
-    return { name: isSet(object.name) ? globalThis.String(object.name) : "" };
-  },
-
-  toJSON(message: DatabaseGroup_Database): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<DatabaseGroup_Database>): DatabaseGroup_Database {
-    return DatabaseGroup_Database.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<DatabaseGroup_Database>): DatabaseGroup_Database {
-    const message = createBaseDatabaseGroup_Database();
-    message.name = object.name ?? "";
-    return message;
-  },
-};
-
-function createBaseGetProjectProtectionRulesRequest(): GetProjectProtectionRulesRequest {
-  return { name: "" };
-}
-
-export const GetProjectProtectionRulesRequest = {
-  encode(message: GetProjectProtectionRulesRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetProjectProtectionRulesRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetProjectProtectionRulesRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GetProjectProtectionRulesRequest {
-    return { name: isSet(object.name) ? globalThis.String(object.name) : "" };
-  },
-
-  toJSON(message: GetProjectProtectionRulesRequest): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<GetProjectProtectionRulesRequest>): GetProjectProtectionRulesRequest {
-    return GetProjectProtectionRulesRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<GetProjectProtectionRulesRequest>): GetProjectProtectionRulesRequest {
-    const message = createBaseGetProjectProtectionRulesRequest();
-    message.name = object.name ?? "";
-    return message;
-  },
-};
-
-function createBaseUpdateProjectProtectionRulesRequest(): UpdateProjectProtectionRulesRequest {
-  return { protectionRules: undefined };
-}
-
-export const UpdateProjectProtectionRulesRequest = {
-  encode(message: UpdateProjectProtectionRulesRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.protectionRules !== undefined) {
-      ProtectionRules.encode(message.protectionRules, writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): UpdateProjectProtectionRulesRequest {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseUpdateProjectProtectionRulesRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.protectionRules = ProtectionRules.decode(reader, reader.uint32());
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): UpdateProjectProtectionRulesRequest {
-    return {
-      protectionRules: isSet(object.protectionRules) ? ProtectionRules.fromJSON(object.protectionRules) : undefined,
-    };
-  },
-
-  toJSON(message: UpdateProjectProtectionRulesRequest): unknown {
-    const obj: any = {};
-    if (message.protectionRules !== undefined) {
-      obj.protectionRules = ProtectionRules.toJSON(message.protectionRules);
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<UpdateProjectProtectionRulesRequest>): UpdateProjectProtectionRulesRequest {
-    return UpdateProjectProtectionRulesRequest.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<UpdateProjectProtectionRulesRequest>): UpdateProjectProtectionRulesRequest {
-    const message = createBaseUpdateProjectProtectionRulesRequest();
-    message.protectionRules = (object.protectionRules !== undefined && object.protectionRules !== null)
-      ? ProtectionRules.fromPartial(object.protectionRules)
-      : undefined;
-    return message;
-  },
-};
-
-function createBaseProtectionRules(): ProtectionRules {
-  return { name: "", rules: [] };
-}
-
-export const ProtectionRules = {
-  encode(message: ProtectionRules, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.name !== "") {
-      writer.uint32(10).string(message.name);
-    }
-    for (const v of message.rules) {
-      ProtectionRule.encode(v!, writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): ProtectionRules {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseProtectionRules();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.name = reader.string();
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.rules.push(ProtectionRule.decode(reader, reader.uint32()));
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): ProtectionRules {
-    return {
-      name: isSet(object.name) ? globalThis.String(object.name) : "",
-      rules: globalThis.Array.isArray(object?.rules) ? object.rules.map((e: any) => ProtectionRule.fromJSON(e)) : [],
-    };
-  },
-
-  toJSON(message: ProtectionRules): unknown {
-    const obj: any = {};
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    if (message.rules?.length) {
-      obj.rules = message.rules.map((e) => ProtectionRule.toJSON(e));
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<ProtectionRules>): ProtectionRules {
-    return ProtectionRules.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<ProtectionRules>): ProtectionRules {
-    const message = createBaseProtectionRules();
-    message.name = object.name ?? "";
-    message.rules = object.rules?.map((e) => ProtectionRule.fromPartial(e)) || [];
-    return message;
-  },
-};
-
-function createBaseProtectionRule(): ProtectionRule {
-  return {
-    id: "",
-    target: ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED,
-    nameFilter: "",
-    allowedRoles: [],
-    branchSource: ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED,
-  };
-}
-
-export const ProtectionRule = {
-  encode(message: ProtectionRule, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.id !== "") {
-      writer.uint32(10).string(message.id);
-    }
-    if (message.target !== ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED) {
-      writer.uint32(16).int32(protectionRule_TargetToNumber(message.target));
-    }
-    if (message.nameFilter !== "") {
-      writer.uint32(26).string(message.nameFilter);
-    }
-    for (const v of message.allowedRoles) {
-      writer.uint32(34).string(v!);
-    }
-    if (message.branchSource !== ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED) {
-      writer.uint32(40).int32(protectionRule_BranchSourceToNumber(message.branchSource));
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): ProtectionRule {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseProtectionRule();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 10) {
-            break;
-          }
-
-          message.id = reader.string();
-          continue;
-        case 2:
-          if (tag !== 16) {
-            break;
-          }
-
-          message.target = protectionRule_TargetFromJSON(reader.int32());
-          continue;
-        case 3:
-          if (tag !== 26) {
-            break;
-          }
-
-          message.nameFilter = reader.string();
-          continue;
-        case 4:
-          if (tag !== 34) {
-            break;
-          }
-
-          message.allowedRoles.push(reader.string());
-          continue;
-        case 5:
-          if (tag !== 40) {
-            break;
-          }
-
-          message.branchSource = protectionRule_BranchSourceFromJSON(reader.int32());
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): ProtectionRule {
-    return {
-      id: isSet(object.id) ? globalThis.String(object.id) : "",
-      target: isSet(object.target)
-        ? protectionRule_TargetFromJSON(object.target)
-        : ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED,
-      nameFilter: isSet(object.nameFilter) ? globalThis.String(object.nameFilter) : "",
-      allowedRoles: globalThis.Array.isArray(object?.allowedRoles)
-        ? object.allowedRoles.map((e: any) => globalThis.String(e))
-        : [],
-      branchSource: isSet(object.branchSource)
-        ? protectionRule_BranchSourceFromJSON(object.branchSource)
-        : ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED,
-    };
-  },
-
-  toJSON(message: ProtectionRule): unknown {
-    const obj: any = {};
-    if (message.id !== "") {
-      obj.id = message.id;
-    }
-    if (message.target !== ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED) {
-      obj.target = protectionRule_TargetToJSON(message.target);
-    }
-    if (message.nameFilter !== "") {
-      obj.nameFilter = message.nameFilter;
-    }
-    if (message.allowedRoles?.length) {
-      obj.allowedRoles = message.allowedRoles;
-    }
-    if (message.branchSource !== ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED) {
-      obj.branchSource = protectionRule_BranchSourceToJSON(message.branchSource);
-    }
-    return obj;
-  },
-
-  create(base?: DeepPartial<ProtectionRule>): ProtectionRule {
-    return ProtectionRule.fromPartial(base ?? {});
-  },
-  fromPartial(object: DeepPartial<ProtectionRule>): ProtectionRule {
-    const message = createBaseProtectionRule();
-    message.id = object.id ?? "";
-    message.target = object.target ?? ProtectionRule_Target.PROTECTION_TARGET_UNSPECIFIED;
-    message.nameFilter = object.nameFilter ?? "";
-    message.allowedRoles = object.allowedRoles?.map((e) => e) || [];
-    message.branchSource = object.branchSource ?? ProtectionRule_BranchSource.BRANCH_SOURCE_UNSPECIFIED;
-    return message;
-  },
-};
-
 export type ProjectServiceDefinition = typeof ProjectServiceDefinition;
 export const ProjectServiceDefinition = {
   name: "ProjectService",
@@ -4468,6 +3001,8 @@ export const ProjectServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [new Uint8Array([15, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               23,
@@ -4508,6 +3043,8 @@ export const ProjectServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([0])],
+          800010: [new Uint8Array([16, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 108, 105, 115, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [new Uint8Array([14, 18, 12, 47, 118, 49, 47, 112, 114, 111, 106, 101, 99, 116, 115])],
         },
       },
@@ -4521,6 +3058,7 @@ export const ProjectServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([0])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               21,
@@ -4559,6 +3097,10 @@ export const ProjectServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([0])],
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 99, 114, 101, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               23,
@@ -4622,6 +3164,10 @@ export const ProjectServiceDefinition = {
               107,
             ]),
           ],
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               40,
@@ -4679,6 +3225,10 @@ export const ProjectServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 100, 101, 108, 101, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               23,
@@ -4718,6 +3268,32 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              20,
+              98,
+              98,
+              46,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              46,
+              117,
+              110,
+              100,
+              101,
+              108,
+              101,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               35,
@@ -4769,16 +3345,12 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
-          578365826: [
+          800010: [
             new Uint8Array([
-              39,
-              18,
-              37,
-              47,
-              118,
-              49,
-              47,
-              123,
+              24,
+              98,
+              98,
+              46,
               112,
               114,
               111,
@@ -4786,6 +3358,41 @@ export const ProjectServiceDefinition = {
               101,
               99,
               116,
+              115,
+              46,
+              103,
+              101,
+              116,
+              73,
+              97,
+              109,
+              80,
+              111,
+              108,
+              105,
+              99,
+              121,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          578365826: [
+            new Uint8Array([
+              40,
+              18,
+              38,
+              47,
+              118,
+              49,
+              47,
+              123,
+              114,
+              101,
+              115,
+              111,
+              117,
+              114,
+              99,
+              101,
               61,
               112,
               114,
@@ -4816,6 +3423,7 @@ export const ProjectServiceDefinition = {
         },
       },
     },
+    /** Deprecated. */
     batchGetIamPolicy: {
       name: "BatchGetIamPolicy",
       requestType: BatchGetIamPolicyRequest,
@@ -4824,6 +3432,36 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              24,
+              98,
+              98,
+              46,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              46,
+              103,
+              101,
+              116,
+              73,
+              97,
+              109,
+              80,
+              111,
+              108,
+              105,
+              99,
+              121,
+            ]),
+          ],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               38,
@@ -4878,19 +3516,12 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
-          578365826: [
+          800010: [
             new Uint8Array([
-              42,
-              58,
-              1,
-              42,
-              34,
-              37,
-              47,
-              118,
-              49,
-              47,
-              123,
+              24,
+              98,
+              98,
+              46,
               112,
               114,
               111,
@@ -4898,6 +3529,45 @@ export const ProjectServiceDefinition = {
               101,
               99,
               116,
+              115,
+              46,
+              115,
+              101,
+              116,
+              73,
+              97,
+              109,
+              80,
+              111,
+              108,
+              105,
+              99,
+              121,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
+          578365826: [
+            new Uint8Array([
+              43,
+              58,
+              1,
+              42,
+              34,
+              38,
+              47,
+              118,
+              49,
+              47,
+              123,
+              114,
+              101,
+              115,
+              111,
+              117,
+              114,
+              99,
+              101,
               61,
               112,
               114,
@@ -4936,6 +3606,8 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([15, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               43,
@@ -4995,11 +3667,26 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
+              80,
               58,
-              58,
-              6,
+              17,
+              100,
+              101,
+              112,
+              108,
+              111,
+              121,
+              109,
+              101,
+              110,
+              116,
+              95,
               99,
               111,
               110,
@@ -5007,12 +3694,23 @@ export const ProjectServiceDefinition = {
               105,
               103,
               50,
-              48,
+              59,
               47,
               118,
               49,
               47,
               123,
+              100,
+              101,
+              112,
+              108,
+              111,
+              121,
+              109,
+              101,
+              110,
+              116,
+              95,
               99,
               111,
               110,
@@ -5069,6 +3767,10 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               40,
@@ -5149,6 +3851,10 @@ export const ProjectServiceDefinition = {
               107,
             ]),
           ],
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               59,
@@ -5224,6 +3930,10 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               59,
@@ -5299,6 +4009,10 @@ export const ProjectServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 112, 114, 111, 106, 101, 99, 116, 115, 46, 117, 112, 100, 97, 116, 101]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               41,
@@ -5343,522 +4057,6 @@ export const ProjectServiceDefinition = {
               111,
               111,
               107,
-            ]),
-          ],
-        },
-      },
-    },
-    listDatabaseGroups: {
-      name: "ListDatabaseGroups",
-      requestType: ListDatabaseGroupsRequest,
-      requestStream: false,
-      responseType: ListDatabaseGroupsResponse,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
-          578365826: [
-            new Uint8Array([
-              40,
-              18,
-              38,
-              47,
-              118,
-              49,
-              47,
-              123,
-              112,
-              97,
-              114,
-              101,
-              110,
-              116,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              125,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-              115,
-            ]),
-          ],
-        },
-      },
-    },
-    getDatabaseGroup: {
-      name: "GetDatabaseGroup",
-      requestType: GetDatabaseGroupRequest,
-      requestStream: false,
-      responseType: DatabaseGroup,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          8410: [new Uint8Array([4, 110, 97, 109, 101])],
-          578365826: [
-            new Uint8Array([
-              40,
-              18,
-              38,
-              47,
-              118,
-              49,
-              47,
-              123,
-              110,
-              97,
-              109,
-              101,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-              115,
-              47,
-              42,
-              125,
-            ]),
-          ],
-        },
-      },
-    },
-    createDatabaseGroup: {
-      name: "CreateDatabaseGroup",
-      requestType: CreateDatabaseGroupRequest,
-      requestStream: false,
-      responseType: DatabaseGroup,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          8410: [
-            new Uint8Array([
-              20,
-              112,
-              97,
-              114,
-              101,
-              110,
-              116,
-              44,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-            ]),
-          ],
-          578365826: [
-            new Uint8Array([
-              56,
-              58,
-              14,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              95,
-              103,
-              114,
-              111,
-              117,
-              112,
-              34,
-              38,
-              47,
-              118,
-              49,
-              47,
-              123,
-              112,
-              97,
-              114,
-              101,
-              110,
-              116,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              125,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-              115,
-            ]),
-          ],
-        },
-      },
-    },
-    updateDatabaseGroup: {
-      name: "UpdateDatabaseGroup",
-      requestType: UpdateDatabaseGroupRequest,
-      requestStream: false,
-      responseType: DatabaseGroup,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          8410: [
-            new Uint8Array([
-              26,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              95,
-              103,
-              114,
-              111,
-              117,
-              112,
-              44,
-              117,
-              112,
-              100,
-              97,
-              116,
-              101,
-              95,
-              109,
-              97,
-              115,
-              107,
-            ]),
-          ],
-          578365826: [
-            new Uint8Array([
-              71,
-              58,
-              14,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              95,
-              103,
-              114,
-              111,
-              117,
-              112,
-              50,
-              53,
-              47,
-              118,
-              49,
-              47,
-              123,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              95,
-              103,
-              114,
-              111,
-              117,
-              112,
-              46,
-              110,
-              97,
-              109,
-              101,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-              115,
-              47,
-              42,
-              125,
-            ]),
-          ],
-        },
-      },
-    },
-    deleteDatabaseGroup: {
-      name: "DeleteDatabaseGroup",
-      requestType: DeleteDatabaseGroupRequest,
-      requestStream: false,
-      responseType: Empty,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          8410: [new Uint8Array([4, 110, 97, 109, 101])],
-          578365826: [
-            new Uint8Array([
-              40,
-              42,
-              38,
-              47,
-              118,
-              49,
-              47,
-              123,
-              110,
-              97,
-              109,
-              101,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              47,
-              100,
-              97,
-              116,
-              97,
-              98,
-              97,
-              115,
-              101,
-              71,
-              114,
-              111,
-              117,
-              112,
-              115,
-              47,
-              42,
-              125,
-            ]),
-          ],
-        },
-      },
-    },
-    getProjectProtectionRules: {
-      name: "GetProjectProtectionRules",
-      requestType: GetProjectProtectionRulesRequest,
-      requestStream: false,
-      responseType: ProtectionRules,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          578365826: [
-            new Uint8Array([
-              39,
-              18,
-              37,
-              47,
-              118,
-              49,
-              47,
-              123,
-              110,
-              97,
-              109,
-              101,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              47,
-              112,
-              114,
-              111,
-              116,
-              101,
-              99,
-              116,
-              105,
-              111,
-              110,
-              82,
-              117,
-              108,
-              101,
-              115,
-              125,
-            ]),
-          ],
-        },
-      },
-    },
-    updateProjectProtectionRules: {
-      name: "UpdateProjectProtectionRules",
-      requestType: UpdateProjectProtectionRulesRequest,
-      requestStream: false,
-      responseType: ProtectionRules,
-      responseStream: false,
-      options: {
-        _unknownFields: {
-          578365826: [
-            new Uint8Array([
-              59,
-              58,
-              1,
-              42,
-              50,
-              54,
-              47,
-              118,
-              49,
-              47,
-              123,
-              112,
-              114,
-              111,
-              116,
-              101,
-              99,
-              116,
-              105,
-              111,
-              110,
-              95,
-              114,
-              117,
-              108,
-              101,
-              115,
-              46,
-              110,
-              97,
-              109,
-              101,
-              61,
-              112,
-              114,
-              111,
-              106,
-              101,
-              99,
-              116,
-              115,
-              47,
-              42,
-              47,
-              112,
-              114,
-              111,
-              116,
-              101,
-              99,
-              116,
-              105,
-              111,
-              110,
-              82,
-              117,
-              108,
-              101,
-              115,
-              125,
             ]),
           ],
         },

@@ -1,10 +1,10 @@
 <template>
   <div
-    class="w-full h-auto flex-grow flex flex-col items-center justify-center"
+    class="w-full flex-1 flex flex-col items-center justify-start gap-y-4"
+    style="padding-top: calc(clamp(40px, 15vh, 200px)"
   >
-    <HideInStandaloneMode>
-      <BytebaseLogo component="span" class="mb-4 -mt-[10vh]" />
-    </HideInStandaloneMode>
+    <BytebaseLogo v-if="!hideLogo" component="span" />
+
     <div class="flex flex-col items-start gap-y-2 w-max">
       <NButton
         type="primary"
@@ -48,13 +48,14 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 import BytebaseLogo from "@/components/BytebaseLogo.vue";
 import { SQL_EDITOR_SETTING_INSTANCE_MODULE } from "@/router/sqlEditor";
-import { useSQLEditorTabStore } from "@/store";
+import { useAppFeature, useSQLEditorTabStore } from "@/store";
 import { useSidebarItems as useSettingItems } from "../Setting/Sidebar";
 import { useSQLEditorContext } from "../context";
 
 const { showConnectionPanel } = useSQLEditorContext();
 const { itemList: settingItemList } = useSettingItems();
 const router = useRouter();
+const hideLogo = useAppFeature("bb.feature.sql-editor.hide-bytebase-logo");
 
 const showCreateInstanceButton = computed(() => {
   return (

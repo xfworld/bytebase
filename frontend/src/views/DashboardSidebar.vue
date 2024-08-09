@@ -27,6 +27,7 @@ import { useI18n } from "vue-i18n";
 import type { RouteRecordRaw } from "vue-router";
 import { useRouter, useRoute } from "vue-router";
 import type { SidebarItem } from "@/components/CommonSidebar.vue";
+import CommonSidebar from "@/components/CommonSidebar.vue";
 import { useGlobalDatabaseActions } from "@/components/KBar/useDatabaseActions";
 import { useProjectActions } from "@/components/KBar/useProjectActions";
 import workspaceRoutes from "@/router/dashboard/workspace";
@@ -36,7 +37,6 @@ import {
   INSTANCE_ROUTE_DASHBOARD,
   PROJECT_V1_ROUTE_DASHBOARD,
   WORKSPACE_ROUTE_MY_ISSUES,
-  WORKSPACE_ROUTE_SLOW_QUERY,
   WORKSPACE_ROUTE_EXPORT_CENTER,
   WORKSPACE_ROUTE_ANOMALY_CENTER,
   WORKSPACE_ROUTE_SQL_REVIEW,
@@ -55,8 +55,8 @@ import {
   WORKSPACE_ROUTE_IM,
 } from "@/router/dashboard/workspaceRoutes";
 import { useCurrentUserV1 } from "@/store";
-import type { WorkspacePermission } from "@/types";
-import { hasWorkspacePermissionV2, hasProjectPermissionV2 } from "@/utils";
+import type { Permission } from "@/types";
+import { hasWorkspacePermissionV2 } from "@/utils";
 
 interface DashboardSidebarItem extends SidebarItem {
   navigationId?: string;
@@ -91,10 +91,10 @@ const getItemClass = (item: SidebarItem): string[] => {
 
 const getFlattenRoutes = (
   routes: RouteRecordRaw[],
-  permissions: WorkspacePermission[] = []
+  permissions: Permission[] = []
 ): {
   name: string;
-  permissions: WorkspacePermission[];
+  permissions: Permission[];
 }[] => {
   return routes.reduce(
     (list, workspaceRoute) => {
@@ -120,7 +120,7 @@ const getFlattenRoutes = (
       }
       return list;
     },
-    [] as { name: string; permissions: WorkspacePermission[] }[]
+    [] as { name: string; permissions: Permission[] }[]
   );
 };
 
@@ -207,11 +207,6 @@ const dashboardSidebarItemList = computed((): DashboardSidebarItem[] => {
       name: WORKSPACE_ROUTE_REVIEW_CENTER,
       type: "route",
       shortcuts: ["g", "r", "c"],
-      hide: !hasProjectPermissionV2(
-        undefined,
-        currentUserV1.value,
-        "bb.projects.getIamPolicy"
-      ),
     },
     {
       navigationId: "bb.navigation.export-center",
@@ -220,11 +215,6 @@ const dashboardSidebarItemList = computed((): DashboardSidebarItem[] => {
       name: WORKSPACE_ROUTE_EXPORT_CENTER,
       type: "route",
       shortcuts: ["g", "x", "c"],
-      hide: !hasProjectPermissionV2(
-        undefined,
-        currentUserV1.value,
-        "bb.projects.getIamPolicy"
-      ),
     },
     {
       navigationId: "bb.navigation.anomaly-center",
@@ -253,13 +243,6 @@ const dashboardSidebarItemList = computed((): DashboardSidebarItem[] => {
           title: t("sql-review.title"),
           name: WORKSPACE_ROUTE_SQL_REVIEW,
           type: "route",
-        },
-        {
-          title: t("slow-query.self"),
-          name: WORKSPACE_ROUTE_SLOW_QUERY,
-          type: "route",
-          navigationId: "bb.navigation.slow-query",
-          shortcuts: ["g", "s", "q"],
         },
         {
           title: t("schema-template.self"),

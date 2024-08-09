@@ -1,5 +1,8 @@
 <template>
-  <div class="sm:col-span-4 sm:col-start-1 flex flex-col gap-y-2">
+  <div
+    v-if="!hideAdvancedFeatures"
+    class="sm:col-span-4 sm:col-start-1 flex flex-col gap-y-2"
+  >
     <label class="textlabel">
       {{ $t("instance.maximum-connections.self") }}
     </label>
@@ -59,6 +62,7 @@
 import { NInputNumber, NRadio } from "naive-ui";
 import { computed, reactive, watch } from "vue";
 import { useSubscriptionV1Store } from "@/store";
+import { FeatureBadge } from "../FeatureGuard";
 import { useInstanceFormContext } from "./context";
 
 type Mode = "DEFAULT" | "CUSTOM";
@@ -80,7 +84,7 @@ const emit = defineEmits<{
 }>();
 
 const subscriptionStore = useSubscriptionV1Store();
-const { instance } = useInstanceFormContext();
+const { instance, hideAdvancedFeatures } = useInstanceFormContext();
 
 const hasSecretFeature = computed(() => {
   return subscriptionStore.hasInstanceFeature(

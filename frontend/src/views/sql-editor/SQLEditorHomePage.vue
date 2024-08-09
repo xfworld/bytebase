@@ -39,34 +39,10 @@
       </template>
       <Pane class="relative flex flex-col">
         <TabList />
-        <div class="w-full flex-1 overflow-hidden">
-          <Splitpanes
-            v-if="
-              !currentTab ||
-              currentTab.mode === 'READONLY' ||
-              currentTab.mode === 'STANDARD'
-            "
-            horizontal
-            class="default-theme"
-            :dbl-click-splitter="false"
-          >
-            <Pane class="flex flex-row overflow-hidden">
-              <EditorPanel v-if="isDisconnected || allowReadonlyMode" />
-              <ReadonlyModeNotSupported v-else />
-            </Pane>
-            <Pane
-              v-if="!isDisconnected && allowReadonlyMode"
-              class="relative"
-              :size="40"
-            >
-              <ResultPanel />
-            </Pane>
-          </Splitpanes>
 
-          <TerminalPanelV1 v-else-if="currentTab.mode === 'ADMIN'" />
+        <ConnectionPathBar class="border-b" />
 
-          <AccessDenied v-else />
-        </div>
+        <EditorPanel />
 
         <div
           v-if="isFetchingSheet"
@@ -77,7 +53,7 @@
       </Pane>
     </Splitpanes>
 
-    <Quickstart v-if="showQuickstart" />
+    <Quickstart v-if="!hideQuickStart" />
 
     <Drawer v-model:show="showSheetPanel">
       <DrawerContent :title="$t('sql-editor.sheet.self')">
@@ -109,31 +85,25 @@ import { storeToRefs } from "pinia";
 import { Splitpanes, Pane } from "splitpanes";
 import { computed, reactive } from "vue";
 import { useRouter } from "vue-router";
+import { BBSpin } from "@/bbkit";
 import SchemaEditorModal from "@/components/AlterSchemaPrepForm/SchemaEditorModal.vue";
+import Quickstart from "@/components/Quickstart.vue";
 import { Drawer, DrawerContent } from "@/components/v2";
 import { useEmitteryEventListener } from "@/composables/useEmitteryEventListener";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import {
-  useActuatorV1Store,
-  useConnectionOfCurrentSQLEditorTab,
+  useAppFeature,
   useDatabaseV1Store,
   useSQLEditorTabStore,
 } from "@/store";
-import {
-  allowUsingSchemaEditor,
-  extractProjectResourceName,
-  instanceV1HasReadonlyMode,
-} from "@/utils";
-import AccessDenied from "./AccessDenied.vue";
+import { allowUsingSchemaEditor, extractProjectResourceName } from "@/utils";
 import AsidePanel from "./AsidePanel";
 import ConnectionPanel from "./ConnectionPanel";
-import EditorPanel from "./EditorPanel/EditorPanel.vue";
-import ReadonlyModeNotSupported from "./ReadonlyModeNotSupported.vue";
-import ResultPanel from "./ResultPanel";
+import { ConnectionPathBar } from "./EditorCommon";
+import EditorPanel from "./EditorPanel";
 import { useSheetContext } from "./Sheet";
 import SheetPanel from "./SheetPanel";
 import TabList from "./TabList";
-import TerminalPanelV1 from "./TerminalPanel/TerminalPanelV1.vue";
 import { useSQLEditorContext } from "./context";
 
 type LocalState = {
@@ -151,24 +121,15 @@ const state = reactive<LocalState>({
 
 const router = useRouter();
 const databaseStore = useDatabaseV1Store();
-const actuatorStore = useActuatorV1Store();
 const tabStore = useSQLEditorTabStore();
 const { events: editorEvents, showConnectionPanel } = useSQLEditorContext();
 const { showPanel: showSheetPanel } = useSheetContext();
 
 const { currentTab, isDisconnected } = storeToRefs(tabStore);
-const showQuickstart = computed(() => actuatorStore.pageMode === "BUNDLED");
+const hideQuickStart = useAppFeature("bb.feature.hide-quick-start");
 const isFetchingSheet = computed(() => false /* editorStore.isFetchingSheet */);
 
 const { width: windowWidth } = useWindowSize();
-
-const { instance } = useConnectionOfCurrentSQLEditorTab();
-
-const allowReadonlyMode = computed(() => {
-  if (isDisconnected.value) return false;
-
-  return instanceV1HasReadonlyMode(instance.value);
-});
 
 const alterSchemaState = reactive<AlterSchemaState>({
   showModal: false,

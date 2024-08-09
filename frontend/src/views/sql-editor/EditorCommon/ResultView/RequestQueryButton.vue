@@ -6,7 +6,7 @@
 
     <RequestQueryPanel
       :show="showPanel"
-      :project-id="database?.projectEntity.uid"
+      :project-name="database.project"
       :database="database"
       :placement="panelPlacement"
       @close="showPanel = false"
@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { NButton } from "naive-ui";
 import { computed, ref } from "vue";
 import RequestQueryPanel from "@/components/Issue/panel/RequestQueryPanel/index.vue";
 import { useCurrentUserV1 } from "@/store";

@@ -10,6 +10,7 @@ import (
 	"github.com/bytebase/bytebase/backend/common/log"
 	"github.com/bytebase/bytebase/backend/plugin/vcs"
 	"github.com/bytebase/bytebase/backend/utils"
+	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
 
@@ -17,7 +18,15 @@ var (
 	versionRE = regexp.MustCompile(`^[0-9]+`)
 )
 
+type webhookAction int
+
+const (
+	webhookActionCreateIssue webhookAction = iota
+	webhookActionSQLReview
+)
+
 type pullRequestInfo struct {
+	action      webhookAction
 	email       string
 	title       string
 	description string
@@ -31,6 +40,7 @@ type fileChange struct {
 	changeType  v1pb.Plan_ChangeDatabaseConfig_Type
 	description string
 	content     string
+	webURL      string
 }
 
 func getChangesByFileList(files []*vcs.PullRequestFile, rootDir string) []*fileChange {
@@ -46,20 +56,19 @@ func getChangesByFileList(files []*vcs.PullRequestFile, rootDir string) []*fileC
 		if filepath.Dir(prFilePath) != rootDir {
 			continue
 		}
-		change, err := getFileChange(v.Path)
+		change, err := getFileChange(v)
 		if err != nil {
 			slog.Error("failed to get file change info", slog.String("path", v.Path), log.BBError(err))
 		}
 		if change != nil {
-			change.path = v.Path
 			changes = append(changes, change)
 		}
 	}
 	return changes
 }
 
-func getFileChange(path string) (*fileChange, error) {
-	filename := filepath.Base(path)
+func getFileChange(file *vcs.PullRequestFile) (*fileChange, error) {
+	filename := filepath.Base(file.Path)
 	if filepath.Ext(filename) != ".sql" {
 		return nil, nil
 	}
@@ -85,10 +94,11 @@ func getFileChange(path string) (*fileChange, error) {
 	}
 	description = strings.TrimLeft(description, "_")
 	return &fileChange{
-		path:        path,
+		path:        file.Path,
 		version:     version,
 		changeType:  changeType,
 		description: description,
+		webURL:      file.WebURL,
 	}, nil
 }
 
@@ -100,8 +110,13 @@ func getPullRequestID(url string) string {
 	return fields[len(fields)-1]
 }
 
+const (
+	commentPrefixBytebaseBot = "**[Bytebase Bot]**"
+	commentPrefixSQLReview   = "**[Bytebase SQL Review]**"
+)
+
 func getPullRequestComment(externalURL, issue string) string {
-	return fmt.Sprintf("Bytebase Bot: this pull request has triggered a Bytebase rollout 🚀. Check out the status at %s/%s.", externalURL, issue)
+	return fmt.Sprintf("This pull request has triggered a Bytebase rollout 🚀. Check out the status at %s/%s.", externalURL, issue)
 }
 
 func convertFileContentToUTF8String(content string) string {
@@ -111,4 +126,17 @@ func convertFileContentToUTF8String(content string) string {
 		convertedContent = strings.ToValidUTF8(content, "")
 	}
 	return convertedContent
+}
+
+func getFileWebURLInPR(webURL string, line int32, vcsType storepb.VCSType) string {
+	switch vcsType {
+	case storepb.VCSType_GITHUB:
+		return fmt.Sprintf("%sR%d", webURL, line)
+	case storepb.VCSType_GITLAB:
+		return fmt.Sprintf("%s_0_%d", webURL, line)
+	case storepb.VCSType_BITBUCKET:
+		return fmt.Sprintf("%sT%d", webURL, line)
+	default:
+		return webURL
+	}
 }

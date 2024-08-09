@@ -1,3 +1,4 @@
+import { head } from "lodash-es";
 import {
   CodeIcon,
   CopyIcon,
@@ -13,7 +14,7 @@ import { useExecuteSQL } from "@/composables/useExecuteSQL";
 import { t } from "@/plugins/i18n";
 import { PROJECT_V1_ROUTE_DATABASE_DETAIL } from "@/router/dashboard/projectV1";
 import { SQL_EDITOR_DATABASE_MODULE } from "@/router/sqlEditor";
-import { pushNotification, usePageMode, useSQLEditorTabStore } from "@/store";
+import { pushNotification, useAppFeature, useSQLEditorTabStore } from "@/store";
 import {
   DEFAULT_SQL_EDITOR_TAB_MODE,
   type ComposedDatabase,
@@ -21,6 +22,7 @@ import {
   type Position,
 } from "@/types";
 import { Engine } from "@/types/proto/v1/common";
+import { DataSource, DataSourceType } from "@/types/proto/v1/instance_service";
 import {
   defer,
   extractInstanceResourceName,
@@ -76,7 +78,9 @@ const confirmOverrideStatement = async (
 export const useDropdown = () => {
   const router = useRouter();
   const { events: editorEvents, schemaViewer } = useSQLEditorContext();
-  const pageMode = usePageMode();
+  const disallowNavigateAwaySQLEditor = useAppFeature(
+    "bb.feature.disallow-navigate-to-console"
+  );
   const $d = useDialog();
 
   const show = ref(false);
@@ -125,7 +129,9 @@ export const useDropdown = () => {
         });
 
         if (
-          VIEW_SCHEMA_ACTION_ENABLED_ENGINES.includes(db.instanceResource.engine)
+          VIEW_SCHEMA_ACTION_ENABLED_ENGINES.includes(
+            db.instanceResource.engine
+          )
         ) {
           items.push({
             key: "view-schema-text",
@@ -141,7 +147,7 @@ export const useDropdown = () => {
           });
         }
 
-        if (pageMode.value === "BUNDLED") {
+        if (!disallowNavigateAwaySQLEditor.value) {
           items.push({
             key: "view-table-detail",
             label: t("sql-editor.view-table-detail"),
@@ -317,6 +323,7 @@ const runQuery = async (
       database: database.name,
       schema,
       table: tableOrViewName,
+      dataSourceId: getDefaultQueriableDataSourceOfDatabase(database).id,
     },
     mode: DEFAULT_SQL_EDITOR_TAB_MODE,
     worksheet: "",
@@ -382,4 +389,15 @@ export const selectAllFromTableOrView = async (
     return;
   }
   runQuery(db, schema, tableOrViewName, query);
+};
+
+const getDefaultQueriableDataSourceOfDatabase = (
+  database: ComposedDatabase
+) => {
+  const dataSources = database.instanceResource.dataSources;
+  const readonlyDataSources = dataSources.filter(
+    (ds) => ds.type === DataSourceType.READ_ONLY
+  );
+  // First try to use readonly data source if available.
+  return (head(readonlyDataSources) || head(dataSources)) as DataSource;
 };

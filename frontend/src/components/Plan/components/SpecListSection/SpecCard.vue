@@ -60,19 +60,20 @@ import { isEqual } from "lodash-es";
 import { NTooltip } from "naive-ui";
 import { computed, onMounted } from "vue";
 import DatabaseGroupIcon from "@/components/DatabaseGroupIcon.vue";
+import { planCheckRunSummaryForCheckRunList } from "@/components/PlanCheckRun/common";
+import { InstanceV1Name } from "@/components/v2";
 import { useDBGroupStore } from "@/store";
 import {
   PlanCheckRun_Result_Status,
   type Plan_Spec,
 } from "@/types/proto/v1/plan_service";
-import { DatabaseGroupView } from "@/types/proto/v1/project_service";
+import { DatabaseGroupView } from "@/types/proto/v1/database_group_service";
 import {
   databaseForSpec,
   isDatabaseChangeSpec,
   usePlanContext,
   isGroupingChangeSpec,
   planCheckRunListForSpec,
-  planCheckRunSummaryForCheckRunList,
 } from "../../logic";
 
 const props = defineProps<{

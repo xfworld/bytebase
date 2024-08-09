@@ -1,5 +1,5 @@
 <template>
-  <div class="px-6 space-y-2">
+  <div class="px-6 space-y-2 mb-4">
     <ArchiveBanner v-if="instance.state === State.DELETED" />
 
     <div class="flex items-center justify-between">
@@ -41,6 +41,7 @@
         <div class="space-y-2">
           <DatabaseOperations :databases="selectedDatabases" />
           <DatabaseV1Table
+            :key="`database-table.${instanceId}`"
             mode="INSTANCE"
             :show-selection="true"
             :database-list="databaseV1List"
@@ -61,8 +62,8 @@
     :title="$t('quick-action.create-db')"
   >
     <CreateDatabasePrepPanel
-      :environment="environment?.name"
-      :instance="instance.name"
+      :environment-name="environment?.name"
+      :instance-name="instance.name"
       @dismiss="state.showCreateDatabaseModal = false"
     />
   </Drawer>
@@ -84,7 +85,9 @@ import {
   Buttons as InstanceFormButtons,
 } from "@/components/InstanceForm/";
 import { InstanceRoleTable, Drawer } from "@/components/v2";
-import DatabaseV1Table from "@/components/v2/Model/DatabaseV1Table";
+import DatabaseV1Table, {
+  DatabaseOperations,
+} from "@/components/v2/Model/DatabaseV1Table";
 import { useBodyLayoutContext } from "@/layouts/common";
 import {
   pushNotification,
@@ -147,7 +150,7 @@ const databaseV1List = computed(() => {
 });
 
 const instanceRoleList = computed(() => {
-  return instanceV1Store.getInstanceRoleListByName(instance.value.name);
+  return instance.value.roles;
 });
 
 const allowSyncInstance = computed(() => {

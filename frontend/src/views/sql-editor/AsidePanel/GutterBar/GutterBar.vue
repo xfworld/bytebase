@@ -22,7 +22,7 @@
       <OpenAIButton :size="size" />
 
       <SettingButton
-        v-if="showSettingButton"
+        v-if="!hideSettingButton"
         :style="buttonStyle"
         v-bind="buttonProps"
       />
@@ -36,11 +36,11 @@ import { computed, toRef, watch } from "vue";
 import {
   useConnectionOfCurrentSQLEditorTab,
   useCurrentUserV1,
-  usePageMode,
+  useAppFeature,
   useSQLEditorStore,
   useSQLEditorTabStore,
 } from "@/store";
-import { UNKNOWN_ID } from "@/types";
+import { UNKNOWN_ID, isValidInstanceName } from "@/types";
 import { hasProjectPermissionV2, instanceV1HasAlterSchema } from "@/utils";
 import { SettingButton } from "../../Setting";
 import { useSQLEditorContext, type AsidePanelTab } from "../../context";
@@ -62,7 +62,7 @@ const { currentTab, isDisconnected } = storeToRefs(useSQLEditorTabStore());
 const { asidePanelTab } = useSQLEditorContext();
 const { strictProject } = storeToRefs(useSQLEditorStore());
 const { instance, database } = useConnectionOfCurrentSQLEditorTab();
-const pageMode = usePageMode();
+const disableSetting = useAppFeature("bb.feature.sql-editor.disable-setting");
 
 const { props: buttonProps, style: buttonStyle } = useButton({
   size: toRef(props, "size"),
@@ -71,7 +71,7 @@ const { props: buttonProps, style: buttonStyle } = useButton({
 });
 
 const isSchemalessInstance = computed(() => {
-  if (instance.value.uid === String(UNKNOWN_ID)) {
+  if (!isValidInstanceName(instance.value.name)) {
     return false;
   }
 
@@ -100,15 +100,15 @@ const showSchemaPane = computed(() => {
   );
 });
 
-const showSettingButton = computed(() => {
-  if (pageMode.value === "STANDALONE") {
-    return false;
+const hideSettingButton = computed(() => {
+  if (disableSetting.value) {
+    return true;
   }
   if (strictProject.value) {
-    return false;
+    return true;
   }
 
-  return true;
+  return false;
 });
 
 const handleClickTab = (target: AsidePanelTab) => {

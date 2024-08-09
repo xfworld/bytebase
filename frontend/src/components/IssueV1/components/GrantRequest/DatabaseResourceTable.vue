@@ -33,11 +33,11 @@
 import { computed } from "vue";
 import { watch } from "vue";
 import { useI18n } from "vue-i18n";
-import type { BBGridColumn } from "@/bbkit";
+import { BBGrid, type BBGridColumn } from "@/bbkit";
 import { EnvironmentV1Name, InstanceV1Name } from "@/components/v2";
 import { useDatabaseV1Store } from "@/store";
 import type { DatabaseResource } from "@/types";
-import type { DatabaseGroup } from "@/types/proto/v1/project_service";
+import type { DatabaseGroup } from "@/types/proto/v1/database_group_service";
 
 const props = defineProps<{
   databaseResourceList: DatabaseResource[];

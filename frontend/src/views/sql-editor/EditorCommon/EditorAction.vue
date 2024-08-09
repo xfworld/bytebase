@@ -2,6 +2,7 @@
   <div
     ref="containerRef"
     class="w-full flex flex-wrap gap-y-2 justify-between sm:items-center p-2 border-b bg-white"
+    v-bind="$attrs"
   >
     <div
       class="action-left gap-x-2 flex overflow-x-auto sm:overflow-x-hidden items-center"
@@ -58,9 +59,7 @@
 
       <template v-if="showSheetsFeature">
         <NButton
-          secondary
-          strong
-          type="primary"
+          :strong="allowSave"
           size="small"
           :disabled="!allowSave"
           @click="handleClickSave"
@@ -72,7 +71,7 @@
           </span>
         </NButton>
         <NPopover
-          v-if="!isStandaloneMode"
+          v-if="!disallowShareWorksheet"
           trigger="click"
           placement="bottom-end"
           :show-arrow="false"
@@ -80,6 +79,7 @@
         >
           <template #trigger>
             <NButton
+              :strong="allowShare"
               size="small"
               :disabled="!allowShare"
               @click="handleShareButtonClick"
@@ -111,14 +111,14 @@ import { useElementSize } from "@vueuse/core";
 import { NButtonGroup, NButton, NPopover } from "naive-ui";
 import { storeToRefs } from "pinia";
 import { computed, reactive, ref } from "vue";
+import { FeatureBadge, FeatureModal } from "@/components/FeatureGuard";
 import {
   useUIStateStore,
   featureToRef,
-  usePageMode,
-  useActuatorV1Store,
   useSQLEditorTabStore,
   useConnectionOfCurrentSQLEditorTab,
   useWorkSheetStore,
+  useAppFeature,
 } from "@/store";
 import type { FeatureType, SQLEditorQueryParams } from "@/types";
 import { keyboardShortcutStr } from "@/utils";
@@ -133,12 +133,15 @@ interface LocalState {
   requiredFeatureName?: FeatureType;
 }
 
+defineOptions({
+  inheritAttrs: false,
+});
+
 const emit = defineEmits<{
   (e: "execute", params: SQLEditorQueryParams): void;
   (e: "clear-screen"): void;
 }>();
 
-const actuatorStore = useActuatorV1Store();
 const state = reactive<LocalState>({});
 const tabStore = useSQLEditorTabStore();
 const uiStateStore = useUIStateStore();
@@ -146,9 +149,10 @@ const { standardModeEnabled, events } = useSQLEditorContext();
 const containerRef = ref<HTMLDivElement>();
 const { width: containerWidth } = useElementSize(containerRef);
 const hasSharedSQLScriptFeature = featureToRef("bb.feature.shared-sql-script");
-const pageMode = usePageMode();
+const disallowShareWorksheet = useAppFeature(
+  "bb.feature.sql-editor.disallow-share-worksheet"
+);
 
-const isStandaloneMode = computed(() => pageMode.value === "STANDALONE");
 const { currentTab, isDisconnected } = storeToRefs(tabStore);
 
 const isEmptyStatement = computed(() => {
@@ -190,7 +194,6 @@ const allowSave = computed(() => {
   if (!showSheetsFeature.value) {
     return false;
   }
-
   if (isEmptyStatement.value) {
     return false;
   }
@@ -240,11 +243,7 @@ const showQueryContextSettingPopover = computed(() => {
   if (!tab) {
     return false;
   }
-  return (
-    Boolean(instance.value) &&
-    tab.mode !== "ADMIN" &&
-    actuatorStore.customTheme === "lixiang"
-  );
+  return instance.value && tab.mode !== "ADMIN";
 });
 
 const showQueryModeSelect = computed(() => {

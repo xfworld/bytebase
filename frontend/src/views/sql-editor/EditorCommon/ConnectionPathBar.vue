@@ -5,10 +5,10 @@
     <div
       v-if="
         currentTab &&
-        instance.uid !== String(UNKNOWN_ID) &&
+        isValidInstanceName(instance.name) &&
         database.uid !== String(UNKNOWN_ID)
       "
-      class="flex justify-start items-center h-8 px-2 whitespace-nowrap shrink-0 gap-x-2"
+      class="flex justify-start items-center h-8 px-1 whitespace-nowrap shrink-0 gap-x-2"
     >
       <NButton
         :disabled="!projectContextReady"
@@ -23,7 +23,10 @@
         @click="changeConnection"
       >
         <div class="flex flex-row gap-x-2 text-main">
-          <NPopover :disabled="!isProductionEnvironment">
+          <NPopover
+            v-if="!hideEnvironments"
+            :disabled="!isProductionEnvironment"
+          >
             <template #trigger>
               <div class="inline-flex items-center text-sm rounded-sm bg-white">
                 <span
@@ -58,9 +61,11 @@
             <heroicons-outline:database />
             <span class="ml-2">{{ database.databaseName }}</span>
 
-            <HideInStandaloneMode>
-              <ReadonlyDatasourceHint :instance="instance" class="ml-1" />
-            </HideInStandaloneMode>
+            <ReadonlyDatasourceHint
+              v-if="!hideReadonlyDatasourceHint"
+              :instance="instance"
+              class="ml-1"
+            />
           </div>
         </div>
       </NButton>
@@ -96,14 +101,14 @@
 import { NButton, NPopover } from "naive-ui";
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
-import HideInStandaloneMode from "@/components/misc/HideInStandaloneMode.vue";
 import { InstanceV1EngineIcon } from "@/components/v2";
 import {
+  useAppFeature,
   useConnectionOfCurrentSQLEditorTab,
   useSQLEditorStore,
   useSQLEditorTabStore,
 } from "@/store";
-import { UNKNOWN_ID } from "@/types";
+import { UNKNOWN_ID, isValidInstanceName } from "@/types";
 import { EnvironmentTier } from "@/types/proto/v1/environment_service";
 import { useSQLEditorContext } from "../context";
 import BatchQueryDatabasesSelector from "./BatchQueryDatabasesSelector.vue";
@@ -112,6 +117,15 @@ import ReadonlyDatasourceHint from "./ReadonlyDatasourceHint.vue";
 const { currentTab, isDisconnected } = storeToRefs(useSQLEditorTabStore());
 const { showConnectionPanel } = useSQLEditorContext();
 const { projectContextReady } = storeToRefs(useSQLEditorStore());
+const hideReadonlyDatasourceHint = useAppFeature(
+  "bb.feature.sql-editor.hide-readonly-datasource-hint"
+);
+const hideEnvironments = useAppFeature(
+  "bb.feature.sql-editor.hide-environments"
+);
+const disallowBatchQuery = useAppFeature(
+  "bb.feature.sql-editor.disallow-batch-query"
+);
 
 const { instance, database, environment } =
   useConnectionOfCurrentSQLEditorTab();
@@ -128,6 +142,10 @@ const isProductionEnvironment = computed(() => {
 });
 
 const showBatchQuerySelector = computed(() => {
+  if (disallowBatchQuery.value) {
+    return false;
+  }
+
   const tab = currentTab.value;
   return (
     tab &&

@@ -13,7 +13,7 @@ import {
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import { composePlan } from "@/store/modules/v1/plan";
 import type { ComposedProject } from "@/types";
-import { UNKNOWN_ID } from "@/types";
+import { isValidProjectName, UNKNOWN_ID } from "@/types";
 import { DatabaseConfig } from "@/types/proto/v1/database_service";
 import {
   Plan,
@@ -62,7 +62,7 @@ export const createPlanSkeleton = async (
   );
   const databaseIdList = (query.databaseList ?? "").split(",");
   const databaseUIDList = await prepareDatabaseUIDList(databaseIdList);
-  await prepareDatabaseList(databaseUIDList, project.uid);
+  await prepareDatabaseList(databaseUIDList, project.name);
 
   const params: CreatePlanParams = {
     databaseUIDList,
@@ -183,24 +183,6 @@ export const buildStepsForDatabaseGroup = async (
     extractSheetUID(sheet.name)
   );
   const step = Plan_Step.fromJSON({
-    specs: [spec],
-  });
-  return [step];
-};
-
-export const buildStepsViaDeploymentConfig = async (
-  params: CreatePlanParams,
-  sheetUID: string
-) => {
-  const { project } = params;
-  const spec = await buildSpecForTarget(
-    `${project.name}/deploymentConfigs/default`,
-    params,
-    sheetUID
-  );
-  maybeSetInitialSQLForSpec(spec, "", params);
-  maybeSetInitialDatabaseConfigForSpec(spec, params);
-  const step = Plan_Step.fromPartial({
     specs: [spec],
   });
   return [step];
@@ -428,16 +410,16 @@ const hasInitialSQL = (initialSQL?: InitialSQL) => {
 
 export const prepareDatabaseList = async (
   databaseUIDList: string[],
-  projectUID: string
+  projectName: string
 ) => {
   const databaseStore = useDatabaseV1Store();
-  if (projectUID && projectUID !== String(UNKNOWN_ID)) {
+  if (isValidProjectName(projectName)) {
     // For preparing the database if user visits creating plan url directly.
     // It's horrible to fetchDatabaseByUID one-by-one when query.databaseList
     // is big (100+ sometimes)
     // So we are fetching databaseList by project since that's better cached.
     const project =
-      await useProjectV1Store().getOrFetchProjectByUID(projectUID);
+      await useProjectV1Store().getOrFetchProjectByName(projectName);
     await prepareDatabaseListByProject(project.name);
   } else {
     // Otherwise, we don't have the projectUID (very rare to see, theoretically)
@@ -455,10 +437,7 @@ export const prepareDatabaseList = async (
 };
 
 const prepareDatabaseListByProject = async (project: string) => {
-  const filters = [`instance = "instances/-"`, `project = "${project}"`];
-  await useDatabaseV1Store().searchDatabases({
-    filter: filters.join(" && "),
-  });
+  await useDatabaseV1Store().listDatabases(project);
 };
 
 export const isValidSpec = (spec: Plan_Spec): boolean => {

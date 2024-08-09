@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
 	"github.com/bytebase/bytebase/backend/component/sheet"
 	"github.com/bytebase/bytebase/backend/plugin/advisor/catalog"
@@ -480,7 +480,7 @@ type SQLReviewCheckContext struct {
 	Catalog               catalogInterface
 	Driver                *sql.DB
 	Context               context.Context
-	PreUpdateBackupDetail *storepb.PlanCheckRunConfig_PreUpdateBackupDetail
+	PreUpdateBackupDetail *storepb.PreUpdateBackupDetail
 
 	// Snowflake specific fields
 	CurrentDatabase string
@@ -493,19 +493,20 @@ func SQLReviewCheck(
 	ruleList []*storepb.SQLReviewRule,
 	checkContext SQLReviewCheckContext,
 ) ([]*storepb.Advice, error) {
-	ast, result := sm.GetAST(checkContext.DbType, statements)
-	if ast == nil || len(ruleList) == 0 {
-		return result, nil
+	asts, parseResult := sm.GetASTsForChecks(checkContext.DbType, statements)
+	if asts == nil || len(ruleList) == 0 {
+		return parseResult, nil
 	}
 
 	finder := checkContext.Catalog.GetFinder()
 	switch checkContext.DbType {
 	case storepb.Engine_TIDB, storepb.Engine_MYSQL, storepb.Engine_MARIADB, storepb.Engine_POSTGRES, storepb.Engine_OCEANBASE:
-		if err := finder.WalkThrough(ast); err != nil {
+		if err := finder.WalkThrough(asts); err != nil {
 			return convertWalkThroughErrorToAdvice(checkContext, err)
 		}
 	}
 
+	var errorAdvices, warningAdvices []*storepb.Advice
 	for _, rule := range ruleList {
 		if rule.Engine != storepb.Engine_ENGINE_UNSPECIFIED && rule.Engine != checkContext.DbType {
 			continue
@@ -536,7 +537,7 @@ func SQLReviewCheck(
 				DBSchema:              checkContext.DBSchema,
 				ChangeType:            checkContext.ChangeType,
 				PreUpdateBackupDetail: checkContext.PreUpdateBackupDetail,
-				AST:                   ast,
+				AST:                   asts,
 				Statements:            statements,
 				Rule:                  rule,
 				Catalog:               finder,
@@ -550,26 +551,29 @@ func SQLReviewCheck(
 			return nil, errors.Wrap(err, "failed to check statement")
 		}
 
-		result = append(result, adviceList...)
+		for _, advice := range adviceList {
+			switch advice.Status {
+			case storepb.Advice_ERROR:
+				if len(errorAdvices) < common.MaximumAdvicePerStatus {
+					errorAdvices = append(errorAdvices, advice)
+				}
+			case storepb.Advice_WARNING:
+				if len(warningAdvices) < common.MaximumAdvicePerStatus {
+					warningAdvices = append(warningAdvices, advice)
+				}
+			default:
+			}
+		}
+		// Skip remaining rules if we have enough error and warning advices.
+		if len(errorAdvices) >= common.MaximumAdvicePerStatus && len(warningAdvices) >= common.MaximumAdvicePerStatus {
+			break
+		}
 	}
 
-	// There may be multiple syntax errors, return one only.
-	if len(result) > 0 && result[0].Title == SyntaxErrorTitle {
-		return result[:1], nil
-	}
-	sort.SliceStable(result, func(i, j int) bool {
-		// Error is 2, warning is 1. So the error (value 2) should come first.
-		return result[i].Status.Number() > result[j].Status.Number()
-	})
-	if len(result) == 0 {
-		result = append(result, &storepb.Advice{
-			Status:  storepb.Advice_SUCCESS,
-			Code:    Ok.Int32(),
-			Title:   "OK",
-			Content: "",
-		})
-	}
-	return result, nil
+	var advices []*storepb.Advice
+	advices = append(advices, errorAdvices...)
+	advices = append(advices, warningAdvices...)
+	return advices, nil
 }
 
 func convertWalkThroughErrorToAdvice(checkContext SQLReviewCheckContext, err error) ([]*storepb.Advice, error) {
@@ -1266,6 +1270,10 @@ func getAdvisorTypeByRule(ruleType SQLReviewRuleType, engine storepb.Engine) (Ty
 			return MySQLStatementDisallowMixDDLDML, nil
 		case storepb.Engine_POSTGRES:
 			return PostgreSQLStatementDisallowMixDDLDML, nil
+		case storepb.Engine_ORACLE, storepb.Engine_DM, storepb.Engine_OCEANBASE_ORACLE:
+			return OracleStatementDisallowMixDDLDML, nil
+		case storepb.Engine_MSSQL:
+			return MSSQLStatementDisallowMixDDLDML, nil
 		}
 	case SchemaRuleStatementPriorBackupCheck:
 		switch engine {

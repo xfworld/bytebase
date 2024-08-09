@@ -242,14 +242,18 @@
 import { useTitle } from "@vueuse/core";
 import { cloneDeep, head, isEmpty, isEqual } from "lodash-es";
 import type { DropdownOption } from "naive-ui";
-import { NButton, NInput, NDropdown } from "naive-ui";
+import { NButton, NInput, NDropdown, NTag } from "naive-ui";
 import { nextTick, computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import EmailInput from "@/components/EmailInput.vue";
+import { FeatureModal } from "@/components/FeatureGuard";
+import FeatureBadge from "@/components/FeatureGuard/FeatureBadge.vue";
 import LearnMoreLink from "@/components/LearnMoreLink.vue";
 import RegenerateRecoveryCodesView from "@/components/RegenerateRecoveryCodesView.vue";
+import { ActionConfirmModal } from "@/components/SchemaEditorLite";
 import UserAvatar from "@/components/User/UserAvatar.vue";
+import ServiceAccountTag from "@/components/misc/ServiceAccountTag.vue";
 import { WORKSPACE_ROUTE_USER_PROFILE } from "@/router/dashboard/workspaceRoutes";
 import { SETTING_ROUTE_PROFILE_TWO_FACTOR } from "@/router/dashboard/workspaceSetting";
 import {
@@ -265,14 +269,14 @@ import {
   unknownUser,
   SYSTEM_BOT_USER_NAME,
   ALL_USERS_USER_EMAIL,
+  type ComposedUser,
 } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
 import { UpdateUserRequest, UserType } from "@/types/proto/v1/auth_service";
 import { displayRoleTitle, hasWorkspacePermissionV2, sortRoles } from "@/utils";
 
 interface LocalState {
   editing: boolean;
-  editingUser?: User;
+  editingUser?: ComposedUser;
   passwordConfirm: string;
   showFeatureModal: boolean;
   showDisable2FAConfirmModal: boolean;
@@ -379,7 +383,10 @@ onMounted(async () => {
   }
 });
 
-const updateUser = <K extends keyof User>(field: K, value: User[K]) => {
+const updateUser = <K extends keyof ComposedUser>(
+  field: K,
+  value: ComposedUser[K]
+) => {
   if (!state.editingUser) return;
 
   state.editingUser[field] = value;

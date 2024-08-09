@@ -13,7 +13,6 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
@@ -72,10 +71,6 @@ func NewIssueService(
 
 // GetIssue gets a issue.
 func (s *IssueService) GetIssue(ctx context.Context, request *v1pb.GetIssueRequest) (*v1pb.Issue, error) {
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
 	issue, err := s.getIssueMessage(ctx, request.Name)
 	if err != nil {
 		return nil, err
@@ -111,10 +106,6 @@ func (s *IssueService) GetIssue(ctx context.Context, request *v1pb.GetIssueReque
 		}
 	}
 
-	if err := s.canUserGetIssue(ctx, issue, user); err != nil {
-		return nil, err
-	}
-
 	issueV1, err := convertToIssue(ctx, s.store, issue)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to convert to issue, error: %v", err)
@@ -122,35 +113,10 @@ func (s *IssueService) GetIssue(ctx context.Context, request *v1pb.GetIssueReque
 	return issueV1, nil
 }
 
-func (s *IssueService) canUserGetIssue(ctx context.Context, issue *store.IssueMessage, user *store.UserMessage) error {
-	// allow creator to get issue.
-	if issue.Creator.ID == user.ID {
-		return nil
-	}
-	needPermissions := []iam.Permission{iam.PermissionIssuesGet}
-	if issue.Type == api.IssueDatabaseGeneral || issue.Type == api.IssueDatabaseDataExport {
-		needPermissions = append(needPermissions, iam.PermissionPlansGet)
-	}
-	for _, p := range needPermissions {
-		ok, err := s.iamManager.CheckPermission(ctx, p, user, issue.Project.ResourceID)
-		if err != nil {
-			return status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-		}
-		if !ok {
-			return status.Errorf(codes.PermissionDenied, "permission denied to get issue, user does not have permission %q", p)
-		}
-	}
-	return nil
-}
-
-func (s *IssueService) getIssueFind(ctx context.Context, permissionFilter *store.FindIssueMessagePermissionFilter, projectID string, filter string, query string, limit, offset *int) (*store.FindIssueMessage, error) {
+func (s *IssueService) getIssueFind(ctx context.Context, filter string, query string, limit, offset *int) (*store.FindIssueMessage, error) {
 	issueFind := &store.FindIssueMessage{
-		PermissionFilter: permissionFilter,
-		Limit:            limit,
-		Offset:           offset,
-	}
-	if projectID != "-" {
-		issueFind.ProjectID = &projectID
+		Limit:  limit,
+		Offset: offset,
 	}
 	if query != "" {
 		issueFind.Query = &query
@@ -170,15 +136,6 @@ func (s *IssueService) getIssueFind(ctx context.Context, permissionFilter *store
 				return nil, err
 			}
 			issueFind.CreatorID = &user.ID
-		case "assignee":
-			if spec.operator != comparatorTypeEqual {
-				return nil, status.Errorf(codes.InvalidArgument, `only support "=" operation for "assignee" filter`)
-			}
-			user, err := s.getUserByIdentifier(ctx, spec.value)
-			if err != nil {
-				return nil, err
-			}
-			issueFind.AssigneeID = &user.ID
 		case "subscriber":
 			if spec.operator != comparatorTypeEqual {
 				return nil, status.Errorf(codes.InvalidArgument, `only support "=" operation for "subscriber" filter`)
@@ -310,20 +267,9 @@ func (s *IssueService) ListIssues(ctx context.Context, request *v1pb.ListIssuesR
 		return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("page size must be non-negative: %d", request.PageSize))
 	}
 
-	requestProjectID, err := common.GetProjectID(request.Parent)
+	projectID, err := common.GetProjectID(request.Parent)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	permissionFilter, err := func() (*store.FindIssueMessagePermissionFilter, error) {
-		return getIssuePermissionFilter(ctx, s.store, user, s.iamManager, iam.PermissionIssuesList)
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get project ids and issue types filter, error: %v", err)
 	}
 
 	limit, offset, err := parseLimitAndOffset(request.PageToken, int(request.PageSize))
@@ -332,10 +278,11 @@ func (s *IssueService) ListIssues(ctx context.Context, request *v1pb.ListIssuesR
 	}
 	limitPlusOne := limit + 1
 
-	issueFind, err := s.getIssueFind(ctx, permissionFilter, requestProjectID, request.Filter, request.Query, &limitPlusOne, &offset)
+	issueFind, err := s.getIssueFind(ctx, request.Filter, request.Query, &limitPlusOne, &offset)
 	if err != nil {
 		return nil, err
 	}
+	issueFind.ProjectID = &projectID
 
 	issues, err := s.store.ListIssueV2(ctx, issueFind)
 	if err != nil {
@@ -367,19 +314,9 @@ func (s *IssueService) SearchIssues(ctx context.Context, request *v1pb.SearchIss
 		return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("page size must be non-negative: %d", request.PageSize))
 	}
 
-	requestProjectID, err := common.GetProjectID(request.Parent)
+	projectID, err := common.GetProjectID(request.Parent)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-
-	permissionFilter, err := getIssuePermissionFilter(ctx, s.store, user, s.iamManager, iam.PermissionIssuesList)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get project ids and issue types filter, error: %v", err)
 	}
 
 	limit, offset, err := parseLimitAndOffset(request.PageToken, int(request.PageSize))
@@ -388,10 +325,22 @@ func (s *IssueService) SearchIssues(ctx context.Context, request *v1pb.SearchIss
 	}
 	limitPlusOne := limit + 1
 
-	issueFind, err := s.getIssueFind(ctx, permissionFilter, requestProjectID, request.Filter, request.Query, &limitPlusOne, &offset)
+	issueFind, err := s.getIssueFind(ctx, request.Filter, request.Query, &limitPlusOne, &offset)
 	if err != nil {
 		return nil, err
 	}
+	if projectID != "-" {
+		issueFind.ProjectID = &projectID
+	}
+	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "user not found")
+	}
+	projectIDsFilter, err := getProjectIDsSearchFilter(ctx, user, iam.PermissionIssuesGet, s.iamManager, s.store)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get projectIDs, error: %v", err)
+	}
+	issueFind.ProjectIDs = projectIDsFilter
 
 	issues, err := s.store.ListIssueV2(ctx, issueFind)
 	if err != nil {
@@ -441,26 +390,6 @@ func (s *IssueService) getUserByIdentifier(ctx context.Context, identifier strin
 
 // CreateIssue creates a issue.
 func (s *IssueService) CreateIssue(ctx context.Context, request *v1pb.CreateIssueRequest) (*v1pb.Issue, error) {
-	projectID, err := common.GetProjectID(request.Parent)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, err.Error())
-	}
-	_, loopback := ctx.Value(common.LoopbackContextKey).(bool)
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	if !loopback {
-		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionIssuesCreate, user, projectID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-		}
-		if !ok {
-			return nil, status.Errorf(codes.PermissionDenied, "permission denied to create issue")
-		}
-	}
-
 	switch request.Issue.Type {
 	case v1pb.Issue_TYPE_UNSPECIFIED:
 		return nil, status.Errorf(codes.InvalidArgument, "issue type is required")
@@ -499,7 +428,7 @@ func (s *IssueService) createIssueDatabaseChange(ctx context.Context, request *v
 	}
 
 	var planUID *int64
-	planID, err := common.GetPlanID(request.Issue.Plan)
+	_, planID, err := common.GetProjectIDPlanID(request.Issue.Plan)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -527,22 +456,6 @@ func (s *IssueService) createIssueDatabaseChange(ctx context.Context, request *v
 		rolloutUID = &pipeline.ID
 	}
 
-	var issueAssignee *store.UserMessage
-	if request.Issue.Assignee != "" {
-		assigneeEmail, err := common.GetUserEmail(request.Issue.Assignee)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
-		}
-		assignee, err := s.store.GetUserByEmail(ctx, assigneeEmail)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get user by email %q, error: %v", assigneeEmail, err)
-		}
-		if assignee == nil {
-			return nil, status.Errorf(codes.NotFound, "assignee not found for email: %q", assigneeEmail)
-		}
-		issueAssignee = assignee
-	}
-
 	issueCreateMessage := &store.IssueMessage{
 		Project:     project,
 		PlanUID:     planUID,
@@ -551,7 +464,6 @@ func (s *IssueService) createIssueDatabaseChange(ctx context.Context, request *v
 		Status:      api.IssueOpen,
 		Type:        api.IssueDatabaseGeneral,
 		Description: request.Issue.Description,
-		Assignee:    issueAssignee,
 	}
 
 	issueCreateMessage.Payload = &storepb.IssuePayload{
@@ -629,7 +541,6 @@ func (s *IssueService) createIssueGrantRequest(ctx context.Context, request *v1p
 		Status:      api.IssueOpen,
 		Type:        api.IssueGrantRequest,
 		Description: request.Issue.Description,
-		Assignee:    nil,
 	}
 
 	convertedGrantRequest, err := convertGrantRequest(ctx, s.store, request.Issue.GrantRequest)
@@ -701,7 +612,7 @@ func (s *IssueService) createIssueDatabaseDataExport(ctx context.Context, reques
 	}
 
 	var planUID *int64
-	planID, err := common.GetPlanID(request.Issue.Plan)
+	_, planID, err := common.GetProjectIDPlanID(request.Issue.Plan)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -729,22 +640,6 @@ func (s *IssueService) createIssueDatabaseDataExport(ctx context.Context, reques
 		rolloutUID = &pipeline.ID
 	}
 
-	var issueAssignee *store.UserMessage
-	if request.Issue.Assignee != "" {
-		assigneeEmail, err := common.GetUserEmail(request.Issue.Assignee)
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
-		}
-		assignee, err := s.store.GetUserByEmail(ctx, assigneeEmail)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get user by email %q, error: %v", assigneeEmail, err)
-		}
-		if assignee == nil {
-			return nil, status.Errorf(codes.NotFound, "assignee not found for email: %q", assigneeEmail)
-		}
-		issueAssignee = assignee
-	}
-
 	issueCreateMessage := &store.IssueMessage{
 		Project:     project,
 		PlanUID:     planUID,
@@ -753,7 +648,6 @@ func (s *IssueService) createIssueDatabaseDataExport(ctx context.Context, reques
 		Status:      api.IssueOpen,
 		Type:        api.IssueDatabaseDataExport,
 		Description: request.Issue.Description,
-		Assignee:    issueAssignee,
 	}
 
 	issueCreateMessage.Payload = &storepb.IssuePayload{
@@ -838,7 +732,12 @@ func (s *IssueService) ApproveIssue(ctx context.Context, request *v1pb.ApproveIs
 		return nil, status.Errorf(codes.Internal, "failed to get project policy, error: %v", err)
 	}
 
-	canApprove, err := isUserReviewer(ctx, s.store, step, user, policy)
+	workspacePolicy, err := s.store.GetWorkspaceIamPolicy(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get workspace policy, error: %v", err)
+	}
+
+	canApprove, err := isUserReviewer(ctx, s.store, step, user, policy.Policy, workspacePolicy.Policy)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to check if principal can approve step, error: %v", err)
 	}
@@ -976,6 +875,7 @@ func (s *IssueService) ApproveIssue(ctx context.Context, request *v1pb.ApproveIs
 		}
 	}()
 
+	// If the issue is a grant request and approved, we will always auto close it.
 	if issue.Type == api.IssueGrantRequest {
 		if err := func() error {
 			payload := issue.Payload
@@ -1052,7 +952,12 @@ func (s *IssueService) RejectIssue(ctx context.Context, request *v1pb.RejectIssu
 		return nil, status.Errorf(codes.Internal, "failed to get project policy, error: %v", err)
 	}
 
-	canApprove, err := isUserReviewer(ctx, s.store, step, user, policy)
+	workspacePolicy, err := s.store.GetWorkspaceIamPolicy(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get workspace policy, error: %v", err)
+	}
+
+	canApprove, err := isUserReviewer(ctx, s.store, step, user, policy.Policy, workspacePolicy.Policy)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to check if principal can reject step, error: %v", err)
 	}
@@ -1331,43 +1236,19 @@ func (s *IssueService) UpdateIssue(ctx context.Context, request *v1pb.UpdateIssu
 				}
 				patch.PayloadUpsert.Labels = request.Issue.Labels
 			}
-		}
-	}
 
-	ok, err = func() (bool, error) {
-		if issue.Creator.ID == user.ID {
-			return true, nil
+			issueCommentCreates = append(issueCommentCreates, &store.IssueCommentMessage{
+				IssueUID: issue.UID,
+				Payload: &storepb.IssueCommentPayload{
+					Event: &storepb.IssueCommentPayload_IssueUpdate_{
+						IssueUpdate: &storepb.IssueCommentPayload_IssueUpdate{
+							FromLabels: issue.Payload.Labels,
+							ToLabels:   request.Issue.Labels,
+						},
+					},
+				},
+			})
 		}
-		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionIssuesUpdate, user, issue.Project.ResourceID)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			return true, nil
-		}
-
-		allowedUpdateMask, err := fieldmaskpb.New(request.Issue, "subscribers")
-		if err != nil {
-			return false, errors.Wrapf(err, "failed to new updateMask")
-		}
-		if issue.Assignee.ID == user.ID {
-			if err := allowedUpdateMask.Append(request.Issue, "assignee"); err != nil {
-				return false, errors.Wrapf(err, "failed to append update mask")
-			}
-		}
-
-		allowedUpdateMask.Normalize()
-		// request.UpdateMask is in allowedUpdateMask.
-		if len(fieldmaskpb.Union(request.UpdateMask, allowedUpdateMask).GetPaths()) <= len(allowedUpdateMask.GetPaths()) {
-			return true, nil
-		}
-		return false, nil
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied, user does not have permission %q", iam.PermissionIssuesUpdate)
 	}
 
 	issue, err = s.store.UpdateIssueV2(ctx, issue.UID, patch, user.ID)
@@ -1426,20 +1307,6 @@ func (s *IssueService) BatchUpdateIssuesStatus(ctx context.Context, request *v1p
 				return nil, status.Errorf(codes.FailedPrecondition, "cannot update status because there are running/pending task runs for issue %q", issueName)
 			}
 		}
-
-		// Check if current user has permission to update the issue status.
-		ok, err := func() (bool, error) {
-			if issue.Creator.ID == user.ID {
-				return true, nil
-			}
-			return s.iamManager.CheckPermission(ctx, iam.PermissionIssuesUpdate, user, issue.Project.ResourceID)
-		}()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to check if the user can update issue status, error: %v", err)
-		}
-		if !ok {
-			return nil, status.Errorf(codes.PermissionDenied, "permission denied, user does not have permission %q for issue %q", iam.PermissionIssuesUpdate, issueName)
-		}
 	}
 
 	if len(issueIDs) == 0 {
@@ -1479,6 +1346,7 @@ func (s *IssueService) BatchUpdateIssuesStatus(ctx context.Context, request *v1p
 				if _, err := s.store.CreateIssueComment(ctx, &store.IssueCommentMessage{
 					IssueUID: issue.UID,
 					Payload: &storepb.IssueCommentPayload{
+						Comment: request.Reason,
 						Event: &storepb.IssueCommentPayload_IssueUpdate_{
 							IssueUpdate: &storepb.IssueCommentPayload_IssueUpdate{
 								FromStatus: convertToIssueCommentPayloadIssueUpdateIssueStatus(&fromStatus),
@@ -1511,13 +1379,6 @@ func (s *IssueService) ListIssueComments(ctx context.Context, request *v1pb.List
 	issue, err := s.store.GetIssueV2(ctx, &store.FindIssueMessage{UID: &issueUID})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get issue, err: %v", err)
-	}
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	if err := s.canUserGetIssue(ctx, issue, user); err != nil {
-		return nil, err
 	}
 
 	limit, offset, err := parseLimitAndOffset(request.PageToken, int(request.PageSize))
@@ -1565,19 +1426,6 @@ func (s *IssueService) CreateIssueComment(ctx context.Context, request *v1pb.Cre
 		return nil, err
 	}
 
-	ok, err = func() (bool, error) {
-		if issue.Creator.ID == user.ID {
-			return true, nil
-		}
-		return s.iamManager.CheckPermission(ctx, iam.PermissionIssueCommentsCreate, user, issue.Project.ResourceID)
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied to create issue comment")
-	}
-
 	s.webhookManager.CreateEvent(ctx, &webhook.Event{
 		Actor:   user,
 		Type:    webhook.EventTypeIssueCommentCreate,
@@ -1596,6 +1444,23 @@ func (s *IssueService) CreateIssueComment(ctx context.Context, request *v1pb.Cre
 		return nil, status.Errorf(codes.Internal, "failed to create issue comment: %v", err)
 	}
 
+	// Add issue commenter to issue subscribers.
+	hasSubscriber := false
+	for _, subscriber := range issue.Subscribers {
+		if subscriber.ID == user.ID {
+			hasSubscriber = true
+			break
+		}
+	}
+	if !hasSubscriber {
+		issue.Subscribers = append(issue.Subscribers, user)
+		if _, err := s.store.UpdateIssueV2(ctx, issue.UID, &store.UpdateIssueMessage{
+			Subscribers: &issue.Subscribers,
+		}, user.ID); err != nil {
+			return nil, err
+		}
+	}
+
 	return convertToIssueComment(request.Parent, ic), nil
 }
 
@@ -1605,10 +1470,6 @@ func (s *IssueService) UpdateIssueComment(ctx context.Context, request *v1pb.Upd
 		return nil, status.Errorf(codes.InvalidArgument, "update_mask is required")
 	}
 
-	issue, err := s.getIssueMessage(ctx, request.Parent)
-	if err != nil {
-		return nil, err
-	}
 	issueCommentUID, err := strconv.Atoi(request.IssueComment.Uid)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid comment id %q: %v", request.IssueComment.Uid, err)
@@ -1625,20 +1486,6 @@ func (s *IssueService) UpdateIssueComment(ctx context.Context, request *v1pb.Upd
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
-
-	ok, err = func() (bool, error) {
-		if issueComment.Creator.ID == user.ID {
-			return true, nil
-		}
-		return s.iamManager.CheckPermission(ctx, iam.PermissionIssueCommentsUpdate, user, issue.Project.ResourceID)
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check if the user has the permission, error: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied, user does not have permission %q", iam.PermissionIssueCommentsUpdate)
-	}
-
 	update := &store.UpdateIssueCommentMessage{
 		UID:       issueCommentUID,
 		UpdaterID: user.ID,
@@ -1714,7 +1561,7 @@ func canRequestIssue(issueCreator *store.UserMessage, user *store.UserMessage) b
 	return issueCreator.ID == user.ID
 }
 
-func isUserReviewer(ctx context.Context, stores *store.Store, step *storepb.ApprovalStep, user *store.UserMessage, policy *storepb.ProjectIamPolicy) (bool, error) {
+func isUserReviewer(ctx context.Context, stores *store.Store, step *storepb.ApprovalStep, user *store.UserMessage, policies ...*storepb.IamPolicy) (bool, error) {
 	if len(step.Nodes) != 1 {
 		return false, errors.Errorf("expecting one node but got %v", len(step.Nodes))
 	}
@@ -1726,10 +1573,7 @@ func isUserReviewer(ctx context.Context, stores *store.Store, step *storepb.Appr
 		return false, errors.Errorf("expecting ANY_IN_GROUP node type but got %v", node.Type)
 	}
 
-	roles, err := utils.GetUserFormattedRolesMap(ctx, stores, user, policy)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to get user roles")
-	}
+	roles := utils.GetUserFormattedRolesMap(ctx, stores, user, policies...)
 
 	switch val := node.Payload.(type) {
 	case *storepb.ApprovalNode_GroupValue_:
@@ -1754,121 +1598,4 @@ func isUserReviewer(ctx context.Context, stores *store.Store, step *storepb.Appr
 	default:
 		return false, errors.Errorf("invalid node payload type")
 	}
-}
-
-// 1. if the user is the issue creator
-// 2. with bb.issues.get/list permission, users can see grant request type issues.
-// 3. with bb.issues.get/list and bb.plans.get/list permissions, users can see change database type issues.
-func getIssuePermissionFilter(ctx context.Context, s *store.Store, user *store.UserMessage, iamManager *iam.Manager, p iam.Permission) (*store.FindIssueMessagePermissionFilter, error) {
-	var planP iam.Permission
-	switch p {
-	case iam.PermissionIssuesList:
-		planP = iam.PermissionPlansList
-	case iam.PermissionIssuesGet:
-		planP = iam.PermissionPlansGet
-	default:
-		return nil, errors.Errorf("unexpected permission %q", p)
-	}
-
-	projects, err := s.ListProjectV2(ctx, &store.FindProjectMessage{})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list projects")
-	}
-	var allProjectIDs []string
-	for _, project := range projects {
-		allProjectIDs = append(allProjectIDs, project.ResourceID)
-	}
-
-	issueProjectIDs, err := getProjectIDsWithPermission(ctx, s, user, iamManager, p)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get project ids with permission %q", p)
-	}
-	planProjectIDs, err := getProjectIDsWithPermission(ctx, s, user, iamManager, planP)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get project ids with permission %q", p)
-	}
-
-	// no filter, the user can see all.
-	if issueProjectIDs == nil && planProjectIDs == nil {
-		return nil, nil
-	}
-
-	intersectProjectIDs := func(array1 *[]string, array2 *[]string) *[]string {
-		if array1 == nil && array2 == nil {
-			return nil
-		}
-		if array1 == nil {
-			return array2
-		}
-		if array2 == nil {
-			return array1
-		}
-		res := intersect(*array1, *array2)
-		return &res
-	}
-
-	allowGrantRequest := issueProjectIDs
-	allowChangeDatabase := intersectProjectIDs(issueProjectIDs, planProjectIDs)
-	if allowGrantRequest == nil {
-		allowGrantRequest = &allProjectIDs
-	}
-	if allowChangeDatabase == nil {
-		allowChangeDatabase = &allProjectIDs
-	}
-
-	res := &store.FindIssueMessagePermissionFilter{
-		CreatorUID: user.ID,
-	}
-	for _, id := range *allowGrantRequest {
-		res.ProjectIDs = append(res.ProjectIDs, id)
-		res.IssueTypes = append(res.IssueTypes, api.IssueGrantRequest.String())
-	}
-	for _, id := range *allowChangeDatabase {
-		res.ProjectIDs = append(res.ProjectIDs, id)
-		res.IssueTypes = append(res.IssueTypes, api.IssueDatabaseGeneral.String())
-	}
-	return res, nil
-}
-
-func getProjectIDsWithPermission(ctx context.Context, s *store.Store, user *store.UserMessage, iamManager *iam.Manager, p iam.Permission) (*[]string, error) {
-	ok, err := iamManager.CheckPermission(ctx, p, user)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to check permission %q", p)
-	}
-	if ok {
-		return nil, nil
-	}
-	projects, err := s.ListProjectV2(ctx, &store.FindProjectMessage{})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list projects")
-	}
-
-	projectIDs := []string{}
-	for _, project := range projects {
-		ok, err := iamManager.CheckPermission(ctx, p, user, project.ResourceID)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to check permission %q", p)
-		}
-		if ok {
-			projectIDs = append(projectIDs, project.ResourceID)
-		}
-	}
-	return &projectIDs, nil
-}
-
-func intersect[T comparable](array1 []T, array2 []T) []T {
-	res := []T{}
-	seen := map[T]struct{}{}
-
-	for _, e := range array1 {
-		seen[e] = struct{}{}
-	}
-
-	for _, elem := range array2 {
-		if _, ok := seen[elem]; ok {
-			res = append(res, elem)
-		}
-	}
-
-	return res
 }

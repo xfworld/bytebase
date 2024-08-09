@@ -303,12 +303,18 @@ func (p *Provider) ListPullRequestFile(ctx context.Context, repositoryID, pullRe
 		return fields[0]
 	}
 
+	prURL := fmt.Sprintf("%s/%s/pull-requests/%s", p.instanceURL, repositoryID, pullRequestID)
 	var files []*vcs.PullRequestFile
 	for _, d := range bbcDiffs {
 		file := &vcs.PullRequestFile{
 			Path:         d.New.Path,
 			LastCommitID: extractCommitIDFromLinkSelf(d.New.Links.Self.Href),
 			IsDeleted:    d.Status == "removed",
+			// Web URL for file in PR:
+			// {PR web URL}/diff#chg-{file path}
+			// Web URL for file with a specific line in PR:
+			// {PR web URL}/diff#L{file path}T{line}
+			WebURL: fmt.Sprintf("%s/diff#L%s", prURL, d.New.Path),
 		}
 		files = append(files, file)
 	}
@@ -316,6 +322,7 @@ func (p *Provider) ListPullRequestFile(ctx context.Context, repositoryID, pullRe
 }
 
 type Comment struct {
+	ID      int64          `json:"id,omitempty"`
 	Content CommentContent `json:"content"`
 }
 
@@ -324,6 +331,8 @@ type CommentContent struct {
 }
 
 // CreatePullRequestComment creates a pull request comment.
+//
+// Docs: https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/#api-repositories-workspace-repo-slug-pullrequests-pull-request-id-comments-post
 func (p *Provider) CreatePullRequestComment(ctx context.Context, repositoryID, pullRequestID, comment string) error {
 	commentMessage := Comment{Content: CommentContent{Raw: comment}}
 	commentCreatePayload, err := json.Marshal(commentMessage)
@@ -340,7 +349,8 @@ func (p *Provider) CreatePullRequestComment(ctx context.Context, repositoryID, p
 		return common.Errorf(common.NotFound, "failed to create pull request comment through URL %s", url)
 	}
 
-	// GitHub returns 201 HTTP status codes upon successful issue comment creation,
+	// Bitbucket returns 201 HTTP status codes upon successful issue comment creation
+	// https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/#api-repositories-workspace-repo-slug-pullrequests-pull-request-id-comments-post-response
 	if code != http.StatusCreated {
 		return errors.Errorf("failed to create pull request comment through URL %s, status code: %d, body: %s",
 			url,
@@ -348,6 +358,76 @@ func (p *Provider) CreatePullRequestComment(ctx context.Context, repositoryID, p
 			body,
 		)
 	}
+	return nil
+}
+
+// ListPullRequestComments lists comments in a pull request.
+//
+// Docs: https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/#api-repositories-workspace-repo-slug-pullrequests-pull-request-id-comments-get
+func (p *Provider) ListPullRequestComments(ctx context.Context, repositoryID, pullRequestID string) ([]*vcs.PullRequestComment, error) {
+	url := fmt.Sprintf("%s/repositories/%s/pullrequests/%s/comments", p.APIURL(p.instanceURL), repositoryID, pullRequestID)
+	code, body, err := internal.Get(ctx, url, p.getAuthorization())
+	if err != nil {
+		return nil, errors.Wrapf(err, "GET %s", url)
+	}
+
+	if code == http.StatusNotFound {
+		return nil, common.Errorf(common.NotFound, "failed to list pull request comments through URL %s", url)
+	} else if code >= 300 {
+		return nil, errors.Errorf("failed to list pull request comments from URL %s, status code: %d, body: %s",
+			url,
+			code,
+			body,
+		)
+	}
+
+	var resp struct {
+		Values []*Comment `json:"values"`
+	}
+
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return nil, errors.Wrap(err, "unmarshal")
+	}
+
+	var res []*vcs.PullRequestComment
+
+	for _, v := range resp.Values {
+		res = append(res,
+			&vcs.PullRequestComment{
+				ID:      fmt.Sprintf("%d", v.ID),
+				Content: v.Content.Raw,
+			},
+		)
+	}
+	return res, nil
+}
+
+// UpdatePullRequestComment updates a comment in a pull request.
+//
+// Docs: https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/#api-repositories-workspace-repo-slug-pullrequests-pull-request-id-comments-comment-id-put
+func (p *Provider) UpdatePullRequestComment(ctx context.Context, repositoryID, pullRequestID string, comment *vcs.PullRequestComment) error {
+	commentMessage := Comment{Content: CommentContent{Raw: comment.Content}}
+	commentCreatePayload, err := json.Marshal(commentMessage)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal request body for updating pull request comment")
+	}
+
+	url := fmt.Sprintf("%s/repositories/%s/pullrequests/%s/comments/%s", p.APIURL(p.instanceURL), repositoryID, pullRequestID, comment.ID)
+	code, body, err := internal.Put(ctx, url, p.getAuthorization(), commentCreatePayload)
+	if err != nil {
+		return errors.Wrapf(err, "PUT %s", url)
+	}
+
+	if code == http.StatusNotFound {
+		return common.Errorf(common.NotFound, "cannot found pull request comment through URL %s", url)
+	} else if code >= 300 {
+		return errors.Errorf("failed to update pull request comment through URL %s, status code: %d, body: %s",
+			url,
+			code,
+			body,
+		)
+	}
+
 	return nil
 }
 
@@ -400,10 +480,17 @@ type WebhookPushEvent struct {
 // WebhookCreateOrUpdate represents a Bitbucket API request for creating or
 // updating a webhook.
 type WebhookCreateOrUpdate struct {
-	Description string   `json:"description"`
-	URL         string   `json:"url"`
-	Active      bool     `json:"active"`
-	Events      []string `json:"events"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	Active      bool   `json:"active"`
+	// Docs for pr events: https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/#Pull-request-events
+	// - pullrequest:created: A user creates a pull request for a repository.
+	// - pullrequest:updated: A user updates a pull request for a repository.
+	// - pullrequest:changes_request_created: A user requests a change for a pull request for a repository.
+	// - pullrequest:fulfilled: A user merges a pull request for a repository.
+	// - pullrequest:comment_created: A user comments on a pull request.
+	// - pullrequest:comment_updated: A user updates a comment on a pull request.
+	Events []string `json:"events"`
 }
 
 // Webhook represents a Bitbucket Cloud API response for the webhook

@@ -1,9 +1,5 @@
 package api
 
-import (
-	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
-)
-
 // SettingName is the name of a setting.
 type SettingName string
 
@@ -44,16 +40,6 @@ const (
 	SettingSemanticTypes SettingName = "bb.workspace.semantic-types"
 	// SettingMaskingAlgorithms is the setting name for masking algorithms.
 	SettingMaskingAlgorithm SettingName = "bb.workspace.masking-algorithm"
+	// SettingSQLResultSizeLimit is the setting name for SQL query result size limit.
+	SettingSQLResultSizeLimit SettingName = "bb.workspace.maximum-sql-result-size"
 )
-
-// SettingWorkspaceMailDeliveryValue is the setting value of SettingMailDelivery type setting.
-type SettingWorkspaceMailDeliveryValue struct {
-	SMTPServerHost         string                                         `json:"smtpServerHost"`
-	SMTPServerPort         int                                            `json:"smtpServerPort"`
-	SMTPUsername           string                                         `json:"smtpUsername"`
-	SMTPPassword           *string                                        `json:"smtpPassword"`
-	SMTPFrom               string                                         `json:"smtpFrom"`
-	SMTPAuthenticationType storepb.SMTPMailDeliverySetting_Authentication `json:"smtpAuthenticationType"`
-	SMTPEncryptionType     storepb.SMTPMailDeliverySetting_Encryption     `json:"smtpEncryptionType"`
-	SMTPTo                 string                                         `json:"sendTo"`
-}

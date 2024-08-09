@@ -34,31 +34,34 @@ import {
   SQL_EDITOR_PROJECT_MODULE,
 } from "@/router/sqlEditor";
 import {
-  useInstanceV1Store,
+  usePolicyV1Store,
   useProjectV1Store,
   useCurrentUserV1,
   useDatabaseV1Store,
   useSQLEditorStore,
   useSQLEditorTabStore,
   useWorkSheetStore,
-  useUserGroupStore,
+  useGroupStore,
   pushNotification,
   useFilterStore,
+  useAppFeature,
+  useProjectV1List,
 } from "@/store";
 import type { SQLEditorConnection } from "@/types";
 import {
-  DEFAULT_PROJECT_V1_NAME,
+  DEFAULT_PROJECT_NAME,
   DEFAULT_SQL_EDITOR_TAB_MODE,
   UNKNOWN_ID,
   UNKNOWN_USER_NAME,
+  isValidInstanceName,
 } from "@/types";
 import { State } from "@/types/proto/v1/common";
+import { PolicyResourceType } from "@/types/proto/v1/org_policy_service";
 import {
   emptySQLEditorConnection,
   extractProjectResourceName,
   getSheetStatement,
   hasProjectPermissionV2,
-  idFromSlug,
   isDatabaseV1Queryable,
   isWorksheetReadableV1,
   projectNameFromSheetSlug,
@@ -66,6 +69,7 @@ import {
   worksheetNameFromSlug,
   extractWorksheetUID,
   extractInstanceResourceName,
+  wrapRefAsPromise,
 } from "@/utils";
 import {
   extractWorksheetConnection,
@@ -82,11 +86,11 @@ const router = useRouter();
 const me = useCurrentUserV1();
 const projectStore = useProjectV1Store();
 const databaseStore = useDatabaseV1Store();
-const instanceStore = useInstanceV1Store();
 const editorStore = useSQLEditorStore();
 const worksheetStore = useWorkSheetStore();
 const tabStore = useSQLEditorTabStore();
-const groupStore = useUserGroupStore();
+const groupStore = useGroupStore();
+const policyStore = usePolicyV1Store();
 const { isFetching: isFetchingWorksheet } = useSheetContext();
 const { filter } = useFilterStore();
 const {
@@ -94,11 +98,12 @@ const {
   events: editorEvents,
   maybeSwitchProject,
 } = useSQLEditorContext();
+const hideProjects = useAppFeature("bb.feature.sql-editor.hide-projects");
 
 const initializeProjects = async () => {
   const initProject = async (project: string) => {
     try {
-      await projectStore.getOrFetchProjectByName(project, /* !silent */ false);
+      await projectStore.getOrFetchProjectByName(project);
       editorStore.project = project;
       return true;
     } catch {
@@ -121,23 +126,32 @@ const initializeProjects = async () => {
     await initProject(project);
   } else {
     // plain "/sql-editor"
-    const projectList = await projectStore.fetchProjectList(false);
-    const lastView = editorStore.storedLastViewedProject;
-    if (
-      lastView &&
-      projectList.findIndex((proj) => proj.name === lastView) >= 0
-    ) {
-      editorStore.project = lastView;
+
+    if (hideProjects.value) {
+      // Direct to Default Project
+      editorStore.project = DEFAULT_PROJECT_NAME;
+      editorStore.strictProject = false;
+      await initProject(DEFAULT_PROJECT_NAME);
     } else {
-      const projectListWithoutDefaultProject = projectList.filter(
-        (proj) => proj.name !== DEFAULT_PROJECT_V1_NAME
-      );
-      editorStore.project =
-        head(projectListWithoutDefaultProject)?.name ??
-        head(projectList)?.name ??
-        "";
+      const { projectList, ready } = useProjectV1List();
+      await wrapRefAsPromise(ready, true);
+      const lastView = editorStore.storedLastViewedProject;
+      if (
+        lastView &&
+        projectList.value.findIndex((proj) => proj.name === lastView) >= 0
+      ) {
+        editorStore.project = lastView;
+      } else {
+        const projectListWithoutDefaultProject = projectList.value.filter(
+          (proj) => proj.name !== DEFAULT_PROJECT_NAME
+        );
+        editorStore.project =
+          head(projectListWithoutDefaultProject)?.name ??
+          head(projectList.value)?.name ??
+          "";
+      }
+      editorStore.strictProject = false;
     }
-    editorStore.strictProject = false;
   }
 
   tabStore.maybeInitProject(editorStore.project);
@@ -148,20 +162,9 @@ const handleProjectSwitched = async () => {
   if (project) {
     await projectStore.getOrFetchProjectByName(project, true /* silent */);
   } else {
-    await projectStore.fetchProjectList(false /* !showDeleted */);
+    await wrapRefAsPromise(useProjectV1List().ready, true);
   }
   tabStore.maybeInitProject(project);
-};
-
-const prepareInstances = async () => {
-  const { project } = editorStore;
-  if (project) {
-    await instanceStore.fetchProjectInstanceList(
-      extractProjectResourceName(project)
-    );
-  } else {
-    await instanceStore.fetchInstanceList();
-  }
 };
 
 const prepareDatabases = async () => {
@@ -170,23 +173,12 @@ const prepareDatabases = async () => {
     return;
   }
   const { project } = editorStore;
-  const filters = [`instance = "instances/-"`];
-  if (project) {
-    filters.push(`project = "${project}"`);
-  }
-  // `databaseList` is the database list accessible by current user.
-  // Only accessible instances and databases will be listed in the tree.
-  const databaseList = (
-    await databaseStore.searchDatabases({
-      filter: filters.join(" && "),
-    })
-  ).filter((db) => db.syncState === State.ACTIVE);
+  // `databaseList` is the database list in the project.
+  const databaseList = (await databaseStore.listDatabases(project)).filter(
+    (db) => db.syncState === State.ACTIVE
+  );
 
   editorStore.databaseList = databaseList;
-};
-
-const prepareInstancesAndDatabases = async () => {
-  await Promise.all([prepareInstances(), prepareDatabases()]);
 };
 
 const connect = (connection: SQLEditorConnection) => {
@@ -330,55 +322,6 @@ const prepareSheet = async () => {
   return true;
 };
 
-const prepareConnectionSlugLegacy = async () => {
-  const connectionSlug = (route.params.connectionSlug as string) || "";
-  const [instanceSlug, databaseSlug = ""] = connectionSlug.split("_");
-  const instanceId = Number(idFromSlug(instanceSlug));
-  const databaseId = Number(idFromSlug(databaseSlug));
-
-  if (Number.isNaN(instanceId) && Number.isNaN(databaseId)) {
-    return false;
-  }
-  if (instanceId === 0 || databaseId === 0) {
-    return false;
-  }
-
-  if (Number.isNaN(databaseId)) {
-    // connected to instance
-    const instance = await useInstanceV1Store().getOrFetchInstanceByUID(
-      String(instanceId)
-    );
-    if (instance.uid !== String(UNKNOWN_ID)) {
-      connect({
-        instance: instance.name,
-        database: "",
-      });
-      return true;
-    }
-  } else {
-    const database = await useDatabaseV1Store().getOrFetchDatabaseByUID(
-      String(databaseId)
-    );
-    if (database.uid !== String(UNKNOWN_ID)) {
-      if (!isDatabaseV1Queryable(database, me.value)) {
-        router.push({
-          name: "error.403",
-        });
-      }
-
-      // connected to db
-      await maybeSwitchProject(database.project);
-      connect({
-        instance: database.instance,
-        database: database.name,
-        schema: filter.schema,
-        table: filter.table,
-      });
-      return true;
-    }
-  }
-  return false;
-};
 const prepareConnectionParams = async () => {
   if (
     ![SQL_EDITOR_INSTANCE_MODULE, SQL_EDITOR_DATABASE_MODULE].includes(
@@ -389,43 +332,34 @@ const prepareConnectionParams = async () => {
   }
   const instanceName = route.params.instance;
   const databaseName = route.params.database;
-  if (typeof instanceName !== "string" || !instanceName) {
+  if (
+    typeof instanceName !== "string" ||
+    !instanceName ||
+    typeof databaseName !== "string" ||
+    !databaseName
+  ) {
     return false;
   }
 
-  if (typeof databaseName !== "string" || !databaseName) {
-    // connected to instance
-    const instance = await useInstanceV1Store().getOrFetchInstanceByName(
-      `instances/${instanceName}`
-    );
-    if (instance.uid !== String(UNKNOWN_ID)) {
-      connect({
-        instance: instance.name,
-        database: "",
+  const database = await useDatabaseV1Store().getOrFetchDatabaseByName(
+    `instances/${instanceName}/databases/${databaseName}`
+  );
+  if (database.uid !== String(UNKNOWN_ID)) {
+    if (!isDatabaseV1Queryable(database, me.value)) {
+      router.push({
+        name: "error.403",
       });
-      return true;
     }
-  } else {
-    const database = await useDatabaseV1Store().getOrFetchDatabaseByName(
-      `instances/${instanceName}/databases/${databaseName}`
-    );
-    if (database.uid !== String(UNKNOWN_ID)) {
-      if (!isDatabaseV1Queryable(database, me.value)) {
-        router.push({
-          name: "error.403",
-        });
-      }
 
-      // connected to db
-      await maybeSwitchProject(database.project);
-      connect({
-        instance: database.instance,
-        database: database.name,
-        schema: filter.schema,
-        table: filter.table,
-      });
-      return true;
-    }
+    // connected to db
+    await maybeSwitchProject(database.project);
+    connect({
+      instance: database.instance,
+      database: database.name,
+      schema: filter.schema,
+      table: filter.table,
+    });
+    return true;
   }
   return false;
 };
@@ -444,9 +378,6 @@ const initializeConnectionFromQuery = async () => {
     return;
   }
 
-  if (await prepareConnectionSlugLegacy()) {
-    return true;
-  }
   if (await prepareConnectionParams()) {
     return;
   }
@@ -546,8 +477,7 @@ const syncURLWithConnection = () => {
         }
       }
       if (instanceName) {
-        const instance = instanceStore.getInstanceByName(instanceName);
-        if (instance.uid !== String(UNKNOWN_ID)) {
+        if (isValidInstanceName(instanceName)) {
           if (table) {
             query.table = table;
             query.schema = schema ?? "";
@@ -556,7 +486,7 @@ const syncURLWithConnection = () => {
             name: SQL_EDITOR_INSTANCE_MODULE,
             params: {
               project: extractProjectResourceName(editorStore.project),
-              instance: extractInstanceResourceName(instance.name),
+              instance: extractInstanceResourceName(instanceName),
             },
             query,
           });
@@ -598,8 +528,14 @@ const restoreLastVisitedSidebarTab = () => {
 
 onMounted(async () => {
   editorStore.projectContextReady = false;
-  await Promise.all([initializeProjects(), groupStore.fetchGroupList()]);
-  await prepareInstancesAndDatabases();
+  await Promise.all([
+    policyStore.fetchPolicies({
+      resourceType: PolicyResourceType.WORKSPACE,
+    }),
+    initializeProjects(),
+    groupStore.fetchGroupList(),
+  ]);
+  await prepareDatabases();
   tabStore.maybeInitProject(editorStore.project);
   editorStore.projectContextReady = true;
   nextTick(() => {
@@ -614,7 +550,7 @@ onMounted(async () => {
     async () => {
       editorStore.projectContextReady = false;
       await handleProjectSwitched();
-      await prepareInstancesAndDatabases();
+      await prepareDatabases();
       tabStore.maybeInitProject(editorStore.project);
       editorStore.projectContextReady = true;
       nextTick(() => {

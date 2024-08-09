@@ -57,7 +57,11 @@
 
         <div class="space-y-2">
           <div class="w-full">
-            <NRadioGroup v-model:value="state.type" class="space-x-2">
+            <NRadioGroup
+              :value="state.type"
+              class="space-x-2"
+              @update:value="onTypeChange"
+            >
               <NRadio value="MEMBER">{{ $t("project.members.users") }}</NRadio>
               <NRadio value="GROUP">
                 {{ $t("settings.members.groups.self") }}
@@ -81,7 +85,7 @@
             <div class="flex items-center justify-between">
               {{ $t("project.members.select-groups") }}
             </div>
-            <UserGroupSelect
+            <GroupSelect
               v-model:value="state.memberList"
               class="mt-2"
               :multiple="true"
@@ -112,10 +116,15 @@
 
 <script lang="ts" setup>
 import { groupBy, uniq } from "lodash-es";
-import { NButton, NCheckbox, NDatePicker } from "naive-ui";
+import { NButton, NCheckbox, NDatePicker, NRadio, NRadioGroup } from "naive-ui";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
-import { Drawer, DrawerContent } from "@/components/v2";
+import {
+  Drawer,
+  DrawerContent,
+  GroupSelect,
+  UserSelect,
+} from "@/components/v2";
 import {
   usePolicyV1Store,
   useUserStore,
@@ -180,6 +189,11 @@ const resetState = () => {
   state.supportActions = new Set(ACTIONS);
   state.memberList = [];
   state.type = "MEMBER";
+};
+
+const onTypeChange = (type: "MEMBER" | "GROUP") => {
+  state.memberList = [];
+  state.type = type;
 };
 
 const onDismiss = () => {

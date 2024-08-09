@@ -66,6 +66,7 @@
 import { NButton } from "naive-ui";
 import { computed, reactive } from "vue";
 import { useRouter } from "vue-router";
+import { BBSpin } from "@/bbkit";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import DatabaseV1Table from "@/components/v2/Model/DatabaseV1Table";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
@@ -76,7 +77,7 @@ import {
   useProjectV1Store,
 } from "@/store";
 import type { ComposedDatabase } from "@/types";
-import { UNKNOWN_ID, DEFAULT_PROJECT_V1_NAME } from "@/types";
+import { UNKNOWN_ID, DEFAULT_PROJECT_NAME } from "@/types";
 import { State } from "@/types/proto/v1/common";
 import type { SearchParams } from "@/utils";
 import {
@@ -98,7 +99,7 @@ type LocalState = {
 };
 
 const props = defineProps({
-  projectId: {
+  projectName: {
     type: String,
     default: undefined,
   },
@@ -126,8 +127,8 @@ const scopeOptions = useCommonSearchScopeOptions(
 );
 
 const selectedProject = computed(() => {
-  if (props.projectId) {
-    return projectV1Store.getProjectByUID(props.projectId);
+  if (props.projectName) {
+    return projectV1Store.getProjectByName(props.projectName);
   }
   const filter = state.params.scopes.find(
     (scope) => scope.id === "project"
@@ -164,8 +165,7 @@ const rawDatabaseList = computed(() => {
     list = databaseV1Store.databaseListByUser(currentUserV1.value);
   }
   list = list.filter(
-    (db) =>
-      db.syncState == State.ACTIVE && db.project !== DEFAULT_PROJECT_V1_NAME
+    (db) => db.syncState == State.ACTIVE && db.project !== DEFAULT_PROJECT_NAME
   );
   return list;
 });

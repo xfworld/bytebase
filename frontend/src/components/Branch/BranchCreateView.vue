@@ -62,7 +62,7 @@
       <BaselineSchemaSelector
         v-if="source === 'BASELINE'"
         v-model:database-id="databaseId"
-        :project-id="project.uid"
+        :project-name="project.name"
         :loading="isPreparingBranch"
       />
     </div>
@@ -95,10 +95,11 @@
 <script lang="ts" setup>
 import { useDebounce } from "@vueuse/core";
 import { cloneDeep, uniqueId } from "lodash-es";
-import { NButton, NDivider, NRadio, NRadioGroup } from "naive-ui";
+import { NButton, NDivider, NRadio, NRadioGroup, NTooltip } from "naive-ui";
 import { computed, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBTextField } from "@/bbkit";
 import SchemaEditorLite from "@/components/SchemaEditorLite";
 import { PROJECT_V1_ROUTE_BRANCH_DETAIL } from "@/router/dashboard/projectV1";
 import {
@@ -112,7 +113,7 @@ import type { ComposedProject } from "@/types";
 import { UNKNOWN_ID } from "@/types";
 import { Branch } from "@/types/proto/v1/branch_service";
 import { DatabaseMetadataView } from "@/types/proto/v1/database_service";
-import { hasProjectPermissionV2, isOwnerOfProjectV1 } from "@/utils";
+import { hasProjectPermissionV2 } from "@/utils";
 import BaselineSchemaSelector from "./BaselineSchemaSelector.vue";
 import BranchSelector from "./BranchSelector.vue";
 import { validateBranchName } from "./utils";
@@ -134,7 +135,6 @@ const router = useRouter();
 const databaseStore = useDatabaseV1Store();
 const branchStore = useBranchStore();
 const dbSchemaStore = useDBSchemaV1Store();
-const me = useCurrentUserV1();
 const source = ref<Source>("PARENT");
 const databaseId = ref<string>();
 const parentBranchName = ref<string>();
@@ -145,7 +145,11 @@ const isPreparingBranch = ref(false);
 const EMPTY_BRANCH = Branch.fromPartial({});
 
 const allowCreateBranchFromDatabase = computed(() => {
-  return isOwnerOfProjectV1(props.project, me.value);
+  return hasProjectPermissionV2(
+      props.project,
+      useCurrentUserV1().value,
+      "bb.branches.admin"
+    )
 });
 
 const debouncedDatabaseId = useDebounce(databaseId, DEBOUNCE_RATE);

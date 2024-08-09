@@ -10,7 +10,6 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/bytebase/bytebase/backend/common"
-	api "github.com/bytebase/bytebase/backend/legacyapi"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 )
 
@@ -19,7 +18,7 @@ type RoleMessage struct {
 	ResourceID  string
 	Name        string
 	Description string
-	Permissions *storepb.RolePermissions
+	Permissions map[string]bool
 
 	// Output only
 	CreatorID int
@@ -32,7 +31,22 @@ type UpdateRoleMessage struct {
 
 	Name        *string
 	Description *string
-	Permissions *storepb.RolePermissions
+	Permissions *map[string]bool
+}
+
+func (s *Store) CheckRoleInUse(ctx context.Context, role string) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1 FROM policy
+			CROSS JOIN LATERAL jsonb_array_elements(payload->'bindings') AS binding
+			WHERE type = 'bb.policy.iam' AND binding->>'role' = $1
+		);
+	`
+	var exist bool
+	if err := s.db.db.QueryRowContext(ctx, query, role).Scan(&exist); err != nil {
+		return false, err
+	}
+	return exist, nil
 }
 
 // CreateRole creates a new role.
@@ -42,13 +56,18 @@ func (s *Store) CreateRole(ctx context.Context, create *RoleMessage, creatorID i
 			role (creator_id, updater_id, resource_id, name, description, permissions)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-	permissionBytes, err := protojson.Marshal(create.Permissions)
+	p := &storepb.RolePermissions{}
+	for k := range create.Permissions {
+		p.Permissions = append(p.Permissions, k)
+	}
+	permissionBytes, err := protojson.Marshal(p)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := s.db.db.ExecContext(ctx, query, creatorID, creatorID, create.ResourceID, create.Name, create.Description, permissionBytes); err != nil {
 		return nil, err
 	}
+	s.rolesCache.Add(create.ResourceID, create)
 	return create, nil
 }
 
@@ -63,7 +82,9 @@ func (s *Store) GetRole(ctx context.Context, resourceID string) (*RoleMessage, e
 		FROM role
 		WHERE resource_id = $1
 	`
-	var role RoleMessage
+	role := &RoleMessage{
+		Permissions: map[string]bool{},
+	}
 	var permissions []byte
 	if err := s.db.db.QueryRowContext(ctx, query, resourceID).Scan(&role.CreatorID, &role.Name, &role.Description, &permissions); err != nil {
 		if err == sql.ErrNoRows {
@@ -75,10 +96,12 @@ func (s *Store) GetRole(ctx context.Context, resourceID string) (*RoleMessage, e
 	if err := common.ProtojsonUnmarshaler.Unmarshal(permissions, &rolePermissions); err != nil {
 		return nil, err
 	}
-	role.Permissions = &rolePermissions
+	for _, v := range rolePermissions.Permissions {
+		role.Permissions[v] = true
+	}
 	role.ResourceID = resourceID
-	s.rolesCache.Add(resourceID, &role)
-	return &role, nil
+	s.rolesCache.Add(resourceID, role)
+	return role, nil
 }
 
 // ListRoles returns a list of roles.
@@ -95,75 +118,23 @@ func (s *Store) ListRoles(ctx context.Context) ([]*RoleMessage, error) {
 	defer rows.Close()
 
 	var roles []*RoleMessage
-	roles = append(roles,
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.WorkspaceAdmin.String(),
-			Name:        "Workspace admin",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.WorkspaceDBA.String(),
-			Name:        "Workspace DBA",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.WorkspaceMember.String(),
-			Name:        "Workspace member",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectOwner.String(),
-			Name:        "Project owner",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectDeveloper.String(),
-			Name:        "Project developer",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectReleaser.String(),
-			Name:        "Project releaser",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectQuerier.String(),
-			Name:        "Project querier",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectExporter.String(),
-			Name:        "Project exporter",
-			Description: "",
-		},
-		&RoleMessage{
-			CreatorID:   api.SystemBotID,
-			ResourceID:  api.ProjectViewer.String(),
-			Name:        "Project viewer",
-			Description: "",
-		},
-	)
-
 	for rows.Next() {
-		var role RoleMessage
-		var permissions []byte
-		if err := rows.Scan(&role.CreatorID, &role.ResourceID, &role.Name, &role.Description, &permissions); err != nil {
+		role := &RoleMessage{
+			Permissions: map[string]bool{},
+		}
+		var permissionBytes []byte
+		if err := rows.Scan(&role.CreatorID, &role.ResourceID, &role.Name, &role.Description, &permissionBytes); err != nil {
 			return nil, err
 		}
 		var rolePermissions storepb.RolePermissions
-		if err := common.ProtojsonUnmarshaler.Unmarshal(permissions, &rolePermissions); err != nil {
+		if err := common.ProtojsonUnmarshaler.Unmarshal(permissionBytes, &rolePermissions); err != nil {
 			return nil, err
 		}
-		role.Permissions = &rolePermissions
-		roles = append(roles, &role)
+		for _, v := range rolePermissions.Permissions {
+			role.Permissions[v] = true
+		}
+		s.rolesCache.Add(role.ResourceID, role)
+		roles = append(roles, role)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -183,7 +154,11 @@ func (s *Store) UpdateRole(ctx context.Context, patch *UpdateRoleMessage) (*Role
 		set, args = append(set, fmt.Sprintf("description = $%d", len(args)+1)), append(args, *v)
 	}
 	if v := patch.Permissions; v != nil {
-		permissionBytes, err := protojson.Marshal(v)
+		p := &storepb.RolePermissions{}
+		for k := range *v {
+			p.Permissions = append(p.Permissions, k)
+		}
+		permissionBytes, err := protojson.Marshal(p)
 		if err != nil {
 			return nil, err
 		}
@@ -198,20 +173,25 @@ func (s *Store) UpdateRole(ctx context.Context, patch *UpdateRoleMessage) (*Role
 		RETURNING creator_id, name, description, permissions
 	`, len(args))
 
-	role := RoleMessage{
-		ResourceID: patch.ResourceID,
+	role := &RoleMessage{
+		ResourceID:  patch.ResourceID,
+		Permissions: map[string]bool{},
 	}
-	var permissions []byte
-	if err := s.db.db.QueryRowContext(ctx, query, args...).Scan(&role.CreatorID, &role.Name, &role.Description, &permissions); err != nil {
+	var permissionBytes []byte
+	if err := s.db.db.QueryRowContext(ctx, query, args...).Scan(&role.CreatorID, &role.Name, &role.Description, &permissionBytes); err != nil {
 		return nil, err
 	}
 	s.rolesCache.Remove(patch.ResourceID)
 	var rolePermissions storepb.RolePermissions
-	if err := common.ProtojsonUnmarshaler.Unmarshal(permissions, &rolePermissions); err != nil {
+	if err := common.ProtojsonUnmarshaler.Unmarshal(permissionBytes, &rolePermissions); err != nil {
 		return nil, err
 	}
-	role.Permissions = &rolePermissions
-	return &role, nil
+	for _, v := range rolePermissions.Permissions {
+		role.Permissions[v] = true
+	}
+
+	s.rolesCache.Add(role.ResourceID, role)
+	return role, nil
 }
 
 // DeleteRole deletes an existing role.

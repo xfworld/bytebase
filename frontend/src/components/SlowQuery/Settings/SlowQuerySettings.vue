@@ -37,20 +37,22 @@ import { EnvironmentTabFilter, SearchBox } from "@/components/v2";
 import {
   pushNotification,
   useEnvironmentV1List,
+  useEnvironmentV1Store,
+  useInstanceV1List,
   useInstanceV1Store,
   useSlowQueryPolicyStore,
   useSlowQueryStore,
 } from "@/store";
 import { useGracefulRequest } from "@/store/modules/utils";
-import type { ComposedInstance, ComposedSlowQueryPolicy } from "@/types";
-import { UNKNOWN_ID } from "@/types";
+import type { ComposedSlowQueryPolicy } from "@/types";
+import { isValidEnvironmentName } from "@/types";
 import type { Environment } from "@/types/proto/v1/environment_service";
-import { instanceV1SupportSlowQuery } from "@/utils";
+import type { InstanceResource } from "@/types/proto/v1/instance_service";
+import { instanceV1SupportSlowQuery, wrapRefAsPromise } from "@/utils";
 import { SlowQueryPolicyTable } from "./components";
 
 type LocalState = {
   ready: boolean;
-  instanceList: ComposedInstance[];
   filter: {
     environment: Environment | undefined;
     keyword: string;
@@ -59,7 +61,6 @@ type LocalState = {
 
 const state = reactive<LocalState>({
   ready: false,
-  instanceList: [],
   filter: {
     environment: undefined,
     keyword: "",
@@ -67,17 +68,22 @@ const state = reactive<LocalState>({
 });
 
 const { t } = useI18n();
+const environmentList = useEnvironmentV1List(false /* !showDeleted */);
+const environmentStore = useEnvironmentV1Store();
 const slowQueryPolicyStore = useSlowQueryPolicyStore();
 const slowQueryStore = useSlowQueryStore();
 const instanceV1Store = useInstanceV1Store();
-const environmentList = useEnvironmentV1List(false /* !showDeleted */);
 
 const policyList = computed(() => {
   return slowQueryPolicyStore.getPolicyList();
 });
 
+const instanceList = computed(() => {
+  return instanceV1Store.instanceList.filter(instanceV1SupportSlowQuery);
+});
+
 const composedSlowQueryPolicyList = computed(() => {
-  const list = state.instanceList.map<ComposedSlowQueryPolicy>((instance) => {
+  const list = instanceList.value.map<ComposedSlowQueryPolicy>((instance) => {
     const policy = policyList.value.find((p) => p.resourceUid == instance.uid);
     return {
       instance,
@@ -89,7 +95,8 @@ const composedSlowQueryPolicyList = computed(() => {
     list,
     [
       (item) => item.instance.engine,
-      (item) => item.instance.environmentEntity.order,
+      (item) =>
+        environmentStore.getEnvironmentByName(item.instance.environment).order,
       (item) => item.instance.name,
     ],
     ["asc", "desc", "asc"]
@@ -99,9 +106,9 @@ const composedSlowQueryPolicyList = computed(() => {
 const filteredComposedSlowQueryPolicyList = computed(() => {
   let list = [...composedSlowQueryPolicyList.value];
   const { environment } = state.filter;
-  if (environment && environment.uid !== String(UNKNOWN_ID)) {
+  if (isValidEnvironmentName(environment?.name)) {
     list = list.filter(
-      (item) => String(item.instance.environment) === environment.name
+      (item) => item.instance.environment === environment.name
     );
   }
   const keyword = state.filter.keyword.trim().toLowerCase();
@@ -117,10 +124,7 @@ const filteredComposedSlowQueryPolicyList = computed(() => {
 const prepare = async () => {
   try {
     const prepareInstanceList = async () => {
-      const list = await instanceV1Store.fetchInstanceList(
-        false /* !showDeleted */
-      );
-      state.instanceList = list.filter(instanceV1SupportSlowQuery);
+      await wrapRefAsPromise(useInstanceV1List().ready, true);
     };
     const preparePolicyList = async () => {
       await slowQueryPolicyStore.fetchPolicyList();
@@ -138,7 +142,7 @@ const changeEnvironment = (name: string | undefined) => {
 };
 
 const patchInstanceSlowQueryPolicy = async (
-  instance: ComposedInstance,
+  instance: InstanceResource,
   active: boolean
 ) => {
   return slowQueryPolicyStore.upsertPolicy({
@@ -147,7 +151,7 @@ const patchInstanceSlowQueryPolicy = async (
   });
 };
 
-const toggleActive = async (instance: ComposedInstance, active: boolean) => {
+const toggleActive = async (instance: InstanceResource, active: boolean) => {
   try {
     await patchInstanceSlowQueryPolicy(instance, active);
     if (active) {

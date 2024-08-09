@@ -31,13 +31,12 @@
                 </template>
                 <div class="whitespace-nowrap">
                   <span>{{ $t("issue.sdl.left-schema-may-change") }}</span>
-                  <HideInStandaloneMode>
-                    <LearnMoreLink
-                      url="https://www.bytebase.com/docs/change-database/state-based-migration/#caveats?source=console"
-                      color="light"
-                      class="ml-1"
-                    />
-                  </HideInStandaloneMode>
+                  <LearnMoreLink
+                    url="https://www.bytebase.com/docs/change-database/state-based-migration/?source=console#caveats"
+                    color="light"
+                    class="ml-1"
+                    hide-when-embedded
+                  />
                 </div>
               </NTooltip>
             </div>
@@ -94,8 +93,10 @@
 </template>
 
 <script lang="ts" setup>
-import { NTabs, NTab, NTooltip } from "naive-ui";
+import { NTabs, NTab, NTooltip, NButton } from "naive-ui";
 import { reactive } from "vue";
+import { BBSpin } from "@/bbkit";
+import { FeatureModal } from "@/components/FeatureGuard";
 import { useIssueContext } from "@/components/IssueV1/logic";
 import LearnMoreLink from "@/components/LearnMoreLink.vue";
 import { DiffEditor, MonacoEditor } from "@/components/MonacoEditor";

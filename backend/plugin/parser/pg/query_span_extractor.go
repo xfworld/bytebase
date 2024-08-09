@@ -21,10 +21,22 @@ import (
 )
 
 const (
-	pgUnknownFieldName = "?column?"
-	generateSeries     = "generate_series"
-	generateSubscripts = "generate_subscripts"
-	unnest             = "unnest"
+	pgUnknownFieldName     = "?column?"
+	generateSeries         = "generate_series"
+	generateSubscripts     = "generate_subscripts"
+	unnest                 = "unnest"
+	jsonbEach              = "jsonb_each"
+	jsonEach               = "json_each"
+	jsonbEachText          = "jsonb_each_text"
+	jsonEachText           = "json_each_text"
+	jsonPopulateRecord     = "json_populate_record"
+	jsonbPopulateRecord    = "jsonb_populate_record"
+	jsonPopulateRecordset  = "json_populate_recordset"
+	jsonbPopulateRecordset = "jsonb_populate_recordset"
+	jsonToRecord           = "json_to_record"
+	jsonbToRecord          = "jsonb_to_record"
+	jsonToRecordset        = "json_to_recordset"
+	jsonbToRecordset       = "jsonb_to_recordset"
 )
 
 // querySpanExtractor is the extractor to extract the query span from the given pgquery.RawStmt.
@@ -34,7 +46,8 @@ type querySpanExtractor struct {
 	// The metaCache serves as a lazy-load cache for the database metadata and should not be accessed directly.
 	// Instead, use querySpanExtractor.getDatabaseMetadata to access it.
 	metaCache map[string]*model.DatabaseMetadata
-	f         base.GetDatabaseMetadataFunc
+
+	gCtx base.GetQuerySpanContext
 
 	// Private fields.
 
@@ -53,11 +66,11 @@ type querySpanExtractor struct {
 }
 
 // newQuerySpanExtractor creates a new query span extractor, the databaseMetadata and the ast are in the read guard.
-func newQuerySpanExtractor(connectedDB string, getDatabaseMetadata base.GetDatabaseMetadataFunc) *querySpanExtractor {
+func newQuerySpanExtractor(connectedDB string, gCtx base.GetQuerySpanContext) *querySpanExtractor {
 	return &querySpanExtractor{
 		connectedDB:             connectedDB,
 		metaCache:               make(map[string]*model.DatabaseMetadata),
-		f:                       getDatabaseMetadata,
+		gCtx:                    gCtx,
 		sourceColumnsInFunction: make(base.SourceColumnSet),
 	}
 }
@@ -67,7 +80,7 @@ func (q *querySpanExtractor) getDatabaseMetadata(database string) (*model.Databa
 	if meta, ok := q.metaCache[database]; ok {
 		return meta, nil
 	}
-	_, meta, err := q.f(q.ctx, database)
+	_, meta, err := q.gCtx.GetDatabaseMetadataFunc(q.ctx, q.gCtx.InstanceID, database)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get database metadata for database: %s", database)
 	}
@@ -216,7 +229,7 @@ func (q *querySpanExtractor) extractTableSourceFromUDF(node *pgquery.Node_RangeF
 	return base.NewPseudoTable(node.RangeFunction.Alias.Aliasname, columns), nil
 }
 
-func (*querySpanExtractor) extractTableSourceFromSystemFunction(node *pgquery.Node_RangeFunction, funcName string, args []*pgquery.Node) (*base.PseudoTable, error) {
+func (q *querySpanExtractor) extractTableSourceFromSystemFunction(node *pgquery.Node_RangeFunction, funcName string, args []*pgquery.Node) (*base.PseudoTable, error) {
 	// TODO(parser): We may need to consider the masking here, for example: SELECT * FROM issue LEFT JOIN LATERAL jsonb_to_recordset(issue.payload->'approval'->'approvers') as x(status text, "principalId" int) ON TRUE.
 
 	// The function we can handle easily do not need the explicit alias clause.
@@ -250,6 +263,62 @@ func (*querySpanExtractor) extractTableSourceFromSystemFunction(node *pgquery.No
 			})
 		}
 		return table, nil
+	case jsonbEach, jsonEach, jsonbEachText, jsonEachText:
+		// Should be only called while jsonb_each act as table source.
+		// SELECT * FROM json_test, jsonb_each(jb) AS hh(key, value) WHERE id = 1;
+		tableName := ""
+		columns := []string{"key", "value"}
+		if node.RangeFunction.Alias != nil {
+			tableName = node.RangeFunction.Alias.Aliasname
+			var aliasColumns []string
+			for _, columnName := range node.RangeFunction.Alias.Colnames {
+				name := columnName.GetString_().Sval
+				aliasColumns = append(aliasColumns, name)
+			}
+			if len(aliasColumns) > 0 {
+				columns = aliasColumns
+			}
+		}
+		if len(args) == 0 {
+			return nil, errors.Errorf("Unexpected empty args for function %s", funcName)
+		}
+		fieldArg := args[0]
+		fieldArgColumnRef, ok := fieldArg.Node.(*pgquery.Node_ColumnRef)
+		if !ok {
+			return nil, errors.Errorf("unexpected first arg type %+v for function %s", fieldArg.Node, funcName)
+		}
+		columnNameDef, err := pgrawparser.ConvertNodeListToColumnNameDef(fieldArgColumnRef.ColumnRef.Fields)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to convert node list to column name def")
+		}
+		schema, table, column := extractSchemaTableColumnName(columnNameDef)
+		set, ok := q.getFieldColumnSource(schema, table, column)
+		if !ok {
+			return nil, &parsererror.ResourceNotFoundError{
+				Err:    errors.Errorf("Cannot find field in function %s", funcName),
+				Schema: &schema,
+				Table:  &table,
+				Column: &column,
+			}
+		}
+		tableSource := &base.PseudoTable{
+			Name:    tableName,
+			Columns: []base.QuerySpanResult{},
+		}
+		for _, column := range columns {
+			tableSource.Columns = append(tableSource.Columns, base.QuerySpanResult{
+				Name:          column,
+				SourceColumns: set,
+			})
+		}
+		return tableSource, nil
+	case jsonPopulateRecord, jsonbPopulateRecord, jsonPopulateRecordset, jsonbPopulateRecordset,
+		jsonToRecord, jsonbToRecord, jsonToRecordset, jsonbToRecordset:
+		return nil, &parsererror.TypeNotSupportedError{
+			Extra: fmt.Sprintf("Unsupport function %s", funcName),
+			Type:  "function",
+			Name:  funcName,
+		}
 	}
 
 	if node.RangeFunction.Alias == nil {
@@ -441,7 +510,7 @@ func (q *querySpanExtractor) extractTableSourceFromPLPGSQLFunction(createFunc *p
 	}
 
 	for _, sql := range sqlList {
-		newQ := newQuerySpanExtractor(q.connectedDB, q.f)
+		newQ := newQuerySpanExtractor(q.connectedDB, q.gCtx)
 		span, err := newQ.getQuerySpan(q.ctx, sql)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get query span for function: %s", name)
@@ -510,7 +579,7 @@ func extractSQL(data any) string {
 }
 
 func (q *querySpanExtractor) extractTableSourceFromSQLFunction(createFunc *pgquery.Node_CreateFunctionStmt, name string, asBody string) ([]base.QuerySpanResult, error) {
-	newQ := newQuerySpanExtractor(q.connectedDB, q.f)
+	newQ := newQuerySpanExtractor(q.connectedDB, q.gCtx)
 	span, err := newQ.getQuerySpan(q.ctx, asBody)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get query span for function: %s", name)
@@ -1037,8 +1106,27 @@ func (q *querySpanExtractor) extractSourceColumnSetFromExpressionNode(node *pgqu
 			return base.SourceColumnSet{}, err
 		}
 		schema, table, column := extractSchemaTableColumnName(columnNameDef)
-		sources, ok := q.getFieldColumnSource(schema, table, column)
-		if !ok {
+		sources, columnSourceOk := q.getFieldColumnSource(schema, table, column)
+		// The column ref in function call can be record type, such as row_to_json.
+		if !columnSourceOk {
+			if schema == "" {
+				tableSource, err := q.findTableInFrom(table, column)
+				if err != nil || tableSource == nil {
+					return base.SourceColumnSet{}, &parsererror.ResourceNotFoundError{
+						Err:      errors.New("cannot find the column ref"),
+						Database: &q.connectedDB,
+						Schema:   &schema,
+						Table:    &table,
+						Column:   &column,
+					}
+				}
+				querySpanResult := tableSource.GetQuerySpanResult()
+				result := make(base.SourceColumnSet)
+				for _, span := range querySpanResult {
+					result, _ = base.MergeSourceColumnSet(result, span.SourceColumns)
+				}
+				return result, nil
+			}
 			return base.SourceColumnSet{}, &parsererror.ResourceNotFoundError{
 				Err:      errors.New("cannot find the column ref"),
 				Database: &q.connectedDB,
@@ -1088,7 +1176,7 @@ func (q *querySpanExtractor) extractSourceColumnSetFromExpressionNode(node *pgqu
 			ctx:               q.ctx,
 			connectedDB:       q.connectedDB,
 			metaCache:         q.metaCache,
-			f:                 q.f,
+			gCtx:              q.gCtx,
 			ctes:              q.ctes,
 			outerTableSources: append(q.outerTableSources, q.tableSourcesFrom...),
 			tableSourcesFrom:  []base.TableSource{},
@@ -1123,6 +1211,21 @@ func (q *querySpanExtractor) extractSourceColumnSetFromExpressionNode(node *pgqu
 		return q.extractSourceColumnSetFromExpressionNode(node.BooleanTest.Arg)
 	case *pgquery.Node_GroupingFunc:
 		return q.extractSourceColumnSetFromExpressionNodeList(node.GroupingFunc.Args)
+	case *pgquery.Node_JsonArrayConstructor:
+		var nodeList []*pgquery.Node
+		nodeList = append(nodeList, node.JsonArrayConstructor.Exprs...)
+		return q.extractSourceColumnSetFromExpressionNodeList(nodeList)
+	case *pgquery.Node_JsonValueExpr:
+		return q.extractSourceColumnSetFromExpressionNode(node.JsonValueExpr.RawExpr)
+	case *pgquery.Node_JsonObjectConstructor:
+		var nodeList []*pgquery.Node
+		nodeList = append(nodeList, node.JsonObjectConstructor.Exprs...)
+		return q.extractSourceColumnSetFromExpressionNodeList(nodeList)
+	case *pgquery.Node_JsonKeyValue:
+		var nodeList []*pgquery.Node
+		nodeList = append(nodeList, node.JsonKeyValue.GetKey())
+		nodeList = append(nodeList, node.JsonKeyValue.GetValue().GetRawExpr())
+		return q.extractSourceColumnSetFromExpressionNodeList(nodeList)
 	}
 	return base.SourceColumnSet{}, nil
 }
@@ -1231,6 +1334,37 @@ func (q *querySpanExtractor) getFieldColumnSource(schemaName, tableName, fieldNa
 	}
 
 	return base.SourceColumnSet{}, false
+}
+
+func (q *querySpanExtractor) findTableInFrom(schemaName string, tableName string) (base.TableSource, error) {
+	// Each CTE name in one WITH clause must be unique, but we can use the same name in the different level CTE, such as:
+	//
+	//  with tt2 as (
+	//    with tt2 as (select * from t)
+	//    select max(a) from tt2)
+	//  select * from tt2
+	//
+	// This query has two CTE can be called `tt2`, and the FROM clause 'from tt2' uses the closer tt2 CTE.
+	// This is the reason we loop the slice in reversed order.
+	if schemaName == "" {
+		for i := len(q.ctes) - 1; i >= 0; i-- {
+			table := q.ctes[i]
+			if table.Name == tableName {
+				return table, nil
+			}
+		}
+	}
+
+	for i := len(q.tableSourcesFrom) - 1; i >= 0; i-- {
+		tableSource := q.tableSourcesFrom[i]
+		emptySchemaNameMatch := schemaName == "" && (tableSource.GetSchemaName() == "" || tableSource.GetSchemaName() == "public") && tableName == tableSource.GetTableName()
+		nonEmptySchemaNameMatch := schemaName != "" && tableSource.GetSchemaName() == schemaName && tableName == tableSource.GetTableName()
+		if emptySchemaNameMatch || nonEmptySchemaNameMatch {
+			return tableSource, nil
+		}
+	}
+
+	return nil, nil
 }
 
 func (q *querySpanExtractor) findTableSchema(schemaName string, tableName string) (base.TableSource, error) {
@@ -1679,7 +1813,7 @@ func isSystemResource(resource base.ColumnResource) string {
 }
 
 func (q *querySpanExtractor) getColumnsForView(definition string) ([]base.QuerySpanResult, error) {
-	newQ := newQuerySpanExtractor(q.connectedDB, q.f)
+	newQ := newQuerySpanExtractor(q.connectedDB, q.gCtx)
 	span, err := newQ.getQuerySpan(q.ctx, definition)
 	if err != nil {
 		return nil, err
@@ -1688,7 +1822,7 @@ func (q *querySpanExtractor) getColumnsForView(definition string) ([]base.QueryS
 }
 
 func (q *querySpanExtractor) getColumnsForMaterializedView(definition string) ([]base.QuerySpanResult, error) {
-	newQ := newQuerySpanExtractor(q.connectedDB, q.f)
+	newQ := newQuerySpanExtractor(q.connectedDB, q.gCtx)
 	span, err := newQ.getQuerySpan(q.ctx, definition)
 	if err != nil {
 		return nil, err

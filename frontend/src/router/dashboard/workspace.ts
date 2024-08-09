@@ -1,15 +1,14 @@
 import { startCase } from "lodash-es";
 import type { RouteRecordRaw } from "vue-router";
+import DummyRootView from "@/DummyRootView";
 import { t } from "@/plugins/i18n";
-import DashboardLandingPage from "@/views/DashboardLandingPage.vue";
 import MyIssues from "@/views/MyIssues.vue";
 import {
   PROJECT_V1_ROUTE_DASHBOARD,
   INSTANCE_ROUTE_DASHBOARD,
   ENVIRONMENT_V1_ROUTE_DASHBOARD,
-  WORKSPACE_HOME_MODULE,
+  WORKSPACE_ROOT_MODULE,
   WORKSPACE_ROUTE_MY_ISSUES,
-  WORKSPACE_ROUTE_SLOW_QUERY,
   WORKSPACE_ROUTE_EXPORT_CENTER,
   WORKSPACE_ROUTE_ANOMALY_CENTER,
   WORKSPACE_ROUTE_USER_PROFILE,
@@ -34,19 +33,16 @@ import {
   WORKSPACE_ROUTE_IM,
 } from "./workspaceRoutes";
 
-const workspaceRoutes: RouteRecordRaw[] = [
-  {
-    path: "",
-    name: WORKSPACE_HOME_MODULE,
-    components: {
-      content: DashboardLandingPage,
-      leftSidebar: () => import("@/views/DashboardSidebar.vue"),
-    },
-    props: {
-      content: true,
-      leftSidebar: true,
-    },
+const rootRoute: RouteRecordRaw = {
+  path: "",
+  name: WORKSPACE_ROOT_MODULE,
+  components: {
+    content: DummyRootView,
   },
+};
+
+const workspaceRoutes: RouteRecordRaw[] = [
+  rootRoute,
   {
     path: "issues",
     name: WORKSPACE_ROUTE_MY_ISSUES,
@@ -94,6 +90,7 @@ const workspaceRoutes: RouteRecordRaw[] = [
       getQuickActionList: () => {
         return ["quickaction.bb.instance.create"];
       },
+      requiredWorkspacePermissionList: () => ["bb.instances.list"],
     },
     components: {
       content: () => import("@/views/InstanceDashboard.vue"),
@@ -164,12 +161,6 @@ const workspaceRoutes: RouteRecordRaw[] = [
     },
   },
   {
-    // "u" stands for user. Strictly speaking, it's not accurate because we
-    // may refer to other principal type in the future. But from the endusers'
-    // perspective, they are more familiar with the "user" concept.
-    // We make an exception to use a shorthand here because it's a commonly
-    // accessed endpoint, and maybe in the future, we will further provide a
-    // shortlink such as users/<<email>>
     path: "users/:principalEmail",
     name: WORKSPACE_ROUTE_USER_PROFILE,
     components: {
@@ -365,16 +356,6 @@ const workspaceRoutes: RouteRecordRaw[] = [
         props: true,
       },
       {
-        path: "slow-query",
-        name: WORKSPACE_ROUTE_SLOW_QUERY,
-        meta: {
-          title: () => startCase(t("slow-query.self")),
-          requiredWorkspacePermissionList: () => ["bb.settings.get"],
-        },
-        component: () => import("@/views/SettingWorkspaceSlowQuery.vue"),
-        props: true,
-      },
-      {
         path: "risk-center",
         name: WORKSPACE_ROUTE_RISK_CENTER,
         meta: {
@@ -402,7 +383,10 @@ const workspaceRoutes: RouteRecordRaw[] = [
         name: WORKSPACE_ROUTE_AUDIT_LOG,
         meta: {
           title: () => t("settings.sidebar.audit-log"),
-          requiredWorkspacePermissionList: () => ["bb.settings.get"],
+          requiredWorkspacePermissionList: () => [
+            "bb.settings.get",
+            "bb.auditLogs.search",
+          ],
         },
         component: () => import("@/views/SettingWorkspaceAuditLog.vue"),
         props: true,
@@ -412,7 +396,10 @@ const workspaceRoutes: RouteRecordRaw[] = [
         name: WORKSPACE_ROUTE_MAIL_DELIVERY,
         meta: {
           title: () => t("settings.sidebar.mail-delivery"),
-          requiredWorkspacePermissionList: () => ["bb.settings.get"],
+          requiredWorkspacePermissionList: () => [
+            "bb.settings.get",
+            "bb.settings.set",
+          ],
         },
         component: () => import("@/views/SettingWorkspaceMailDelivery.vue"),
       },
@@ -441,7 +428,10 @@ const workspaceRoutes: RouteRecordRaw[] = [
         name: WORKSPACE_ROUTE_IM,
         meta: {
           title: () => t("settings.sidebar.im-integration"),
-          requiredWorkspacePermissionList: () => ["bb.settings.get"],
+          requiredWorkspacePermissionList: () => [
+            "bb.settings.get",
+            "bb.settings.set",
+          ],
         },
         component: () => import("@/views/SettingWorkspaceIM.vue"),
         props: true,

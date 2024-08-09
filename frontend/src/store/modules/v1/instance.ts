@@ -1,46 +1,33 @@
 import { defineStore } from "pinia";
-import { computed, reactive, ref, unref, watchEffect } from "vue";
-import { instanceRoleServiceClient, instanceServiceClient } from "@/grpcweb";
-import { useCurrentUserV1 } from "@/store";
-import { projectNamePrefix } from "@/store/modules/v1/common";
-import type { ComposedInstance, MaybeRef } from "@/types";
-import {
-  emptyInstance,
-  EMPTY_ID,
-  unknownEnvironment,
-  unknownInstance,
-  UNKNOWN_ID,
-} from "@/types";
+import { computed, reactive, watchEffect } from "vue";
+import { instanceServiceClient } from "@/grpcweb";
+import type { ComposedInstance } from "@/types";
+import { unknownEnvironment, unknownInstance } from "@/types";
 import { State } from "@/types/proto/v1/common";
-import type { InstanceRole } from "@/types/proto/v1/instance_role_service";
 import type { DataSource, Instance } from "@/types/proto/v1/instance_service";
-import { extractInstanceResourceName, hasWorkspacePermissionV2 } from "@/utils";
-import { extractGrpcErrorMessage } from "@/utils/grpcweb";
+import { extractInstanceResourceName } from "@/utils";
+import { useListCache } from "./cache";
 import { useEnvironmentV1Store } from "./environment";
 
 export const useInstanceV1Store = defineStore("instance_v1", () => {
-  const currentUser = useCurrentUserV1();
   const instanceMapByName = reactive(new Map<string, ComposedInstance>());
-  const instanceRoleListMapByName = reactive(new Map<string, InstanceRole[]>());
 
   const reset = () => {
     instanceMapByName.clear();
-    instanceRoleListMapByName.clear();
   };
 
   // Getters
-  const instanceList = computed(() => {
-    const list = Array.from(instanceMapByName.values());
-    return list;
+  const instanceListIncludingDeleted = computed(() => {
+    return Array.from(instanceMapByName.values());
   });
-  const activeInstanceList = computed(() => {
-    return instanceList.value.filter((instance) => {
+  const instanceList = computed(() => {
+    return instanceListIncludingDeleted.value.filter((instance) => {
       return instance.state === State.ACTIVE;
     });
   });
   const activateInstanceCount = computed(() => {
     let count = 0;
-    for (const instance of activeInstanceList.value) {
+    for (const instance of instanceList.value) {
       if (instance.activation) {
         count++;
       }
@@ -57,24 +44,6 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
       instanceMapByName.set(composed.name, composed);
     });
     return composedInstances;
-  };
-  const fetchInstanceList = async (showDeleted = false, parent?: string) => {
-    const request = hasWorkspacePermissionV2(
-      currentUser.value,
-      "bb.instances.list"
-    )
-      ? instanceServiceClient.listInstances
-      : instanceServiceClient.searchInstances;
-    const { instances } = await request({ showDeleted, parent });
-    const composed = await upsertInstances(instances);
-    return composed;
-  };
-  const fetchProjectInstanceList = async (project: string) => {
-    const { instances } = await instanceServiceClient.searchInstances({
-      parent: `${projectNamePrefix}${project}`,
-    });
-    const composed = await upsertInstances(instances);
-    return composed;
   };
   const createInstance = async (instance: Instance) => {
     const createdInstance = await instanceServiceClient.createInstance({
@@ -115,8 +84,8 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
       name: instance.name,
     });
   };
-  const batchSyncInstance = async (instanceNameList: string[]) => {
-    await instanceServiceClient.batchSyncInstance({
+  const batchSyncInstances = async (instanceNameList: string[]) => {
+    await instanceServiceClient.batchSyncInstances({
       requests: instanceNameList.map((name) => ({ name })),
     });
   };
@@ -143,56 +112,12 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
     await fetchInstanceByName(name, silent);
     return getInstanceByName(name);
   };
-  const fetchInstanceByUID = async (uid: string) => {
-    const name = `instances/${uid}`;
-    return fetchInstanceByName(name);
-  };
-  const getInstanceByUID = (uid: string) => {
-    if (uid === String(EMPTY_ID)) return emptyInstance();
-    if (uid === String(UNKNOWN_ID)) return unknownInstance();
-    return (
-      instanceList.value.find((instance) => instance.uid === uid) ??
-      unknownInstance()
-    );
-  };
-  const getOrFetchInstanceByUID = async (uid: string) => {
-    if (uid === String(EMPTY_ID)) return emptyInstance();
-    if (uid === String(UNKNOWN_ID)) return unknownInstance();
-
-    const existed = instanceList.value.find((instance) => instance.uid === uid);
-    if (existed) {
-      return existed;
-    }
-    await fetchInstanceByUID(uid);
-    return getInstanceByUID(uid);
-  };
-  const fetchInstanceRoleByName = async (name: string) => {
-    const role = await instanceRoleServiceClient.getInstanceRole({ name });
-    return role;
-  };
-  const fetchInstanceRoleListByName = async (name: string) => {
-    // TODO: ListInstanceRoles will return error if instance is archived
-    // We temporarily suppress errors here now.
-    try {
-      const { roles } = await instanceRoleServiceClient.listInstanceRoles({
-        parent: name,
-      });
-      instanceRoleListMapByName.set(name, roles);
-      return roles;
-    } catch (err) {
-      console.debug(extractGrpcErrorMessage(err));
-      return [];
-    }
-  };
-  const getInstanceRoleListByName = (name: string) => {
-    return instanceRoleListMapByName.get(name) ?? [];
-  };
   const createDataSource = async (
     instance: Instance,
     dataSource: DataSource
   ) => {
     const updatedInstance = await instanceServiceClient.addDataSource({
-      instance: instance.name,
+      name: instance.name,
       dataSource: dataSource,
     });
     const [composed] = await upsertInstances([updatedInstance]);
@@ -204,7 +129,7 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
     updateMask: string[]
   ) => {
     const updatedInstance = await instanceServiceClient.updateDataSource({
-      instance: instance.name,
+      name: instance.name,
       dataSource: dataSource,
       updateMask,
     });
@@ -216,7 +141,7 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
     dataSource: DataSource
   ) => {
     const updatedInstance = await instanceServiceClient.removeDataSource({
-      instance: instance.name,
+      name: instance.name,
       dataSource: dataSource,
     });
     const [composed] = await upsertInstances([updatedInstance]);
@@ -225,55 +150,61 @@ export const useInstanceV1Store = defineStore("instance_v1", () => {
 
   return {
     reset,
+    instanceListIncludingDeleted,
     instanceList,
-    activeInstanceList,
     activateInstanceCount,
+    upsertInstances,
     createInstance,
     updateInstance,
     archiveInstance,
     restoreInstance,
     syncInstance,
-    batchSyncInstance,
-    fetchInstanceList,
-    fetchProjectInstanceList,
+    batchSyncInstances,
     getInstanceByName,
     getOrFetchInstanceByName,
-    getInstanceByUID,
-    getOrFetchInstanceByUID,
-    fetchInstanceRoleByName,
-    fetchInstanceRoleListByName,
-    getInstanceRoleListByName,
     createDataSource,
     updateDataSource,
     deleteDataSource,
   };
 });
 
-export const useInstanceV1List = (
-  showDeleted: MaybeRef<boolean> = false,
-  forceUpdate = false,
-  parent: MaybeRef<string | undefined> = undefined
-) => {
+export const useInstanceV1List = (showDeleted: boolean = false) => {
+  const listCache = useListCache("instance");
   const store = useInstanceV1Store();
-  const ready = ref(false);
-  watchEffect(() => {
-    if (!unref(forceUpdate)) {
-      ready.value = true;
+  const cacheKey = listCache.getCacheKey(showDeleted ? "" : "active");
+
+  const cache = computed(() => listCache.getCache(cacheKey));
+
+  watchEffect(async () => {
+    // Skip if request is already in progress or cache is available.
+    if (cache.value?.isFetching || cache.value) {
       return;
     }
 
-    ready.value = false;
-    store.fetchInstanceList(unref(showDeleted), unref(parent)).then(() => {
-      ready.value = true;
+    listCache.cacheMap.set(cacheKey, {
+      timestamp: Date.now(),
+      isFetching: true,
+    });
+    const { instances } = await instanceServiceClient.listInstances({
+      showDeleted,
+    });
+    await store.upsertInstances(instances);
+    listCache.cacheMap.set(cacheKey, {
+      timestamp: Date.now(),
+      isFetching: false,
     });
   });
+
   const instanceList = computed(() => {
-    if (unref(showDeleted)) {
-      return store.instanceList;
-    }
-    return store.activeInstanceList;
+    return showDeleted
+      ? store.instanceListIncludingDeleted
+      : store.instanceList;
   });
-  return { instanceList, ready };
+
+  return {
+    instanceList,
+    ready: computed(() => cache.value && !cache.value.isFetching),
+  };
 };
 
 const composeInstance = async (instance: Instance) => {

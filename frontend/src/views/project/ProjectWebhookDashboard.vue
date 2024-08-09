@@ -4,7 +4,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useProjectV1Store } from "@/store";
+import ProjectWebhookPanel from "@/components/ProjectWebhookPanel.vue";
+import { useProjectByName } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 
 const props = defineProps<{
@@ -12,11 +13,7 @@ const props = defineProps<{
   allowEdit: boolean;
 }>();
 
-const projectV1Store = useProjectV1Store();
-
-const project = computed(() => {
-  return projectV1Store.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 </script>

@@ -208,6 +208,31 @@ func NewMigrationContext(ctx context.Context, taskID int, taskCreatedTs int64, d
 		}
 		port = dsPort
 	}
+	if dataSource.UseSSL {
+		ca, err := common.Unobfuscate(dataSource.ObfuscatedSslCa, secret)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get ssl ca")
+		}
+
+		cert, err := common.Unobfuscate(dataSource.ObfuscatedSslCert, secret)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get ssl cert")
+		}
+
+		key, err := common.Unobfuscate(dataSource.ObfuscatedSslKey, secret)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get ssl key")
+		}
+
+		migrationContext.UseTLS = true
+		migrationContext.TLSCACertificate = ca
+		migrationContext.TLSCertificate = cert
+		migrationContext.TLSKey = key
+		migrationContext.TLSAllowInsecure = true
+		if err := migrationContext.SetupTLS(); err != nil {
+			return nil, errors.Wrapf(err, "failed to set up tls")
+		}
+	}
 	migrationContext.InspectorConnectionConfig.Key.Port = port
 	migrationContext.CliUser = dataSource.Username
 	migrationContext.CliPassword = password
@@ -249,9 +274,7 @@ func NewMigrationContext(ctx context.Context, taskID int, taskCreatedTs int64, d
 		migrationContext.OriginalTableName = parser.GetExplicitTable()
 	}
 	migrationContext.ServeSocketFile = getSocketFilename(taskID, taskCreatedTs, database.UID, database.DatabaseName, tableName)
-	migrationContext.DropServeSocket = true
 	migrationContext.PostponeCutOverFlagFile = GetPostponeFlagFilename(taskID, taskCreatedTs, database.UID, database.DatabaseName, tableName)
-	migrationContext.InitiallyDropGhostTable = true
 	migrationContext.TimestampOldTable = defaultConfig.timestampOldTable
 	migrationContext.SetHeartbeatIntervalMilliseconds(defaultConfig.heartbeatIntervalMilliseconds)
 	migrationContext.SetNiceRatio(defaultConfig.niceRatio)

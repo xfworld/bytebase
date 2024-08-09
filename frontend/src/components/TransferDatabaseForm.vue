@@ -72,8 +72,10 @@
 
 <script lang="ts" setup>
 import { cloneDeep } from "lodash-es";
-import { computed, reactive } from "vue";
+import { NButton, NTooltip } from "naive-ui";
+import { computed, onMounted, reactive } from "vue";
 import { toRef } from "vue";
+import { BBSpin } from "@/bbkit";
 import type { TransferSource } from "@/components/TransferDatabaseForm";
 import {
   MultipleDatabaseSelector,
@@ -83,27 +85,28 @@ import {
   pushNotification,
   useCurrentUserV1,
   useDatabaseV1Store,
-  useProjectV1ByUID,
-  useProjectV1Store,
+  useProjectByName,
 } from "@/store";
-import type { ComposedDatabase, ComposedInstance } from "@/types";
+import type { ComposedDatabase } from "@/types";
 import {
-  DEFAULT_PROJECT_ID,
-  DEFAULT_PROJECT_V1_NAME,
-  UNKNOWN_INSTANCE_NAME,
+  DEFAULT_PROJECT_NAME,
   defaultProject,
+  isValidInstanceName,
 } from "@/types";
 import type { UpdateDatabaseRequest } from "@/types/proto/v1/database_service";
+import type { InstanceResource } from "@/types/proto/v1/instance_service";
 import type { Project } from "@/types/proto/v1/project_service";
 import {
   filterDatabaseV1ByKeyword,
   hasProjectPermissionV2,
   sortDatabaseV1List,
 } from "@/utils";
+import NoDataPlaceholder from "./misc/NoDataPlaceholder.vue";
+import { DrawerContent } from "./v2";
 
 interface LocalState {
   transferSource: TransferSource;
-  instanceFilter: ComposedInstance | undefined;
+  instanceFilter: InstanceResource | undefined;
   projectFilter: Project | undefined;
   searchText: string;
   loading: boolean;
@@ -111,7 +114,7 @@ interface LocalState {
 }
 
 const props = defineProps<{
-  projectId: string;
+  projectName: string;
   onSuccess?: (databases: ComposedDatabase[]) => void;
 }>();
 
@@ -121,7 +124,6 @@ const emit = defineEmits<{
 
 const currentUserV1 = useCurrentUserV1();
 const databaseStore = useDatabaseV1Store();
-const projectStore = useProjectV1Store();
 
 const hasPermissionForDefaultProject = computed(() => {
   return hasProjectPermissionV2(
@@ -133,7 +135,7 @@ const hasPermissionForDefaultProject = computed(() => {
 
 const state = reactive<LocalState>({
   transferSource:
-    props.projectId === String(DEFAULT_PROJECT_ID) ||
+    props.projectName === DEFAULT_PROJECT_NAME ||
     !hasPermissionForDefaultProject.value
       ? "OTHER"
       : "DEFAULT",
@@ -143,18 +145,25 @@ const state = reactive<LocalState>({
   loading: false,
   selectedDatabaseUidList: [],
 });
-const { project } = useProjectV1ByUID(toRef(props, "projectId"));
+const { project } = useProjectByName(toRef(props, "projectName"));
+
+onMounted(async () => {
+  state.loading = true;
+  // Prepare all databases for transfer.
+  await databaseStore.searchDatabases({});
+  state.loading = false;
+});
 
 const rawDatabaseList = computed(() => {
   if (state.transferSource === "DEFAULT") {
-    return databaseStore.databaseListByProject(DEFAULT_PROJECT_V1_NAME);
+    return databaseStore.databaseListByProject(DEFAULT_PROJECT_NAME);
   } else {
-    return databaseStore.databaseList.filter((item) => {
+    return databaseStore.databaseList.filter((db) => {
       return (
-        item.projectEntity.uid !== props.projectId &&
-        item.project !== DEFAULT_PROJECT_V1_NAME &&
+        db.project !== props.projectName &&
+        db.project !== DEFAULT_PROJECT_NAME &&
         hasProjectPermissionV2(
-          item.projectEntity,
+          db.projectEntity,
           currentUserV1.value,
           "bb.projects.update"
         )
@@ -181,7 +190,7 @@ const filteredDatabaseList = computed(() => {
       const instance = state.instanceFilter;
       if (
         instance &&
-        instance.name !== UNKNOWN_INSTANCE_NAME &&
+        isValidInstanceName(instance.name) &&
         db.instance !== instance.name
       ) {
         return false;
@@ -214,9 +223,8 @@ const transferDatabase = async () => {
   try {
     state.loading = true;
     const updates = selectedDatabaseList.value.map((db) => {
-      const targetProject = projectStore.getProjectByUID(props.projectId);
       const databasePatch = cloneDeep(db);
-      databasePatch.project = targetProject.name;
+      databasePatch.project = props.projectName;
       const updateMask = ["project"];
       return {
         database: databasePatch,

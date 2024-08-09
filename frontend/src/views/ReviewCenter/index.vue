@@ -49,7 +49,7 @@
     @close="state.selectedPlanOnlyType = undefined"
   >
     <AlterSchemaPrepForm
-      :project-id="specificProject?.uid"
+      :project-name="specificProject?.name"
       :type="state.selectedPlanOnlyType!"
       :plan-only="true"
       @dismiss="state.selectedPlanOnlyType = undefined"
@@ -181,13 +181,15 @@ const mergedPlanFind = computed(() => {
 });
 
 const allowToCreatePlan = computed(() => {
+  // Check if user has permission to create plan in specific project.
   if (specificProject.value) {
     return hasPermissionToCreatePlanInProject(
       specificProject.value,
       currentUser.value
     );
   }
-
+  // Otherwise, check if user has permission to create plan in any project.
+  // Mainly using in workspace dashboard.
   return projectV1Store.projectList.some((project) =>
     hasPermissionToCreatePlanInProject(project, currentUser.value)
   );

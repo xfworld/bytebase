@@ -11,7 +11,7 @@ import {
   isOwnerOfProjectV1,
   isViewerOfProjectV1,
 } from "@/utils";
-import { getUserEmailListInBinding, memberListInProjectV1 } from "@/utils";
+import { getUserEmailListInBinding, memberListInIAM } from "@/utils";
 import { convertFromExpr } from "@/utils/issue/cel";
 import { useCurrentUserV1 } from "../auth";
 import { usePermissionStore } from "./permission";
@@ -36,7 +36,7 @@ export const useProjectIamPolicyStore = defineStore(
 
       const request = projectServiceClient
         .getIamPolicy({
-          project,
+          resource: project,
         })
         .then((policy) => {
           policyMap.value.set(project, policy);
@@ -68,8 +68,9 @@ export const useProjectIamPolicyStore = defineStore(
         }
       });
       const updated = await projectServiceClient.setIamPolicy({
-        project,
+        resource: project,
         policy,
+        etag: policy.etag,
       });
       policyMap.value.set(project, updated);
 
@@ -211,7 +212,7 @@ export const useCurrentUserIamPolicy = () => {
       return false;
     }
 
-    const member = memberListInProjectV1(policy).find(
+    const member = memberListInIAM(policy).find(
       (member) => member.user.email === currentUser.value.email
     );
     if (!member) {
@@ -280,7 +281,7 @@ export const useCurrentUserIamPolicy = () => {
       return false;
     }
 
-    const member = memberListInProjectV1(policy).find(
+    const member = memberListInIAM(policy).find(
       (member) => member.user.email === currentUser.value.email
     );
     if (!member) {

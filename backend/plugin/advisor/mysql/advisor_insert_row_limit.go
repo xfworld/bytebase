@@ -10,6 +10,7 @@ import (
 	mysql "github.com/bytebase/mysql-parser"
 	"github.com/pkg/errors"
 
+	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/plugin/advisor"
 	mysqlparser "github.com/bytebase/bytebase/backend/plugin/parser/mysql"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
@@ -57,6 +58,9 @@ func (*InsertRowLimitAdvisor) Check(ctx advisor.Context, _ string) ([]*storepb.A
 	for _, stmt := range list {
 		checker.baseLine = stmt.BaseLine
 		antlr.ParseTreeWalkerDefault.Walk(checker, stmt.Tree)
+		if checker.explainCount >= common.MaximumLintExplainSize {
+			break
+		}
 	}
 	return checker.generateAdvice()
 }
@@ -64,26 +68,19 @@ func (*InsertRowLimitAdvisor) Check(ctx advisor.Context, _ string) ([]*storepb.A
 type insertRowLimitChecker struct {
 	*mysql.BaseMySQLParserListener
 
-	baseLine   int
-	adviceList []*storepb.Advice
-	level      storepb.Advice_Status
-	title      string
-	text       string
-	line       int
-	maxRow     int
-	driver     *sql.DB
-	ctx        context.Context
+	baseLine     int
+	adviceList   []*storepb.Advice
+	level        storepb.Advice_Status
+	title        string
+	text         string
+	line         int
+	maxRow       int
+	driver       *sql.DB
+	ctx          context.Context
+	explainCount int
 }
 
 func (checker *insertRowLimitChecker) generateAdvice() ([]*storepb.Advice, error) {
-	if len(checker.adviceList) == 0 {
-		checker.adviceList = append(checker.adviceList, &storepb.Advice{
-			Status:  storepb.Advice_SUCCESS,
-			Code:    advisor.Ok.Int32(),
-			Title:   "OK",
-			Content: "",
-		})
-	}
 	return checker.adviceList, nil
 }
 
@@ -108,6 +105,7 @@ func (checker *insertRowLimitChecker) handleInsertQueryExpression(ctx mysql.IIns
 		return
 	}
 
+	checker.explainCount++
 	res, err := advisor.Query(checker.ctx, checker.driver, storepb.Engine_MYSQL, fmt.Sprintf("EXPLAIN %s", checker.text))
 	if err != nil {
 		checker.adviceList = append(checker.adviceList, &storepb.Advice{

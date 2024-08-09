@@ -8,20 +8,15 @@
     container-class="!pt-0 -mt-px"
     @close="$emit('close')"
   >
-    <PlanCheckDetail
+    <PlanCheckRunDetail
       :plan-check-run="planCheckRun"
       :database="database"
-      :is-latest="false"
-      :highlight-row-filter="highlightRowFilter"
-      @close="$emit('close')"
+      :show-code-location="showCodeLocation"
     >
-      <template #row-extra="{ row }">
-        <slot name="row-extra" :row="row" />
-      </template>
       <template #row-title-extra="{ row }">
         <slot name="row-title-extra" :row="row" />
       </template>
-    </PlanCheckDetail>
+    </PlanCheckRunDetail>
 
     <div
       v-if="confirm"
@@ -44,6 +39,8 @@
 <script setup lang="ts">
 import { NButton } from "naive-ui";
 import { computed, watchEffect, ref } from "vue";
+import { BBModal } from "@/bbkit";
+import PlanCheckRunDetail from "@/components/PlanCheckRun/PlanCheckRunDetail.vue";
 import { usePolicyV1Store } from "@/store";
 import type { ComposedDatabase } from "@/types";
 import { PolicyType } from "@/types/proto/v1/org_policy_service";
@@ -57,16 +54,13 @@ import {
 import type { Advice } from "@/types/proto/v1/sql_service";
 import { Advice_Status } from "@/types/proto/v1/sql_service";
 import type { Defer } from "@/utils";
-import PlanCheckDetail, {
-  type PlanCheckDetailTableRow,
-} from "../IssueV1/components/PlanCheckSection/PlanCheckBar/PlanCheckDetail.vue";
 
-const { advices, database } = defineProps<{
+const props = defineProps<{
   database: ComposedDatabase;
   advices: Advice[];
   overrideTitle?: string;
   confirm?: Defer<boolean>;
-  highlightRowFilter?: (row: PlanCheckDetailTableRow) => boolean;
+  showCodeLocation?: boolean;
 }>();
 
 defineEmits<{
@@ -80,7 +74,7 @@ const policyV1Store = usePolicyV1Store();
 const restrictIssueCreationForSQLReview = computed((): boolean => {
   return (
     restrictIssueCreationForSqlReviewPolicy.value &&
-    advices.some((advice) => advice.status === Advice_Status.ERROR)
+    props.advices.some((advice) => advice.status === Advice_Status.ERROR)
   );
 });
 
@@ -97,7 +91,7 @@ watchEffect(async () => {
 
   const projectLevelPolicy =
     await policyV1Store.getOrFetchPolicyByParentAndType({
-      parentPath: database.project,
+      parentPath: props.database.project,
       policyType: PolicyType.RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW,
     });
   if (projectLevelPolicy?.restrictIssueCreationForSqlReviewPolicy?.disallow) {
@@ -109,7 +103,7 @@ watchEffect(async () => {
 const planCheckRun = computed((): PlanCheckRun => {
   return PlanCheckRun.fromPartial({
     status: PlanCheckRun_Status.DONE,
-    results: advices.map((advice) => {
+    results: props.advices.map((advice) => {
       let status = PlanCheckRun_Result_Status.STATUS_UNSPECIFIED;
       switch (advice.status) {
         case Advice_Status.SUCCESS:

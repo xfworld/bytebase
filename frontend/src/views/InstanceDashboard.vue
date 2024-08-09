@@ -26,6 +26,7 @@ import { computed, onMounted, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import { useCommonSearchScopeOptions } from "@/components/AdvancedSearch/useCommonSearchScopeOptions";
+import { FeatureAttention } from "@/components/FeatureGuard";
 import { InstanceV1Table } from "@/components/v2";
 import {
   useUIStateStore,
@@ -51,7 +52,7 @@ const subscriptionStore = useSubscriptionV1Store();
 const instanceV1Store = useInstanceV1Store();
 const uiStateStore = useUIStateStore();
 const environmentList = useEnvironmentV1List();
-const { instanceList: rawInstanceV1List, ready } = useInstanceV1List();
+const { instanceList, ready } = useInstanceV1List();
 
 const state = reactive<LocalState>({
   params: {
@@ -82,7 +83,7 @@ onMounted(() => {
 });
 
 const filteredInstanceV1List = computed(() => {
-  let list = [...rawInstanceV1List.value];
+  let list = [...instanceList.value];
   if (selectedEnvironment.value !== `${UNKNOWN_ID}`) {
     list = list.filter(
       (instance) =>
@@ -103,8 +104,7 @@ const filteredInstanceV1List = computed(() => {
 const remainingInstanceCount = computed((): number => {
   return Math.max(
     0,
-    subscriptionStore.instanceCountLimit -
-      instanceV1Store.activeInstanceList.length
+    subscriptionStore.instanceCountLimit - instanceV1Store.instanceList.length
   );
 });
 

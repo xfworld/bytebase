@@ -197,15 +197,18 @@ import { cloneDeep } from "lodash-es";
 import { NButton, NInput } from "naive-ui";
 import { computed, ref, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
-import { type BBGridColumn, type BBGridRow, BBGrid } from "@/bbkit";
-import FeatureBadge from "@/components/FeatureGuard/FeatureBadge.vue";
-import { Drawer, DrawerContent } from "@/components/v2";
+import { type BBGridColumn, type BBGridRow, BBGrid, BBSpin } from "@/bbkit";
+import {
+  FeatureAttention,
+  FeatureBadge,
+  FeatureModal,
+} from "@/components/FeatureGuard";
+import { Drawer, DrawerContent, SpinnerButton } from "@/components/v2";
 import {
   pushNotification,
   useDatabaseSecretStore,
   useSubscriptionV1Store,
 } from "@/store";
-import { useGracefulRequest } from "@/store/modules/utils";
 import { type ComposedDatabase } from "@/types";
 import { Secret } from "@/types/proto/v1/database_service";
 
@@ -367,8 +370,10 @@ const handleSave = async () => {
       updateMask.push("value");
     }
 
-    const updated = await useGracefulRequest(() =>
-      store.upsertSecret(secret, updateMask, mode === "CREATE")
+    const updated = await store.upsertSecret(
+      secret,
+      updateMask,
+      mode === "CREATE"
     );
     upsertSecret(updated);
     detail.value = undefined;
@@ -391,7 +396,7 @@ const handleDelete = async (secret: Secret) => {
     return;
   }
   try {
-    await useGracefulRequest(() => store.deleteSecret(secret.name));
+    await store.deleteSecret(secret.name);
     const index = secretList.value.findIndex((s) => s.name === secret.name);
     if (index >= 0) {
       secretList.value.splice(index, 1);

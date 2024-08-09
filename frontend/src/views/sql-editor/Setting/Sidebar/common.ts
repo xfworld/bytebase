@@ -1,28 +1,21 @@
-import {
-  BuildingIcon,
-  GalleryHorizontalEndIcon,
-  LayersIcon,
-  SquareStackIcon,
-} from "lucide-vue-next";
+import { BuildingIcon, LayersIcon } from "lucide-vue-next";
 import { computed, h } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, type RouteRecordRaw } from "vue-router";
 import type { SidebarItem } from "@/components/CommonSidebar.vue";
 import sqlEditorRoutes, {
   SQL_EDITOR_SETTING_GENERAL_MODULE,
-  SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
   SQL_EDITOR_SETTING_INSTANCE_MODULE,
-  SQL_EDITOR_SETTING_PROJECT_MODULE,
 } from "@/router/sqlEditor";
-import { useCurrentUserV1, usePageMode } from "@/store";
-import type { WorkspacePermission } from "@/types";
+import { useCurrentUserV1, useAppFeature } from "@/store";
+import type { Permission } from "@/types";
 import { hasWorkspacePermissionV2 } from "@/utils";
 
 export const useSidebarItems = () => {
   const route = useRoute();
   const { t } = useI18n();
   const me = useCurrentUserV1();
-  const pageMode = usePageMode();
+  const disableSetting = useAppFeature("bb.feature.sql-editor.disable-setting");
 
   const getItemClass = (item: SidebarItem) => {
     if (route.name === item.name) {
@@ -33,10 +26,10 @@ export const useSidebarItems = () => {
 
   const getFlattenRoutes = (
     routes: RouteRecordRaw[],
-    permissions: WorkspacePermission[] = []
+    permissions: Permission[] = []
   ): {
     name: string;
-    permissions: WorkspacePermission[];
+    permissions: Permission[];
   }[] => {
     return routes.reduce(
       (list, workspaceRoute) => {
@@ -62,7 +55,7 @@ export const useSidebarItems = () => {
         }
         return list;
       },
-      [] as { name: string; permissions: WorkspacePermission[] }[]
+      [] as { name: string; permissions: Permission[] }[]
     );
   };
 
@@ -95,8 +88,8 @@ export const useSidebarItems = () => {
   };
 
   const itemList = computed((): SidebarItem[] => {
-    if (pageMode.value === "STANDALONE") {
-      // Hide SQL Editor settings entirely in STANDALONE mode
+    if (disableSetting.value) {
+      // Hide SQL Editor settings entirely if embedded in iframe
       return [];
     }
 
@@ -111,18 +104,6 @@ export const useSidebarItems = () => {
         title: t("common.instances"),
         icon: () => h(LayersIcon),
         name: SQL_EDITOR_SETTING_INSTANCE_MODULE,
-        type: "route",
-      },
-      {
-        title: t("common.projects"),
-        icon: () => h(GalleryHorizontalEndIcon),
-        name: SQL_EDITOR_SETTING_PROJECT_MODULE,
-        type: "route",
-      },
-      {
-        title: t("common.environments"),
-        icon: () => h(SquareStackIcon),
-        name: SQL_EDITOR_SETTING_ENVIRONMENT_MODULE,
         type: "route",
       },
     ];

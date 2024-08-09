@@ -18,9 +18,11 @@
 
 <script lang="ts" setup>
 import { useTitle } from "@vueuse/core";
+import Emittery from "emittery";
 import { NSpin } from "naive-ui";
 import { computed, onMounted, reactive, toRef } from "vue";
 import { useI18n } from "vue-i18n";
+import { FeatureModal } from "@/components/FeatureGuard";
 import {
   DataExportIssueDetailPage,
   GrantRequestIssueDetailPage,
@@ -29,6 +31,10 @@ import {
   useBaseIssueContext,
   useInitializeIssue,
 } from "@/components/IssueV1";
+import {
+  providePlanCheckRunContext,
+  type PlanCheckRunEvents,
+} from "@/components/PlanCheckRun/context";
 import { useBodyLayoutContext } from "@/layouts/common";
 import { useUIStateStore } from "@/store";
 import { UNKNOWN_ID } from "@/types";
@@ -53,14 +59,18 @@ const state = reactive<LocalState>({
   showFeatureModal: false,
 });
 
-const { isCreating, issue, isInitializing, reInitialize } = useInitializeIssue(
-  toRef(props, "issueSlug"),
-  toRef(props, "projectId")
-);
+const { isCreating, issue, isInitializing, reInitialize, allowEditIssue } =
+  useInitializeIssue(toRef(props, "issueSlug"), toRef(props, "projectId"));
 const ready = computed(() => {
   return !isInitializing.value && !!issue.value;
 });
 const uiStateStore = useUIStateStore();
+
+const issueBaseContext = useBaseIssueContext({
+  isCreating,
+  ready,
+  issue,
+});
 
 provideIssueContext(
   {
@@ -68,11 +78,22 @@ provideIssueContext(
     issue,
     ready,
     reInitialize,
-    ...useBaseIssueContext({
-      isCreating,
-      ready,
-      issue,
-    }),
+    allowEditIssue,
+    ...issueBaseContext,
+  },
+  true /* root */
+);
+
+providePlanCheckRunContext(
+  {
+    events: (() => {
+      const emittery: PlanCheckRunEvents = new Emittery();
+      emittery.on("status-changed", () => {
+        // If the status of plan checks changes, trigger a refresh.
+        issueBaseContext.events?.emit("status-changed", { eager: true });
+      });
+      return emittery;
+    })(),
   },
   true /* root */
 );

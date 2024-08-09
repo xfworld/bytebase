@@ -84,6 +84,76 @@ func local_request_DatabaseService_GetDatabase_0(ctx context.Context, marshaler 
 }
 
 var (
+	filter_DatabaseService_ListInstanceDatabases_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+)
+
+func request_DatabaseService_ListInstanceDatabases_0(ctx context.Context, marshaler runtime.Marshaler, client DatabaseServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListInstanceDatabasesRequest
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabaseService_ListInstanceDatabases_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ListInstanceDatabases(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_DatabaseService_ListInstanceDatabases_0(ctx context.Context, marshaler runtime.Marshaler, server DatabaseServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq ListInstanceDatabasesRequest
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabaseService_ListInstanceDatabases_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ListInstanceDatabases(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+var (
 	filter_DatabaseService_ListDatabases_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
@@ -1345,6 +1415,7 @@ func local_request_DatabaseService_GetChangeHistory_0(ctx context.Context, marsh
 // UnaryRPC     :call DatabaseServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterDatabaseServiceHandlerFromEndpoint instead.
+// GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
 func RegisterDatabaseServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server DatabaseServiceServer) error {
 
 	mux.Handle("GET", pattern_DatabaseService_GetDatabase_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1372,6 +1443,31 @@ func RegisterDatabaseServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 
 	})
 
+	mux.Handle("GET", pattern_DatabaseService_ListInstanceDatabases_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		var err error
+		var annotatedContext context.Context
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListInstanceDatabases", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/databases"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DatabaseService_ListInstanceDatabases_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabaseService_ListInstanceDatabases_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	mux.Handle("GET", pattern_DatabaseService_ListDatabases_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -1380,7 +1476,7 @@ func RegisterDatabaseServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/databases"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/databases"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1405,7 +1501,7 @@ func RegisterDatabaseServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/databases"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/databases"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1655,7 +1751,7 @@ func RegisterDatabaseServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListSlowQueries", runtime.WithHTTPPathPattern("/v1/{parent=instances/*/databases/*}/slowQueries"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListSlowQueries", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/slowQueries"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1860,7 +1956,7 @@ func RegisterDatabaseServiceHandler(ctx context.Context, mux *runtime.ServeMux, 
 // to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "DatabaseServiceClient".
 // Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "DatabaseServiceClient"
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
-// "DatabaseServiceClient" to call the correct interceptors.
+// "DatabaseServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
 func RegisterDatabaseServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client DatabaseServiceClient) error {
 
 	mux.Handle("GET", pattern_DatabaseService_GetDatabase_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -1885,13 +1981,35 @@ func RegisterDatabaseServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 
 	})
 
+	mux.Handle("GET", pattern_DatabaseService_ListInstanceDatabases_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		var err error
+		var annotatedContext context.Context
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListInstanceDatabases", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/databases"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DatabaseService_ListInstanceDatabases_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabaseService_ListInstanceDatabases_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	mux.Handle("GET", pattern_DatabaseService_ListDatabases_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=instances/*}/databases"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/databases"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1913,7 +2031,7 @@ func RegisterDatabaseServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/databases"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListDatabases", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/databases"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2133,7 +2251,7 @@ func RegisterDatabaseServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListSlowQueries", runtime.WithHTTPPathPattern("/v1/{parent=instances/*/databases/*}/slowQueries"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.DatabaseService/ListSlowQueries", runtime.WithHTTPPathPattern("/v1/{parent=projects/*}/slowQueries"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2287,9 +2405,11 @@ func RegisterDatabaseServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 var (
 	pattern_DatabaseService_GetDatabase_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "instances", "databases", "name"}, ""))
 
-	pattern_DatabaseService_ListDatabases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "instances", "parent", "databases"}, ""))
+	pattern_DatabaseService_ListInstanceDatabases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "instances", "parent", "databases"}, ""))
 
-	pattern_DatabaseService_ListDatabases_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "projects", "parent", "databases"}, ""))
+	pattern_DatabaseService_ListDatabases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "projects", "parent", "databases"}, ""))
+
+	pattern_DatabaseService_ListDatabases_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "databases"}, ""))
 
 	pattern_DatabaseService_SearchDatabases_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "databases"}, "search"))
 
@@ -2309,7 +2429,7 @@ var (
 
 	pattern_DatabaseService_DiffSchema_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 2, 3, 1, 0, 4, 6, 5, 4}, []string{"v1", "instances", "databases", "changeHistories", "name"}, "diffSchema"))
 
-	pattern_DatabaseService_ListSlowQueries_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "instances", "databases", "parent", "slowQueries"}, ""))
+	pattern_DatabaseService_ListSlowQueries_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "projects", "parent", "slowQueries"}, ""))
 
 	pattern_DatabaseService_ListSecrets_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "instances", "databases", "parent", "secrets"}, ""))
 
@@ -2326,6 +2446,8 @@ var (
 
 var (
 	forward_DatabaseService_GetDatabase_0 = runtime.ForwardResponseMessage
+
+	forward_DatabaseService_ListInstanceDatabases_0 = runtime.ForwardResponseMessage
 
 	forward_DatabaseService_ListDatabases_0 = runtime.ForwardResponseMessage
 

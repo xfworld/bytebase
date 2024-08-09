@@ -27,11 +27,19 @@
       :page-size="10"
     >
       <template #table="{ list }">
-        <AuditLogDataTable :audit-log-list="list" :show-project="false" />
+        <AuditLogDataTable
+          :key="`audit-log-table.${projectId}`"
+          :audit-log-list="list"
+          :show-project="false"
+        />
       </template>
     </PagedAuditLogTable>
     <template v-else>
-      <AuditLogDataTable :audit-log-list="[]" :show-project="false" />
+      <AuditLogDataTable
+        :key="`audit-log-table.${projectId}`"
+        :audit-log-list="[]"
+        :show-project="false"
+      />
     </template>
   </div>
 </template>
@@ -44,6 +52,7 @@ import AuditLogSearch from "@/components/AuditLog/AuditLogSearch";
 import { buildSearchAuditLogParams } from "@/components/AuditLog/AuditLogSearch/utils";
 import type { ExportOption } from "@/components/DataExportButton.vue";
 import DataExportButton from "@/components/DataExportButton.vue";
+import { FeatureAttention } from "@/components/FeatureGuard";
 import PagedAuditLogTable from "@/components/PagedAuditLogTable.vue";
 import { featureToRef, useAuditLogStore } from "@/store";
 import { type SearchAuditLogsParams } from "@/types";

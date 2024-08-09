@@ -170,7 +170,7 @@
         "
         class="mt-4 sm:col-span-3 sm:col-start-1"
       >
-        <div class="mb-4">
+        <div v-if="!hideAdvancedFeatures" class="mb-4">
           <NRadioGroup
             class="textlabel"
             :value="state.passwordType"
@@ -221,7 +221,7 @@
           <label class="textlabel block">
             {{ $t("common.password") }}
           </label>
-          <div class="flex space-x-2 text-sm">
+          <div v-if="!hideAdvancedFeatures" class="flex space-x-2 text-sm">
             <div class="text-gray-400">
               {{ $t("instance.password-type.password-tip") }}
             </div>
@@ -547,7 +547,9 @@
                 "
                 :disabled="!allowEdit || dataSource.useEmptyMasterPassword"
                 :value="
-                  dataSource.useEmptyMasterPassword ? '' : dataSource.updatedMasterPassword
+                  dataSource.useEmptyMasterPassword
+                    ? ''
+                    : dataSource.updatedMasterPassword
                 "
                 @update:value="dataSource.updatedMasterPassword = $event.trim()"
               />
@@ -812,6 +814,7 @@ MIIEvQ...
 
   <div
     v-if="
+      !hideAdvancedFeatures &&
       showSSH &&
       dataSource.authenticationType === DataSource_AuthenticationType.PASSWORD
     "
@@ -870,6 +873,10 @@ import {
 } from "naive-ui";
 import { watch, reactive, computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { BBTextField } from "@/bbkit";
+import { FeatureBadge } from "@/components/FeatureGuard";
+import LearnMoreLink from "@/components/LearnMoreLink.vue";
+import DroppableTextarea from "@/components/misc/DroppableTextarea.vue";
 import type { DataSourceOptions } from "@/types/dataSource";
 import { Engine } from "@/types/proto/v1/common";
 import type { DataSource } from "@/types/proto/v1/instance_service";
@@ -887,7 +894,9 @@ import { DataSource_RedisType } from "@/types/proto/v1/instance_service";
 import { onlyAllowNumber } from "@/utils";
 import type { EditDataSource } from "../common";
 import { useInstanceFormContext } from "../context";
+import CreateDataSourceExample from "./CreateDataSourceExample.vue";
 import GcpCredentialInput from "./GcpCredentialInput.vue";
+import OracleSIDAndServiceNameInput from "./OracleSIDAndServiceNameInput.vue";
 import SshConnectionForm from "./SshConnectionForm.vue";
 import SslCertificateFormV1 from "./SslCertificateFormV1.vue";
 
@@ -908,6 +917,7 @@ const {
   adminDataSource,
   hasReadonlyReplicaFeature,
   missingFeature,
+  hideAdvancedFeatures,
 } = useInstanceFormContext();
 
 const {

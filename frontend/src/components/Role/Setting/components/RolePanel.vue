@@ -108,10 +108,13 @@ import { PlusIcon } from "lucide-vue-next";
 import { NButton, NInput, NTransfer } from "naive-ui";
 import { computed, reactive, watch, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { BBSpin } from "@/bbkit";
+import { FeatureBadge } from "@/components/FeatureGuard";
 import { Drawer, DrawerContent, ResourceIdField } from "@/components/v2";
 import { pushNotification, useRoleStore } from "@/store";
+import { roleNamePrefix } from "@/store/modules/v1/common";
 import type { ValidatedMessage } from "@/types";
-import { PROJECT_PERMISSIONS, WORKSPACE_PERMISSIONS } from "@/types";
+import { PERMISSIONS } from "@/types";
 import { Role } from "@/types/proto/v1/role_service";
 import { extractRoleResourceName } from "@/utils";
 import { displayPermissionTitle } from "@/utils/permission";
@@ -151,15 +154,17 @@ const resourceId = computed({
     return extractRoleResourceName(state.role.name);
   },
   set(value) {
-    state.role.name = `roles/${value}`;
+    state.role.name = `${roleNamePrefix}${value}`;
   },
 });
 
 const permissionOptions = computed(() => {
-  return [...WORKSPACE_PERMISSIONS, ...PROJECT_PERMISSIONS].sort().map((p) => ({
-    label: displayPermissionTitle(p),
-    value: p,
-  }));
+  return PERMISSIONS.sort()
+    .filter((p) => !p.startsWith("bb.branches")) // Filter branch related permissions.
+    .map((p) => ({
+      label: displayPermissionTitle(p),
+      value: p,
+    }));
 });
 
 const allowSave = computed(() => {
@@ -207,7 +212,7 @@ const handleSave = async () => {
 const validateResourceId = async (
   name: string
 ): Promise<ValidatedMessage[]> => {
-  if (roleStore.roleList.find((r) => r.name === `roles/${name}`)) {
+  if (roleStore.roleList.find((r) => r.name === `${roleNamePrefix}${name}`)) {
     return [
       {
         type: "error",

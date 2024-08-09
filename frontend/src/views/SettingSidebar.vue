@@ -1,7 +1,7 @@
 <template>
   <CommonSidebar
     :key="'setting'"
-    :item-list="settingSidebarItemList as SidebarItem[]"
+    :item-list="settingSidebarItemList"
     :get-item-class="getItemClass"
     @select="onSelect"
   />
@@ -14,12 +14,12 @@ import { useI18n } from "vue-i18n";
 import type { RouteRecordRaw } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import type { SidebarItem } from "@/components/CommonSidebar.vue";
+import CommonSidebar from "@/components/CommonSidebar.vue";
 import workspaceSettingRoutes, {
   SETTING_ROUTE_PROFILE,
   SETTING_ROUTE_PROFILE_TWO_FACTOR,
   SETTING_ROUTE_WORKSPACE_GENERAL,
   SETTING_ROUTE_WORKSPACE_SUBSCRIPTION,
-  SETTING_ROUTE_WORKSPACE_DEBUG_LOG,
   SETTING_ROUTE_WORKSPACE_ARCHIVE,
   SETTING_ROUTE_WORKSPACE,
 } from "@/router/dashboard/workspaceSetting";
@@ -95,11 +95,6 @@ const settingSidebarItemList = computed((): SidebarItem[] => {
         {
           title: t("settings.sidebar.subscription"),
           name: SETTING_ROUTE_WORKSPACE_SUBSCRIPTION,
-          type: "route",
-        },
-        {
-          title: t("settings.sidebar.debug-log"),
-          name: SETTING_ROUTE_WORKSPACE_DEBUG_LOG,
           type: "route",
         },
       ],

@@ -150,7 +150,7 @@ var (
 type TestCase struct {
 	Statement  string                                        `yaml:"statement"`
 	ChangeType storepb.PlanCheckRunConfig_ChangeDatabaseType `yaml:"changeType"`
-	Want       []*storepb.Advice                             `yaml:"want"`
+	Want       []*storepb.Advice                             `yaml:"want,omitempty"`
 }
 
 type testCatalog struct {
@@ -275,11 +275,6 @@ func (*MockDriver) Ping(_ context.Context) error {
 	return nil
 }
 
-// GetType implements the Driver interface.
-func (*MockDriver) GetType() storepb.Engine {
-	return storepb.Engine_ENGINE_UNSPECIFIED
-}
-
 // GetDB gets the database.
 func (*MockDriver) GetDB() *sql.DB {
 	return nil
@@ -292,11 +287,6 @@ func (*MockDriver) Execute(_ context.Context, _ string, _ database.ExecuteOption
 
 // QueryConn queries a SQL statement in a given connection.
 func (*MockDriver) QueryConn(_ context.Context, _ *sql.Conn, _ string, _ *database.QueryContext) ([]*v1pb.QueryResult, error) {
-	return nil, nil
-}
-
-// RunStatement implements the Driver interface.
-func (*MockDriver) RunStatement(_ context.Context, _ *sql.Conn, _ string) ([]*v1pb.QueryResult, error) {
 	return nil, nil
 }
 

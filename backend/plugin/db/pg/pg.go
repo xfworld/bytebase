@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	// Import pg driver.
-	// init() in pgx/v5/stdlib will register it's pgx driver.
 	"cloud.google.com/go/cloudsqlconn"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
@@ -41,9 +39,6 @@ var (
 	driverName = "pgx"
 
 	_ db.Driver = (*Driver)(nil)
-
-	variableSetStmtRegexp  = regexp.MustCompile(`(?i)^SET\s+?`)
-	variableShowStmtRegexp = regexp.MustCompile(`(?i)^SHOW\s+?`)
 )
 
 func init() {
@@ -174,6 +169,7 @@ func getPGConnectionConfig(config db.ConnectionConfig) (*pgx.ConnConfig, error) 
 	}
 	if config.ReadOnly {
 		connConfig.RuntimeParams["default_transaction_read_only"] = "true"
+		connConfig.RuntimeParams["application_name"] = "bytebase"
 	}
 
 	return connConfig, nil
@@ -204,7 +200,7 @@ func getRDSConnectionConfig(ctx context.Context, conf db.ConnectionConfig) (*pgx
 		return nil, err
 	}
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s",
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s application_name=bytebase",
 		conf.Host, conf.Port, conf.Username, password, conf.Database,
 	)
 	return pgx.ParseConfig(dsn)
@@ -220,7 +216,7 @@ func getCloudSQLConnectionConfig(ctx context.Context, conf db.ConnectionConfig) 
 		return nil, err
 	}
 
-	dsn := fmt.Sprintf("user=%s database=%s", conf.Username, conf.Database)
+	dsn := fmt.Sprintf("user=%s database=%s application_name=bytebase", conf.Username, conf.Database)
 	config, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
@@ -279,11 +275,6 @@ func (driver *Driver) Close(context.Context) error {
 // Ping pings the database.
 func (driver *Driver) Ping(ctx context.Context) error {
 	return driver.db.PingContext(ctx)
-}
-
-// GetType returns the database type.
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_POSTGRES
 }
 
 // GetDB gets the database.
@@ -366,6 +357,8 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 
 	var commands []base.SingleSQL
 	var originalIndex []int32
+	var nonTransactionAndSetRoleStmts []string
+	var nonTransactionAndSetRoleStmtsIndex []int32
 	var isPlsql bool
 	oneshot := true
 	// HACK(p0ny): always split for pg
@@ -389,6 +382,27 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 		if false && len(commands) <= common.MaximumCommands {
 			oneshot = false
 		}
+
+		var tmpCommands []base.SingleSQL
+		var tmpOriginalIndex []int32
+		for i, command := range commands {
+			switch {
+			case isSetRoleStatement(command.Text):
+				nonTransactionAndSetRoleStmts = append(nonTransactionAndSetRoleStmts, command.Text)
+				nonTransactionAndSetRoleStmtsIndex = append(nonTransactionAndSetRoleStmtsIndex, originalIndex[i])
+			case IsNonTransactionStatement(command.Text):
+				nonTransactionAndSetRoleStmts = append(nonTransactionAndSetRoleStmts, command.Text)
+				nonTransactionAndSetRoleStmtsIndex = append(nonTransactionAndSetRoleStmtsIndex, originalIndex[i])
+				continue
+			case isSuperuserStatement(command.Text):
+				// Use superuser privilege to run privileged statements.
+				slog.Info("Use superuser privilege to run privileged statements", slog.String("statement", command.Text))
+				command.Text = fmt.Sprintf("SET LOCAL ROLE NONE;%sSET LOCAL ROLE '%s';", command.Text, owner)
+			}
+			tmpCommands = append(tmpCommands, command)
+			tmpOriginalIndex = append(tmpOriginalIndex, originalIndex[i])
+		}
+		commands, originalIndex = tmpCommands, tmpOriginalIndex
 	}
 	// HACK(p0ny): always split for pg
 	//nolint
@@ -401,13 +415,25 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 		originalIndex = []int32{0}
 	}
 
-	if isPlsql {
-		conn, err := driver.db.Conn(ctx)
-		if err != nil {
-			return 0, errors.Wrapf(err, "failed to get connection")
-		}
-		defer conn.Close()
+	conn, err := driver.db.Conn(ctx)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get connection")
+	}
+	defer conn.Close()
 
+	if opts.SetConnectionID != nil {
+		var pid string
+		if err := conn.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&pid); err != nil {
+			return 0, errors.Wrapf(err, "failed to get connection id")
+		}
+		opts.SetConnectionID(pid)
+
+		if opts.DeleteConnectionID != nil {
+			defer opts.DeleteConnectionID()
+		}
+	}
+
+	if isPlsql {
 		// USE SET SESSION ROLE to set the role for the current session.
 		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET SESSION ROLE '%s'", owner)); err != nil {
 			return 0, errors.Wrapf(err, "failed to set role to database owner %q", owner)
@@ -422,48 +448,10 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 		return 0, nil
 	}
 
-	var remainingSQLs []base.SingleSQL
-	var remainingSQLsIndex, nonTransactionAndSetRoleStmtsIndex []int
-
-	var nonTransactionAndSetRoleStmts []string
-	for i, singleSQL := range commands {
-		if IsNonTransactionStatement(singleSQL.Text) {
-			nonTransactionAndSetRoleStmts = append(nonTransactionAndSetRoleStmts, singleSQL.Text)
-			nonTransactionAndSetRoleStmtsIndex = append(nonTransactionAndSetRoleStmtsIndex, i)
-			continue
-		}
-
-		if isSetRoleStatement(singleSQL.Text) {
-			nonTransactionAndSetRoleStmts = append(nonTransactionAndSetRoleStmts, singleSQL.Text)
-			nonTransactionAndSetRoleStmtsIndex = append(nonTransactionAndSetRoleStmtsIndex, i)
-		}
-
-		if isSuperuserStatement(singleSQL.Text) {
-			// CREATE EVENT TRIGGER statement only supports EXECUTE PROCEDURE in version 10 and before, while newer version supports both EXECUTE { FUNCTION | PROCEDURE }.
-			// Since we use pg_dump version 14, the dump uses a new style even for an old version of PostgreSQL.
-			// We should convert EXECUTE FUNCTION to EXECUTE PROCEDURE to make the restoration work on old versions.
-			// https://www.postgresql.org/docs/14/sql-createeventtrigger.html
-			if strings.Contains(strings.ToUpper(singleSQL.Text), "CREATE EVENT TRIGGER") {
-				singleSQL.Text = strings.ReplaceAll(singleSQL.Text, "EXECUTE FUNCTION", "EXECUTE PROCEDURE")
-			}
-			// Use superuser privilege to run privileged statements.
-			slog.Info("Use superuser privilege to run privileged statements", slog.String("statement", singleSQL.Text))
-			singleSQL.Text = fmt.Sprintf("SET LOCAL ROLE NONE;%sSET LOCAL ROLE '%s';", singleSQL.Text, owner)
-		}
-		remainingSQLs = append(remainingSQLs, singleSQL)
-		remainingSQLsIndex = append(remainingSQLsIndex, i)
-	}
-
 	totalRowsAffected := int64(0)
-	conn, err := driver.db.Conn(ctx)
-	if err != nil {
-		return 0, errors.Wrapf(err, "failed to get connection")
-	}
-	defer conn.Close()
 
-	if len(remainingSQLs) != 0 {
-		totalCommands := len(remainingSQLs)
-
+	totalCommands := len(commands)
+	if totalCommands > 0 {
 		err = conn.Raw(func(driverConn any) error {
 			conn := driverConn.(*stdlib.Conn).Conn()
 
@@ -492,7 +480,7 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 				return err
 			}
 
-			for i, command := range remainingSQLs {
+			for i, command := range commands {
 				// Start the current chunk.
 				// Set the progress information for the current chunk.
 				if opts.UpdateExecutionStatus != nil {
@@ -510,7 +498,7 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 					})
 				}
 
-				indexes := []int32{int32(originalIndex[remainingSQLsIndex[i]])}
+				indexes := []int32{originalIndex[i]}
 				opts.LogCommandExecute(indexes)
 
 				rr := tx.Conn().PgConn().Exec(ctx, command.Text)
@@ -563,7 +551,7 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 	}
 	// Run non-transaction statements at the end.
 	for i, stmt := range nonTransactionAndSetRoleStmts {
-		indexes := []int32{int32(originalIndex[nonTransactionAndSetRoleStmtsIndex[i]])}
+		indexes := []int32{nonTransactionAndSetRoleStmtsIndex[i]}
 		opts.LogCommandExecute(indexes)
 		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			opts.LogCommandResponse(indexes, 0, []int32{0}, err.Error())
@@ -596,14 +584,6 @@ func (driver *Driver) createDatabaseExecute(ctx context.Context, statement strin
 		}
 	}
 	return nil
-}
-
-func isSuperuserStatement(stmt string) bool {
-	upperCaseStmt := strings.ToUpper(strings.TrimLeft(stmt, " \n\t"))
-	if strings.HasPrefix(upperCaseStmt, "GRANT") || strings.HasPrefix(upperCaseStmt, "CREATE EXTENSION") || strings.HasPrefix(upperCaseStmt, "CREATE EVENT TRIGGER") || strings.HasPrefix(upperCaseStmt, "COMMENT ON EVENT TRIGGER") {
-		return true
-	}
-	return false
 }
 
 var (
@@ -639,6 +619,14 @@ func IsNonTransactionStatement(stmt string) bool {
 		return true
 	}
 	return len(vacuumReg.FindString(stmt)) > 0
+}
+
+func isSuperuserStatement(stmt string) bool {
+	upperCaseStmt := strings.ToUpper(strings.TrimLeft(stmt, " \n\t"))
+	if strings.HasPrefix(upperCaseStmt, "GRANT") || strings.HasPrefix(upperCaseStmt, "CREATE EXTENSION") || strings.HasPrefix(upperCaseStmt, "CREATE EVENT TRIGGER") || strings.HasPrefix(upperCaseStmt, "COMMENT ON EVENT TRIGGER") {
+		return true
+	}
+	return false
 }
 
 func getDatabaseInCreateDatabaseStatement(createDatabaseStatement string) (string, error) {
@@ -683,13 +671,57 @@ func (driver *Driver) QueryConn(ctx context.Context, conn *sql.Conn, statement s
 
 	var results []*v1pb.QueryResult
 	for _, singleSQL := range singleSQLs {
-		result, err := driver.querySingleSQL(ctx, conn, singleSQL, queryContext)
+		statement := singleSQL.Text
+		if queryContext != nil && queryContext.Explain {
+			statement = fmt.Sprintf("EXPLAIN %s", statement)
+		} else if queryContext != nil && queryContext.Limit > 0 {
+			statement = getStatementWithResultLimit(statement, queryContext.Limit)
+		}
+
+		_, allQuery, err := base.ValidateSQLForEditor(storepb.Engine_POSTGRES, statement)
 		if err != nil {
-			results = append(results, &v1pb.QueryResult{
+			return nil, err
+		}
+		startTime := time.Now()
+		queryResult, err := func() (*v1pb.QueryResult, error) {
+			if allQuery {
+				rows, err := conn.QueryContext(ctx, statement)
+				if err != nil {
+					return nil, util.FormatErrorWithQuery(err, statement)
+				}
+				defer rows.Close()
+				r, err := util.RowsToQueryResult(rows, driver.config.MaximumSQLResultSize)
+				if err != nil {
+					return nil, err
+				}
+				if err := rows.Err(); err != nil {
+					return nil, err
+				}
+				return r, nil
+			}
+
+			sqlResult, err := conn.ExecContext(ctx, statement)
+			if err != nil {
+				return nil, err
+			}
+			affectedRows, err := sqlResult.RowsAffected()
+			if err != nil {
+				slog.Info("rowsAffected returns error", log.BBError(err))
+			}
+			return util.BuildAffectedRowsResult(affectedRows), nil
+		}()
+		stop := false
+		if err != nil {
+			queryResult = &v1pb.QueryResult{
 				Error: err.Error(),
-			})
-		} else {
-			results = append(results, result)
+			}
+			stop = true
+		}
+		queryResult.Statement = statement
+		queryResult.Latency = durationpb.New(time.Since(startTime))
+		results = append(results, queryResult)
+		if stop {
+			break
 		}
 	}
 
@@ -700,34 +732,7 @@ func getStatementWithResultLimit(stmt string, limit int) string {
 	// To handle cases where there are comments in the query.
 	// eg. select * from t1 -- this is comment;
 	// Add two new line symbol here.
-	return fmt.Sprintf("WITH result AS (\n%s\n) SELECT * FROM result LIMIT %d;", stmt, limit)
-}
-
-func (*Driver) querySingleSQL(ctx context.Context, conn *sql.Conn, singleSQL base.SingleSQL, queryContext *db.QueryContext) (*v1pb.QueryResult, error) {
-	statement := strings.Trim(singleSQL.Text, " \n\t;")
-	isSet := variableSetStmtRegexp.MatchString(statement)
-	isShow := variableShowStmtRegexp.MatchString(statement)
-	if !isSet && !isShow {
-		if queryContext != nil && queryContext.Explain {
-			statement = fmt.Sprintf("EXPLAIN %s", statement)
-		} else if queryContext != nil && queryContext.Limit > 0 {
-			statement = getStatementWithResultLimit(statement, queryContext.Limit)
-		}
-	}
-
-	startTime := time.Now()
-	result, err := util.Query(ctx, storepb.Engine_POSTGRES, conn, statement, queryContext)
-	if err != nil {
-		return nil, err
-	}
-	result.Latency = durationpb.New(time.Since(startTime))
-	result.Statement = statement
-	return result, nil
-}
-
-// RunStatement runs a SQL statement in a given connection.
-func (*Driver) RunStatement(ctx context.Context, conn *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	return util.RunStatement(ctx, storepb.Engine_POSTGRES, conn, statement)
+	return fmt.Sprintf("WITH result AS (\n%s\n) SELECT * FROM result LIMIT %d;", util.TrimStatement(stmt), limit)
 }
 
 func isPlSQLBlock(stmt string) bool {

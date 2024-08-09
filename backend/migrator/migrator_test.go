@@ -154,10 +154,11 @@ func TestMigrationCompatibility(t *testing.T) {
 
 	ctx := context.Background()
 	connCfg := dbdriver.ConnectionConfig{
-		Username: postgres.TestPgUser,
-		Password: "",
-		Host:     common.GetPostgresSocketDir(),
-		Port:     fmt.Sprintf("%d", pgPort),
+		Username:             postgres.TestPgUser,
+		Password:             "",
+		Host:                 common.GetPostgresSocketDir(),
+		Port:                 fmt.Sprintf("%d", pgPort),
+		MaximumSQLResultSize: common.DefaultMaximumSQLResultSize,
 	}
 	defaultDriver, err := dbdriver.Open(
 		ctx,
@@ -230,5 +231,5 @@ func TestMigrationCompatibility(t *testing.T) {
 func TestGetCutoffVersion(t *testing.T) {
 	releaseVersion, err := getProdCutoffVersion()
 	require.NoError(t, err)
-	require.Equal(t, semver.MustParse("2.21.4"), releaseVersion)
+	require.Equal(t, semver.MustParse("2.22.3"), releaseVersion)
 }

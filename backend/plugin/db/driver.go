@@ -35,8 +35,7 @@ type User struct {
 
 // InstanceMetadata is the metadata for an instance.
 type InstanceMetadata struct {
-	Version       string
-	InstanceRoles []*storepb.InstanceRoleMetadata
+	Version string
 	// Simplified database metadata.
 	Databases []*storepb.DatabaseSchemaMetadata
 	Metadata  *storepb.InstanceMetadata
@@ -123,6 +122,15 @@ func (t MigrationType) GetVersionTypeSuffix() string {
 		return "baseline"
 	}
 	return ""
+}
+
+func (t MigrationType) NeedDump() bool {
+	switch t {
+	case Baseline, Migrate, MigrateSDL:
+		return true
+	default:
+		return false
+	}
 }
 
 // MigrationStatus is the status of migration.
@@ -213,6 +221,9 @@ type ConnectionConfig struct {
 	MasterName     string
 	MasterUsername string
 	MasterPassword string
+
+	// The maximum number of bytes for sql results in response body.
+	MaximumSQLResultSize int64
 }
 
 // SSHConfig is the configuration for connection over SSH.
@@ -237,14 +248,11 @@ type ConnectionContext struct {
 // QueryContext is the context to query.
 type QueryContext struct {
 	// Limit is the maximum row count returned. No limit enforced if limit <= 0
-	Limit    int
-	Explain  bool
-	ReadOnly bool
+	Limit   int
+	Explain bool
 
 	// CurrentDatabase is for MySQL
 	CurrentDatabase string
-	// ShareDB is for Redshift.
-	ShareDB bool
 }
 
 // DatabaseRoleMessage is the API message for database role.
@@ -282,14 +290,11 @@ type Driver interface {
 	// Remember to call Close to avoid connection leak
 	Close(ctx context.Context) error
 	Ping(ctx context.Context) error
-	GetType() storepb.Engine
 	GetDB() *sql.DB
 	// Execute will execute the statement.
 	Execute(ctx context.Context, statement string, opts ExecuteOptions) (int64, error)
 	// Used for execute readonly SELECT statement
 	QueryConn(ctx context.Context, conn *sql.Conn, statement string, queryContext *QueryContext) ([]*v1pb.QueryResult, error)
-	// RunStatement will execute the statement and return the result, for both SELECT and non-SELECT statements.
-	RunStatement(ctx context.Context, conn *sql.Conn, statement string) ([]*v1pb.QueryResult, error)
 
 	// Sync schema
 	// SyncInstance syncs the instance metadata.
@@ -303,18 +308,6 @@ type Driver interface {
 	SyncSlowQuery(ctx context.Context, logDateTs time.Time) (map[string]*storepb.SlowQueryStatistics, error)
 	// CheckSlowQueryLogEnabled checks if the slow query log is enabled.
 	CheckSlowQueryLogEnabled(ctx context.Context) error
-
-	// Role
-	// CreateRole creates the role.
-	CreateRole(ctx context.Context, upsert *DatabaseRoleUpsertMessage) (*DatabaseRoleMessage, error)
-	// UpdateRole updates the role.
-	UpdateRole(ctx context.Context, roleName string, upsert *DatabaseRoleUpsertMessage) (*DatabaseRoleMessage, error)
-	// FindRole finds the role by name.
-	FindRole(ctx context.Context, roleName string) (*DatabaseRoleMessage, error)
-	// ListRole lists the role.
-	ListRole(ctx context.Context) ([]*DatabaseRoleMessage, error)
-	// DeleteRole deletes the role by name.
-	DeleteRole(ctx context.Context, roleName string) error
 
 	// Dump dumps the schema of database.
 	Dump(ctx context.Context, out io.Writer) (string, error)
@@ -357,6 +350,10 @@ type ExecuteOptions struct {
 	CreateDatabase        bool
 	UpdateExecutionStatus func(*v1pb.TaskRun_ExecutionDetail)
 	CreateTaskRunLog      func(time.Time, *storepb.TaskRunLog) error
+
+	// Record the connection id first before executing.
+	SetConnectionID    func(id string)
+	DeleteConnectionID func()
 }
 
 func (o *ExecuteOptions) LogSchemaDumpStart() {
@@ -445,4 +442,8 @@ type ErrorWithPosition struct {
 
 func (e *ErrorWithPosition) Error() string {
 	return e.Err.Error()
+}
+
+func (e *ErrorWithPosition) Unwrap() error {
+	return e.Err
 }

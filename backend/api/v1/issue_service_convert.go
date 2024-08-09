@@ -48,7 +48,6 @@ func convertToIssue(ctx context.Context, s *store.Store, issue *store.IssueMessa
 		Description:          issue.Description,
 		Type:                 convertToIssueType(issue.Type),
 		Status:               convertToIssueStatus(issue.Status),
-		Assignee:             "",
 		Approvers:            nil,
 		ApprovalTemplates:    nil,
 		ApprovalFindingDone:  false,
@@ -71,9 +70,6 @@ func convertToIssue(ctx context.Context, s *store.Store, issue *store.IssueMessa
 	}
 	if issue.PipelineUID != nil {
 		issueV1.Rollout = fmt.Sprintf("%s%s/%s%d", common.ProjectNamePrefix, issue.Project.ResourceID, common.RolloutPrefix, *issue.PipelineUID)
-	}
-	if issue.Assignee != nil {
-		issueV1.Assignee = common.FormatUserEmail(issue.Assignee.Email)
 	}
 
 	for _, subscriber := range issue.Subscribers {
@@ -386,6 +382,8 @@ func convertToIssueCommentEventIssueUpdate(u *storepb.IssueCommentPayload_IssueU
 			ToDescription:   u.IssueUpdate.ToDescription,
 			FromStatus:      convertToIssueCommentEventIssueUpdateStatus(u.IssueUpdate.FromStatus),
 			ToStatus:        convertToIssueCommentEventIssueUpdateStatus(u.IssueUpdate.ToStatus),
+			FromLabels:      u.IssueUpdate.FromLabels,
+			ToLabels:        u.IssueUpdate.ToLabels,
 		},
 	}
 }
@@ -480,6 +478,8 @@ func convertToIssueCommentEventTaskUpdateStatus(s *storepb.IssueCommentPayload_T
 		r = v1pb.IssueComment_TaskUpdate_PENDING
 	case storepb.IssueCommentPayload_TaskUpdate_RUNNING:
 		r = v1pb.IssueComment_TaskUpdate_RUNNING
+	case storepb.IssueCommentPayload_TaskUpdate_SKIPPED:
+		r = v1pb.IssueComment_TaskUpdate_SKIPPED
 	case storepb.IssueCommentPayload_TaskUpdate_STATUS_UNSPECIFIED:
 		r = v1pb.IssueComment_TaskUpdate_STATUS_UNSPECIFIED
 	default:

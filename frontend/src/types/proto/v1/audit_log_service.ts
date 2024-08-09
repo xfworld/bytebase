@@ -1,13 +1,16 @@
 /* eslint-disable */
 import Long from "long";
 import _m0 from "protobufjs/minimal";
+import { Any } from "../google/protobuf/any";
 import { Timestamp } from "../google/protobuf/timestamp";
 import { Status } from "../google/rpc/status";
 import { ExportFormat, exportFormatFromJSON, exportFormatToJSON, exportFormatToNumber } from "./common";
+import { PolicyDelta } from "./iam_policy";
 
 export const protobufPackage = "bytebase.v1";
 
 export interface SearchAuditLogsRequest {
+  parent: string;
   /**
    * The filter of the log. It should be a valid CEL expression.
    * For example:
@@ -50,6 +53,7 @@ export interface SearchAuditLogsResponse {
 }
 
 export interface ExportAuditLogsRequest {
+  parent: string;
   /**
    * The filter of the log. It should be a valid CEL expression.
    * For example:
@@ -100,7 +104,15 @@ export interface AuditLog {
    * Some fields are omitted because they are too large or contain sensitive information.
    */
   response: string;
-  status: Status | undefined;
+  status:
+    | Status
+    | undefined;
+  /** service-specific data about the request, response, and other activities. */
+  serviceData:
+    | Any
+    | undefined;
+  /** Metadata about the operation. */
+  requestMetadata: RequestMetadata | undefined;
 }
 
 export enum AuditLog_Severity {
@@ -204,12 +216,30 @@ export function auditLog_SeverityToNumber(object: AuditLog_Severity): number {
   }
 }
 
+export interface AuditData {
+  policyDelta: PolicyDelta | undefined;
+}
+
+/** Metadata about the request. */
+export interface RequestMetadata {
+  /** The IP address of the caller. */
+  callerIp: string;
+  /**
+   * The user agent of the caller.
+   * This information is not authenticated and should be treated accordingly.
+   */
+  callerSuppliedUserAgent: string;
+}
+
 function createBaseSearchAuditLogsRequest(): SearchAuditLogsRequest {
-  return { filter: "", orderBy: "", pageSize: 0, pageToken: "" };
+  return { parent: "", filter: "", orderBy: "", pageSize: 0, pageToken: "" };
 }
 
 export const SearchAuditLogsRequest = {
   encode(message: SearchAuditLogsRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.parent !== "") {
+      writer.uint32(42).string(message.parent);
+    }
     if (message.filter !== "") {
       writer.uint32(10).string(message.filter);
     }
@@ -232,6 +262,13 @@ export const SearchAuditLogsRequest = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
+        case 5:
+          if (tag !== 42) {
+            break;
+          }
+
+          message.parent = reader.string();
+          continue;
         case 1:
           if (tag !== 10) {
             break;
@@ -271,6 +308,7 @@ export const SearchAuditLogsRequest = {
 
   fromJSON(object: any): SearchAuditLogsRequest {
     return {
+      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
       filter: isSet(object.filter) ? globalThis.String(object.filter) : "",
       orderBy: isSet(object.orderBy) ? globalThis.String(object.orderBy) : "",
       pageSize: isSet(object.pageSize) ? globalThis.Number(object.pageSize) : 0,
@@ -280,6 +318,9 @@ export const SearchAuditLogsRequest = {
 
   toJSON(message: SearchAuditLogsRequest): unknown {
     const obj: any = {};
+    if (message.parent !== "") {
+      obj.parent = message.parent;
+    }
     if (message.filter !== "") {
       obj.filter = message.filter;
     }
@@ -300,6 +341,7 @@ export const SearchAuditLogsRequest = {
   },
   fromPartial(object: DeepPartial<SearchAuditLogsRequest>): SearchAuditLogsRequest {
     const message = createBaseSearchAuditLogsRequest();
+    message.parent = object.parent ?? "";
     message.filter = object.filter ?? "";
     message.orderBy = object.orderBy ?? "";
     message.pageSize = object.pageSize ?? 0;
@@ -385,11 +427,14 @@ export const SearchAuditLogsResponse = {
 };
 
 function createBaseExportAuditLogsRequest(): ExportAuditLogsRequest {
-  return { filter: "", orderBy: "", format: ExportFormat.FORMAT_UNSPECIFIED };
+  return { parent: "", filter: "", orderBy: "", format: ExportFormat.FORMAT_UNSPECIFIED };
 }
 
 export const ExportAuditLogsRequest = {
   encode(message: ExportAuditLogsRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.parent !== "") {
+      writer.uint32(34).string(message.parent);
+    }
     if (message.filter !== "") {
       writer.uint32(10).string(message.filter);
     }
@@ -409,6 +454,13 @@ export const ExportAuditLogsRequest = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.parent = reader.string();
+          continue;
         case 1:
           if (tag !== 10) {
             break;
@@ -441,6 +493,7 @@ export const ExportAuditLogsRequest = {
 
   fromJSON(object: any): ExportAuditLogsRequest {
     return {
+      parent: isSet(object.parent) ? globalThis.String(object.parent) : "",
       filter: isSet(object.filter) ? globalThis.String(object.filter) : "",
       orderBy: isSet(object.orderBy) ? globalThis.String(object.orderBy) : "",
       format: isSet(object.format) ? exportFormatFromJSON(object.format) : ExportFormat.FORMAT_UNSPECIFIED,
@@ -449,6 +502,9 @@ export const ExportAuditLogsRequest = {
 
   toJSON(message: ExportAuditLogsRequest): unknown {
     const obj: any = {};
+    if (message.parent !== "") {
+      obj.parent = message.parent;
+    }
     if (message.filter !== "") {
       obj.filter = message.filter;
     }
@@ -466,6 +522,7 @@ export const ExportAuditLogsRequest = {
   },
   fromPartial(object: DeepPartial<ExportAuditLogsRequest>): ExportAuditLogsRequest {
     const message = createBaseExportAuditLogsRequest();
+    message.parent = object.parent ?? "";
     message.filter = object.filter ?? "";
     message.orderBy = object.orderBy ?? "";
     message.format = object.format ?? ExportFormat.FORMAT_UNSPECIFIED;
@@ -541,6 +598,8 @@ function createBaseAuditLog(): AuditLog {
     request: "",
     response: "",
     status: undefined,
+    serviceData: undefined,
+    requestMetadata: undefined,
   };
 }
 
@@ -572,6 +631,12 @@ export const AuditLog = {
     }
     if (message.status !== undefined) {
       Status.encode(message.status, writer.uint32(74).fork()).ldelim();
+    }
+    if (message.serviceData !== undefined) {
+      Any.encode(message.serviceData, writer.uint32(82).fork()).ldelim();
+    }
+    if (message.requestMetadata !== undefined) {
+      RequestMetadata.encode(message.requestMetadata, writer.uint32(90).fork()).ldelim();
     }
     return writer;
   },
@@ -646,6 +711,20 @@ export const AuditLog = {
 
           message.status = Status.decode(reader, reader.uint32());
           continue;
+        case 10:
+          if (tag !== 82) {
+            break;
+          }
+
+          message.serviceData = Any.decode(reader, reader.uint32());
+          continue;
+        case 11:
+          if (tag !== 90) {
+            break;
+          }
+
+          message.requestMetadata = RequestMetadata.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -666,6 +745,8 @@ export const AuditLog = {
       request: isSet(object.request) ? globalThis.String(object.request) : "",
       response: isSet(object.response) ? globalThis.String(object.response) : "",
       status: isSet(object.status) ? Status.fromJSON(object.status) : undefined,
+      serviceData: isSet(object.serviceData) ? Any.fromJSON(object.serviceData) : undefined,
+      requestMetadata: isSet(object.requestMetadata) ? RequestMetadata.fromJSON(object.requestMetadata) : undefined,
     };
   },
 
@@ -698,6 +779,12 @@ export const AuditLog = {
     if (message.status !== undefined) {
       obj.status = Status.toJSON(message.status);
     }
+    if (message.serviceData !== undefined) {
+      obj.serviceData = Any.toJSON(message.serviceData);
+    }
+    if (message.requestMetadata !== undefined) {
+      obj.requestMetadata = RequestMetadata.toJSON(message.requestMetadata);
+    }
     return obj;
   },
 
@@ -717,6 +804,147 @@ export const AuditLog = {
     message.status = (object.status !== undefined && object.status !== null)
       ? Status.fromPartial(object.status)
       : undefined;
+    message.serviceData = (object.serviceData !== undefined && object.serviceData !== null)
+      ? Any.fromPartial(object.serviceData)
+      : undefined;
+    message.requestMetadata = (object.requestMetadata !== undefined && object.requestMetadata !== null)
+      ? RequestMetadata.fromPartial(object.requestMetadata)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseAuditData(): AuditData {
+  return { policyDelta: undefined };
+}
+
+export const AuditData = {
+  encode(message: AuditData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.policyDelta !== undefined) {
+      PolicyDelta.encode(message.policyDelta, writer.uint32(10).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): AuditData {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAuditData();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.policyDelta = PolicyDelta.decode(reader, reader.uint32());
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AuditData {
+    return { policyDelta: isSet(object.policyDelta) ? PolicyDelta.fromJSON(object.policyDelta) : undefined };
+  },
+
+  toJSON(message: AuditData): unknown {
+    const obj: any = {};
+    if (message.policyDelta !== undefined) {
+      obj.policyDelta = PolicyDelta.toJSON(message.policyDelta);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AuditData>): AuditData {
+    return AuditData.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AuditData>): AuditData {
+    const message = createBaseAuditData();
+    message.policyDelta = (object.policyDelta !== undefined && object.policyDelta !== null)
+      ? PolicyDelta.fromPartial(object.policyDelta)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRequestMetadata(): RequestMetadata {
+  return { callerIp: "", callerSuppliedUserAgent: "" };
+}
+
+export const RequestMetadata = {
+  encode(message: RequestMetadata, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.callerIp !== "") {
+      writer.uint32(10).string(message.callerIp);
+    }
+    if (message.callerSuppliedUserAgent !== "") {
+      writer.uint32(18).string(message.callerSuppliedUserAgent);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): RequestMetadata {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRequestMetadata();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.callerIp = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.callerSuppliedUserAgent = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RequestMetadata {
+    return {
+      callerIp: isSet(object.callerIp) ? globalThis.String(object.callerIp) : "",
+      callerSuppliedUserAgent: isSet(object.callerSuppliedUserAgent)
+        ? globalThis.String(object.callerSuppliedUserAgent)
+        : "",
+    };
+  },
+
+  toJSON(message: RequestMetadata): unknown {
+    const obj: any = {};
+    if (message.callerIp !== "") {
+      obj.callerIp = message.callerIp;
+    }
+    if (message.callerSuppliedUserAgent !== "") {
+      obj.callerSuppliedUserAgent = message.callerSuppliedUserAgent;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RequestMetadata>): RequestMetadata {
+    return RequestMetadata.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RequestMetadata>): RequestMetadata {
+    const message = createBaseRequestMetadata();
+    message.callerIp = object.callerIp ?? "";
+    message.callerSuppliedUserAgent = object.callerSuppliedUserAgent ?? "";
     return message;
   },
 };
@@ -734,14 +962,62 @@ export const AuditLogServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([19, 98, 98, 46, 97, 117, 100, 105, 116, 76, 111, 103, 115, 46, 115, 101, 97, 114, 99, 104]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
+              66,
+              90,
               22,
               18,
               20,
               47,
               118,
               49,
+              47,
+              97,
+              117,
+              100,
+              105,
+              116,
+              76,
+              111,
+              103,
+              115,
+              58,
+              115,
+              101,
+              97,
+              114,
+              99,
+              104,
+              18,
+              40,
+              47,
+              118,
+              49,
+              47,
+              123,
+              112,
+              97,
+              114,
+              101,
+              110,
+              116,
+              61,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              47,
+              42,
+              125,
               47,
               97,
               117,
@@ -772,17 +1048,86 @@ export const AuditLogServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              19,
+              98,
+              98,
+              46,
+              97,
+              117,
+              100,
+              105,
+              116,
+              76,
+              111,
+              103,
+              115,
+              46,
+              101,
+              120,
+              112,
+              111,
+              114,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
-              25,
+              69,
               58,
               1,
               42,
+              90,
+              22,
               34,
               20,
               47,
               118,
               49,
+              47,
+              97,
+              117,
+              100,
+              105,
+              116,
+              76,
+              111,
+              103,
+              115,
+              58,
+              101,
+              120,
+              112,
+              111,
+              114,
+              116,
+              34,
+              40,
+              47,
+              118,
+              49,
+              47,
+              123,
+              112,
+              97,
+              114,
+              101,
+              110,
+              116,
+              61,
+              112,
+              114,
+              111,
+              106,
+              101,
+              99,
+              116,
+              115,
+              47,
+              42,
+              125,
               47,
               97,
               117,

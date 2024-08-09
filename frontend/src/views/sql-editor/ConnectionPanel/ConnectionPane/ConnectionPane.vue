@@ -4,7 +4,10 @@
       <SearchBox v-model:searchPattern="searchPattern" class="flex-1" />
       <GroupingBar class="shrink-0" />
     </div>
-    <div class="flex items-center space-x-2 px-2 py-2">
+    <div
+      v-if="hasMissingQueryDatabases"
+      class="flex items-center space-x-2 px-2 py-2"
+    >
       <NCheckbox v-model:checked="showMissingQueryDatabases">
         <span class="textinfolabel text-sm">
           {{ $t("sql-editor.show-databases-without-query-permission") }}
@@ -67,13 +70,13 @@ import { useEmitteryEventListener } from "@/composables/useEmitteryEventListener
 import {
   useCurrentUserV1,
   useDatabaseV1Store,
-  useInstanceV1Store,
   useIsLoggedIn,
   useSQLEditorTabStore,
   resolveOpeningDatabaseListFromSQLEditorTabList,
   useSQLEditorTreeStore,
   idForSQLEditorTreeNodeTarget,
   useConnectionOfCurrentSQLEditorTab,
+  useInstanceResourceByName,
 } from "@/store";
 import type {
   ComposedDatabase,
@@ -85,6 +88,7 @@ import {
   DEFAULT_SQL_EDITOR_TAB_MODE,
   ExpandableTreeNodeTypes,
   UNKNOWN_ID,
+  isValidInstanceName,
 } from "@/types";
 import { findAncestor, isDescendantOf, isDatabaseV1Queryable } from "@/utils";
 import { useSQLEditorContext } from "../../context";
@@ -101,11 +105,11 @@ import { setConnection, useDropdown } from "./actions";
 const treeStore = useSQLEditorTreeStore();
 const tabStore = useSQLEditorTabStore();
 const databaseStore = useDatabaseV1Store();
-const instanceStore = useInstanceV1Store();
 const isLoggedIn = useIsLoggedIn();
 const me = useCurrentUserV1();
 
-const { events: editorEvents, showConnectionPanel } = useSQLEditorContext();
+const editorContext = useSQLEditorContext();
+const { events: editorEvents, showConnectionPanel } = editorContext;
 const searchHistory = useSearchHistory();
 const {
   state: hoverState,
@@ -146,13 +150,14 @@ const selectedKeys = computed(() => {
     if (!node) return [];
     return [node.key];
   } else if (connection.instance) {
-    const instance = instanceStore.getInstanceByName(connection.instance);
+    const instance = useInstanceResourceByName(connection.instance);
     const nodes = treeStore.nodesByTarget("instance", instance);
     return nodes.map((node) => node.key);
   }
   return [];
 });
-const { expandedKeys, showMissingQueryDatabases } = storeToRefs(treeStore);
+const { expandedKeys, hasMissingQueryDatabases, showMissingQueryDatabases } =
+  storeToRefs(treeStore);
 const upsertExpandedKeys = (key: string) => {
   if (expandedKeys.value.includes(key)) {
     return;
@@ -227,8 +232,11 @@ const nodeProps = ({ option }: { option: TreeOption }) => {
         if (type === "database") {
           if (canQueryDatabase(node.meta.target as ComposedDatabase)) {
             setConnection(node, {
-              worksheet: tabStore.currentTab?.worksheet ?? "",
-              mode: DEFAULT_SQL_EDITOR_TAB_MODE,
+              extra: {
+                worksheet: tabStore.currentTab?.worksheet ?? "",
+                mode: DEFAULT_SQL_EDITOR_TAB_MODE,
+              },
+              context: editorContext,
             });
             showConnectionPanel.value = false;
           }
@@ -306,7 +314,7 @@ watch(
     if (treeState !== "READY") {
       return;
     }
-    if (instance.uid !== String(UNKNOWN_ID)) {
+    if (isValidInstanceName(instance.name)) {
       expandNodesByType("instance", instance);
     }
     if (database.uid !== String(UNKNOWN_ID)) {

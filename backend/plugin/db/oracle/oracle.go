@@ -14,9 +14,12 @@ import (
 
 	// Import go-ora Oracle driver.
 
+	"github.com/antlr4-go/antlr/v4"
 	"github.com/pkg/errors"
 	goora "github.com/sijms/go-ora/v2"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	plsql "github.com/bytebase/plsql-parser"
 
 	"github.com/bytebase/bytebase/backend/common/log"
 	"github.com/bytebase/bytebase/backend/plugin/db"
@@ -39,10 +42,11 @@ func init() {
 
 // Driver is the Oracle driver.
 type Driver struct {
-	db            *sql.DB
-	databaseName  string
-	serviceName   string
-	connectionCtx db.ConnectionContext
+	db                   *sql.DB
+	databaseName         string
+	serviceName          string
+	connectionCtx        db.ConnectionContext
+	maximumSQLResultSize int64
 }
 
 func newDriver(db.DriverConfig) db.Driver {
@@ -79,6 +83,7 @@ func (driver *Driver) Open(ctx context.Context, _ storepb.Engine, config db.Conn
 	driver.databaseName = config.Database
 	driver.serviceName = config.ServiceName
 	driver.connectionCtx = config.ConnectionContext
+	driver.maximumSQLResultSize = config.MaximumSQLResultSize
 	return driver, nil
 }
 
@@ -90,11 +95,6 @@ func (driver *Driver) Close(_ context.Context) error {
 // Ping pings the database.
 func (driver *Driver) Ping(ctx context.Context) error {
 	return driver.db.PingContext(ctx)
-}
-
-// GetType returns the database type.
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_ORACLE
 }
 
 // GetDB gets the database.
@@ -206,11 +206,6 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 
 // QueryConn queries a SQL statement in a given connection.
 func (driver *Driver) QueryConn(ctx context.Context, conn *sql.Conn, statement string, queryContext *db.QueryContext) ([]*v1pb.QueryResult, error) {
-	// Oracle does not support transaction isolation level for read-only queries.
-	if queryContext != nil {
-		queryContext.ReadOnly = false
-	}
-
 	singleSQLs, err := plsqlparser.SplitSQL(statement)
 	if err != nil {
 		return nil, err
@@ -222,20 +217,81 @@ func (driver *Driver) QueryConn(ctx context.Context, conn *sql.Conn, statement s
 
 	var results []*v1pb.QueryResult
 	for _, singleSQL := range singleSQLs {
-		result, err := driver.querySingleSQL(ctx, conn, singleSQL, queryContext)
+		statement := singleSQL.Text
+		if queryContext != nil && queryContext.Explain {
+			startTime := time.Now()
+			randNum, err := rand.Int(rand.Reader, big.NewInt(999))
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to generate random statement ID")
+			}
+			randomID := fmt.Sprintf("%d%d", startTime.UnixMilli(), randNum.Int64())
+
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", randomID, statement)); err != nil {
+				return nil, err
+			}
+			statement = fmt.Sprintf(`SELECT LPAD(' ', LEVEL-1) || OPERATION || ' (' || OPTIONS || ')' "Operation", OBJECT_NAME "Object", OPTIMIZER "Optimizer", COST "Cost", CARDINALITY "Cardinality", BYTES "Bytes", PARTITION_START "Partition Start", PARTITION_ID "Partition ID", ACCESS_PREDICATES "Access Predicates",FILTER_PREDICATES "Filter Predicates" FROM PLAN_TABLE START WITH ID = 0 AND statement_id = '%s' CONNECT BY PRIOR ID=PARENT_ID AND statement_id = '%s' ORDER BY id`, randomID, randomID)
+		}
+
+		if queryContext != nil && !queryContext.Explain && queryContext.Limit > 0 {
+			stmt, err := driver.getStatementWithResultLimit(statement, queryContext)
+			if err != nil {
+				slog.Error("fail to add limit clause", "statement", statement, log.BBError(err))
+				stmt = getStatementWithResultLimitFor11g(stmt, queryContext.Limit)
+			}
+			statement = stmt
+		}
+
+		_, allQuery, err := base.ValidateSQLForEditor(storepb.Engine_ORACLE, statement)
 		if err != nil {
-			results = append(results, &v1pb.QueryResult{
+			return nil, err
+		}
+		startTime := time.Now()
+		queryResult, err := func() (*v1pb.QueryResult, error) {
+			if allQuery {
+				rows, err := conn.QueryContext(ctx, statement)
+				if err != nil {
+					return nil, util.FormatErrorWithQuery(err, statement)
+				}
+				defer rows.Close()
+				r, err := util.RowsToQueryResult(rows, driver.maximumSQLResultSize)
+				if err != nil {
+					return nil, err
+				}
+				if err := rows.Err(); err != nil {
+					return nil, err
+				}
+				return r, nil
+			}
+
+			sqlResult, err := conn.ExecContext(ctx, statement)
+			if err != nil {
+				return nil, err
+			}
+			affectedRows, err := sqlResult.RowsAffected()
+			if err != nil {
+				slog.Info("rowsAffected returns error", log.BBError(err))
+			}
+			return util.BuildAffectedRowsResult(affectedRows), nil
+		}()
+		stop := false
+		if err != nil {
+			queryResult = &v1pb.QueryResult{
 				Error: err.Error(),
-			})
-		} else {
-			results = append(results, result)
+			}
+			stop = true
+		}
+		queryResult.Statement = statement
+		queryResult.Latency = durationpb.New(time.Since(startTime))
+		results = append(results, queryResult)
+		if stop {
+			break
 		}
 	}
 
 	return results, nil
 }
 
-func (driver *Driver) getOracleStatementWithResultLimit(stmt string, queryContext *db.QueryContext) (string, error) {
+func (driver *Driver) getStatementWithResultLimit(stmt string, queryContext *db.QueryContext) (string, error) {
 	engineVersion := driver.connectionCtx.EngineVersion
 	versionIdx := strings.Index(engineVersion, ".")
 	if versionIdx < 0 {
@@ -246,6 +302,9 @@ func (driver *Driver) getOracleStatementWithResultLimit(stmt string, queryContex
 		return "", err
 	}
 	if queryContext != nil {
+		if ok, err := skipAddLimit(stmt); err != nil && ok {
+			return stmt, nil
+		}
 		switch {
 		case versionNumber < dbVersion12:
 			return getStatementWithResultLimitFor11g(stmt, queryContext.Limit), nil
@@ -261,51 +320,131 @@ func (driver *Driver) getOracleStatementWithResultLimit(stmt string, queryContex
 	return stmt, nil
 }
 
-func (driver *Driver) querySingleSQL(ctx context.Context, conn *sql.Conn, singleSQL base.SingleSQL, queryContext *db.QueryContext) (*v1pb.QueryResult, error) {
-	statement := strings.TrimRight(singleSQL.Text, " \n\t;")
-
-	if queryContext != nil && queryContext.Explain {
-		startTime := time.Now()
-		randNum, err := rand.Int(rand.Reader, big.NewInt(999))
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to generate random statement ID")
-		}
-		randomID := fmt.Sprintf("%d%d", startTime.UnixMilli(), randNum.Int64())
-
-		statement = fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", randomID, statement)
-		if _, err := conn.ExecContext(ctx, statement); err != nil {
-			return nil, err
-		}
-		explainQuery := fmt.Sprintf(`SELECT LPAD(' ', LEVEL-1) || OPERATION || ' (' || OPTIONS || ')' "Operation", OBJECT_NAME "Object", OPTIMIZER "Optimizer", COST "Cost", CARDINALITY "Cardinality", BYTES "Bytes", PARTITION_START "Partition Start", PARTITION_ID "Partition ID", ACCESS_PREDICATES "Access Predicates",FILTER_PREDICATES "Filter Predicates" FROM PLAN_TABLE START WITH ID = 0 AND statement_id = '%s' CONNECT BY PRIOR ID=PARENT_ID AND statement_id = '%s' ORDER BY id`, randomID, randomID)
-		result, err := util.Query(ctx, storepb.Engine_ORACLE, conn, explainQuery, queryContext)
-		if err != nil {
-			return nil, err
-		}
-		result.Latency = durationpb.New(time.Since(startTime))
-		result.Statement = statement
-		return result, nil
-	}
-
-	if queryContext != nil && queryContext.Limit > 0 {
-		stmt, err := driver.getOracleStatementWithResultLimit(statement, queryContext)
-		if err != nil {
-			slog.Error("fail to add limit clause", "statement", statement, log.BBError(err))
-			stmt = getStatementWithResultLimitFor11g(stmt, queryContext.Limit)
-		}
-		statement = stmt
-	}
-
-	startTime := time.Now()
-	result, err := util.Query(ctx, storepb.Engine_ORACLE, conn, statement, queryContext)
+// skipAddLimit checks if the statement needs a limit clause.
+// For Oracle, we think the statement like "SELECT xxx FROM DUAL" does not need a limit clause.
+// More details, xxx can not be a subquery.
+func skipAddLimit(stmt string) (bool, error) {
+	tree, _, err := plsqlparser.ParsePLSQL(stmt)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	result.Latency = durationpb.New(time.Since(startTime))
-	result.Statement = statement
-	return result, nil
+
+	sqlScript, ok := tree.(*plsql.Sql_scriptContext)
+	if !ok {
+		return false, nil
+	}
+
+	if len(sqlScript.AllSql_plus_command()) > 0 {
+		return false, nil
+	}
+
+	if len(sqlScript.AllUnit_statement()) > 1 {
+		return false, nil
+	}
+
+	unitStatement := sqlScript.Unit_statement(0)
+	if unitStatement == nil {
+		return false, nil
+	}
+
+	dml := unitStatement.Data_manipulation_language_statements()
+	if dml == nil {
+		return false, nil
+	}
+
+	selectStatement := dml.Select_statement()
+	if selectStatement == nil {
+		return false, nil
+	}
+
+	switch {
+	case len(selectStatement.AllFor_update_clause()) != 0:
+		return false, nil
+	case len(selectStatement.AllOrder_by_clause()) != 0:
+		return false, nil
+	case len(selectStatement.AllOffset_clause()) != 0:
+		return false, nil
+	case len(selectStatement.AllFetch_clause()) != 0:
+		return false, nil
+	}
+
+	selectOnly := selectStatement.Select_only_statement()
+	if selectOnly == nil {
+		return false, nil
+	}
+
+	subquery := selectOnly.Subquery()
+	if subquery == nil {
+		return false, nil
+	}
+
+	if len(subquery.AllSubquery_operation_part()) != 0 {
+		return false, nil
+	}
+
+	subqueryBasicElements := subquery.Subquery_basic_elements()
+	if subqueryBasicElements == nil {
+		return false, nil
+	}
+
+	if subqueryBasicElements.Subquery() != nil {
+		return false, nil
+	}
+
+	queryBlock := subqueryBasicElements.Query_block()
+	if queryBlock == nil {
+		return false, nil
+	}
+
+	switch {
+	case queryBlock.Subquery_factoring_clause() != nil,
+		queryBlock.DISTINCT() != nil,
+		queryBlock.ALL() != nil,
+		queryBlock.UNIQUE() != nil,
+		queryBlock.Into_clause() != nil,
+		queryBlock.Where_clause() != nil,
+		queryBlock.Hierarchical_query_clause() != nil,
+		queryBlock.Group_by_clause() != nil,
+		queryBlock.Model_clause() != nil,
+		queryBlock.Order_by_clause() != nil,
+		queryBlock.Fetch_clause() != nil:
+		return false, nil
+	}
+
+	from := queryBlock.From_clause()
+	if !strings.EqualFold(from.GetText(), "FROMDUAL") {
+		return false, nil
+	}
+
+	selectedList := queryBlock.Selected_list()
+	if selectedList == nil {
+		return false, nil
+	}
+
+	if selectedList.ASTERISK() != nil {
+		return false, nil
+	}
+
+	for _, selectedElement := range selectedList.AllSelect_list_elements() {
+		if selectedElement.Table_wild() != nil {
+			return false, nil
+		}
+
+		l := subqueryListener{}
+		antlr.ParseTreeWalkerDefault.Walk(&l, selectedElement)
+		if l.hasSubquery {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
-// RunStatement runs a SQL statement in a given connection.
-func (*Driver) RunStatement(ctx context.Context, conn *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	return util.RunStatement(ctx, storepb.Engine_ORACLE, conn, statement)
+type subqueryListener struct {
+	*plsql.BasePlSqlParserListener
+	hasSubquery bool
+}
+
+func (l *subqueryListener) EnterSubquery(*plsql.SubqueryContext) {
+	l.hasSubquery = true
 }

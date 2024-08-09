@@ -26,15 +26,17 @@
 
 <script lang="ts" setup>
 import { reactive, computed } from "vue";
+import { BBAttention } from "@/bbkit";
 import {
   useSubscriptionV1Store,
   useCurrentUserV1,
-  useInstanceV1List,
+  useInstanceResourceList,
 } from "@/store";
 import type { FeatureType } from "@/types";
 import { instanceLimitFeature } from "@/types";
 import { PlanType } from "@/types/proto/v1/subscription_service";
 import { hasWorkspacePermissionV2 } from "@/utils";
+import InstanceAssignment from "../InstanceAssignment.vue";
 
 interface LocalState {
   showInstanceAssignmentDrawer: boolean;
@@ -53,7 +55,7 @@ const state = reactive<LocalState>({
 const subscriptionV1Store = useSubscriptionV1Store();
 const featureKey = props.feature.split(".").join("-");
 const currentUserV1 = useCurrentUserV1();
-const { instanceList } = useInstanceV1List(false /* !showDeleted */);
+const instanceList = useInstanceResourceList();
 
 const onClick = () => {
   state.showInstanceAssignmentDrawer = true;

@@ -4,9 +4,11 @@ package bytebase.v1;
 
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 import "v1/database_service.proto";
 
@@ -23,26 +25,32 @@ service SQLService {
         body: "*"
       }
     };
+    option (bytebase.v1.permission) = "bb.databases.get";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 
   rpc Execute(ExecuteRequest) returns (ExecuteResponse) {
     option (google.api.http) = {
       post: "/v1/{name=instances/*/databases/*}:execute"
       body: "*"
-
-      additional_bindings: {
-        post: "/v1/{name=instances/*}:execute"
-        body: "*"
-      }
     };
+    option (bytebase.v1.permission) = "bb.databases.execute";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 
   rpc AdminExecute(stream AdminExecuteRequest) returns (stream AdminExecuteResponse) {
     option (google.api.http) = {get: "/v1:adminExecute"};
+    option (bytebase.v1.permission) = "bb.instances.adminExecute";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 
+  // SearchQueryHistories searches query histories for the caller.
   rpc SearchQueryHistories(SearchQueryHistoriesRequest) returns (SearchQueryHistoriesResponse) {
     option (google.api.http) = {get: "/v1/queryHistories:search"};
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
   rpc Export(ExportRequest) returns (ExportResponse) {
@@ -59,6 +67,9 @@ service SQLService {
         body: "*"
       }
     };
+    option (bytebase.v1.permission) = "bb.databases.get";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 
   rpc DifferPreview(DifferPreviewRequest) returns (DifferPreviewResponse) {
@@ -66,6 +77,7 @@ service SQLService {
       post: "/v1/sql/differPreview"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
   }
 
   rpc Check(CheckRequest) returns (CheckResponse) {
@@ -73,6 +85,8 @@ service SQLService {
       post: "/v1/sql/check"
       body: "*"
     };
+    option (bytebase.v1.permission) = "bb.databases.check";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc ParseMyBatisMapper(ParseMyBatisMapperRequest) returns (ParseMyBatisMapperResponse) {
@@ -80,6 +94,7 @@ service SQLService {
       post: "/v1/sql/parseMyBatisMapper"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
   }
 
   rpc Pretty(PrettyRequest) returns (PrettyResponse) {
@@ -87,6 +102,7 @@ service SQLService {
       post: "/v1/sql/pretty"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
   }
 
   rpc StringifyMetadata(StringifyMetadataRequest) returns (StringifyMetadataResponse) {
@@ -94,20 +110,26 @@ service SQLService {
       post: "/v1/schemaDesign:stringifyMetadata"
       body: "*"
     };
+    option (bytebase.v1.allow_without_credential) = true;
   }
 
+  // Deprecated.
   rpc GenerateRestoreSQL(GenerateRestoreSQLRequest) returns (GenerateRestoreSQLResponse) {
     option (google.api.http) = {
       post: "/v1/{name=instances/*/databases/*}:generateRestoreSQL"
       body: "*"
     };
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 }
 
 message ExecuteRequest {
   // The name is the instance name to execute the query against.
   // Format: instances/{instance}/databases/{databaseName}
-  string name = 1;
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Database"}
+  ];
 
   // The SQL statement to execute.
   string statement = 2;
@@ -130,7 +152,10 @@ message ExecuteResponse {
 message AdminExecuteRequest {
   // The name is the instance name to execute the query against.
   // Format: instances/{instance}/databases/{databaseName}
-  string name = 1;
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Database"}
+  ];
 
   string connection_database = 2 [deprecated = true];
 
@@ -152,7 +177,10 @@ message AdminExecuteResponse {
 message QueryRequest {
   // The name is the instance name to execute the query against.
   // Format: instances/{instance}/databases/{databaseName}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Database"}
+  ];
 
   string connection_database = 2 [deprecated = true];
 
@@ -262,13 +290,21 @@ message Advice {
 
   // The advice detail.
   string detail = 7;
+
+  // 1-based Position of the SQL statement.
+  // To supersede `line` and `column` above.
+  Position start_position = 8;
+  Position end_position = 9;
 }
 
 message ExportRequest {
   // The name is the instance name to execute the query against.
   // Format: instances/{instance}/databases/{databaseName}
   // Format: projects/{project}/issues/{issue} for data export issue.
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Database"}
+  ];
 
   string connection_database = 2 [deprecated = true];
 
@@ -326,11 +362,14 @@ message PrettyResponse {
 }
 
 message CheckRequest {
-  string statement = 1;
-
   // The database name to check against.
-  // Format: instances/{instance}/databases/{databaseName}
-  string database = 2 [(google.api.field_behavior) = REQUIRED];
+  // Format: instances/{instance}/databases/{database}
+  string name = 2 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Database"}
+  ];
+
+  string statement = 1;
 
   // The database metadata to check against. It can be used to check against an uncommitted metadata.
   // If not provided, the database metadata will be fetched from the database.
@@ -431,12 +470,13 @@ message QueryHistory {
 }
 
 message GenerateRestoreSQLRequest {
-  // The name is the instance name to execute the query against.
+  // The database name to execute the query against.
   // Format: instances/{instance}/databases/{databaseName}
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 
-  // The original SQL statement.
-  string statement = 2;
+  // The resource name of the sheet. It is used to get the original statement.
+  // Format: projects/{project}/sheets/{sheet}
+  string sheet = 2;
 
   // The data source to restore from.
   // Format: instances/{instance}/databases/{databaseName}, for general engines.

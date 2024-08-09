@@ -1,7 +1,8 @@
-import type { ResourceId, Project, SheetId } from "@/types";
+import type { ResourceId } from "@/types";
 import { UNKNOWN_ID } from "@/types";
 
 export const userNamePrefix = "users/";
+export const roleNamePrefix = "roles/";
 export const environmentNamePrefix = "environments/";
 export const projectNamePrefix = "projects/";
 export const instanceNamePrefix = "instances/";
@@ -19,10 +20,14 @@ export const issueNamePrefix = "issues/";
 export const secretNamePrefix = "secrets/";
 export const branchNamePrefix = "branches/";
 export const ssoNamePrefix = "idps/";
-export const protectionRulesSuffix = "/protectionRules";
 export const issueCommentNamePrefix = "issueComments/";
-export const userGroupNamePrefix = "groups/";
+export const groupNamePrefix = "groups/";
 export const reviewConfigNamePrefix = "reviewConfigs/";
+export const planNamePrefix = "plans/";
+export const planCheckRunPrefix = "planCheckRuns/";
+export const rolloutNamePrefix = "rollouts/";
+export const stageNamePrefix = "stages/";
+export const taskNamePrefix = "tasks/";
 
 export const getNameParentTokens = (
   name: string,
@@ -71,6 +76,25 @@ export const getProjectName = (name: string): string => {
   return projectId;
 };
 
+export const getProjectNamePlanIdPlanCheckRunId = (name: string): string[] => {
+  const tokens = getNameParentTokens(name, [
+    projectNamePrefix,
+    planNamePrefix,
+    planCheckRunPrefix,
+  ]);
+  return [tokens[0], tokens[1], tokens[2]];
+};
+
+export const getProjectIdRolloutUidStageUidTaskUid = (name: string): string[] => {
+  const tokens = getNameParentTokens(name, [
+    projectNamePrefix,
+    rolloutNamePrefix,
+    stageNamePrefix,
+    taskNamePrefix,
+  ]);
+  return [tokens[0], tokens[1], tokens[2], tokens[3]];
+}
+
 export const getWorksheetId = (name: string): string => {
   const tokens = getNameParentTokens(name, [worksheetNamePrefix]);
   return tokens[0];
@@ -118,22 +142,6 @@ export const getProjectNameAndDatabaseGroupName = (name: string): string[] => {
   }
 
   return tokens;
-};
-
-export const getProjectPathByLegacyProject = (project: Project): string => {
-  return `${projectNamePrefix}${project.resourceId}`;
-};
-
-export const getSheetPathByLegacyProject = (
-  project: Project,
-  sheetId: SheetId
-): string => {
-  if (sheetId === UNKNOWN_ID) {
-    return "";
-  }
-  return `${getProjectPathByLegacyProject(
-    project
-  )}/${sheetNamePrefix}${sheetId}`;
 };
 
 export const getProjectPathFromRepoName = (repoName: string): string => {

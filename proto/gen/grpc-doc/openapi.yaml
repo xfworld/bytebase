@@ -10,6 +10,7 @@ paths:
         get:
             tags:
                 - ProjectService
+            description: Deprecated.
             operationId: ProjectService_BatchGetIamPolicy
             parameters:
                 - name: '*'
@@ -46,45 +47,6 @@ paths:
                 "200":
                     description: OK
                     content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/actuator/debug:
-        get:
-            tags:
-                - ActuatorService
-            operationId: ActuatorService_ListDebugLog
-            parameters:
-                - name: pageSize
-                  in: query
-                  description: |-
-                    The maximum number of logs to return. The service may return fewer than
-                     this value.
-                     If unspecified, at most 50 logs will be returned.
-                     The maximum value is 1000; values above 1000 will be coerced to 1000.
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  description: |-
-                    A page token, received from a previous `ListDebugLog` call.
-                     Provide this to retrieve the subsequent page.
-
-                     When paginating, all other parameters provided to `ListDebugLog` must match
-                     the call that provided the page token.
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListDebugLogResponse'
                 default:
                     description: Default error response
                     content:
@@ -212,12 +174,44 @@ paths:
             tags:
                 - AuditLogService
             operationId: AuditLogService_ExportAuditLogs
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ExportAuditLogsRequest'
-                required: true
+            parameters:
+                - name: parent
+                  in: query
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    The filter of the log. It should be a valid CEL expression.
+                     For example:
+                      - filter = "method == '/bytebase.v1.SQLService/Query'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR' && user == 'users/bb@bytebase.com'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR' && create_time <= '2021-01-01T00:00:00Z' && create_time >= '2020-01-01T00:00:00Z'"
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: |-
+                    The order by of the log.
+                     Only support order by create_time.
+                     For example:
+                      - order_by = "create_time asc"
+                      - order_by = "create_time desc"
+                  schema:
+                    type: string
+                - name: format
+                  in: query
+                  description: The export format.
+                  schema:
+                    enum:
+                        - FORMAT_UNSPECIFIED
+                        - CSV
+                        - JSON
+                        - SQL
+                        - XLSX
+                    type: string
+                    format: enum
             responses:
                 "200":
                     description: OK
@@ -237,6 +231,10 @@ paths:
                 - AuditLogService
             operationId: AuditLogService_SearchAuditLogs
             parameters:
+                - name: parent
+                  in: query
+                  schema:
+                    type: string
                 - name: filter
                   in: query
                   description: |-
@@ -385,7 +383,9 @@ paths:
         get:
             tags:
                 - DatabaseService
-            description: Search for databases that the caller has the bb.databases.get permission on, and also satisfy the specified query.
+            description: |-
+                Deprecated. This will be removed in the next release.
+                 Search for databases that the caller has the bb.databases.get permission on, and also satisfy the specified query.
             operationId: DatabaseService_SearchDatabases
             parameters:
                 - name: pageSize
@@ -621,6 +621,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 - name: pageSize
@@ -685,6 +686,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
             requestBody:
@@ -865,8 +867,8 @@ paths:
     /v1/groups:
         get:
             tags:
-                - UserGroupService
-            operationId: UserGroupService_ListUserGroups
+                - GroupService
+            operationId: GroupService_ListGroups
             parameters:
                 - name: pageSize
                   in: query
@@ -881,10 +883,10 @@ paths:
                 - name: pageToken
                   in: query
                   description: |-
-                    A page token, received from a previous `ListUsers` call.
+                    A page token, received from a previous `ListGroups` call.
                      Provide this to retrieve the subsequent page.
 
-                     When paginating, all other parameters provided to `ListUsers` must match
+                     When paginating, all other parameters provided to `ListGroups` must match
                      the call that provided the page token.
                   schema:
                     type: string
@@ -894,7 +896,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListUserGroupsResponse'
+                                $ref: '#/components/schemas/ListGroupsResponse'
                 default:
                     description: Default error response
                     content:
@@ -903,13 +905,13 @@ paths:
                                 $ref: '#/components/schemas/Status'
         post:
             tags:
-                - UserGroupService
-            operationId: UserGroupService_CreateUserGroup
+                - GroupService
+            operationId: GroupService_CreateGroup
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/UserGroup'
+                            $ref: '#/components/schemas/Group'
                 required: true
             responses:
                 "200":
@@ -917,7 +919,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/UserGroup'
+                                $ref: '#/components/schemas/Group'
                 default:
                     description: Default error response
                     content:
@@ -927,8 +929,8 @@ paths:
     /v1/groups/{group}:
         get:
             tags:
-                - UserGroupService
-            operationId: UserGroupService_GetUserGroup
+                - GroupService
+            operationId: GroupService_GetGroup
             parameters:
                 - name: group
                   in: path
@@ -942,7 +944,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/UserGroup'
+                                $ref: '#/components/schemas/Group'
                 default:
                     description: Default error response
                     content:
@@ -951,8 +953,8 @@ paths:
                                 $ref: '#/components/schemas/Status'
         delete:
             tags:
-                - UserGroupService
-            operationId: UserGroupService_DeleteUserGroup
+                - GroupService
+            operationId: GroupService_DeleteGroup
             parameters:
                 - name: group
                   in: path
@@ -972,8 +974,11 @@ paths:
                                 $ref: '#/components/schemas/Status'
         patch:
             tags:
-                - UserGroupService
-            operationId: UserGroupService_UpdateUserGroup
+                - GroupService
+            description: |-
+                UpdateGroup updates the group.
+                 Users with "bb.groups.update" permission on the workspace or the group owner can access this method.
+            operationId: GroupService_UpdateGroup
             parameters:
                 - name: group
                   in: path
@@ -991,7 +996,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/UserGroup'
+                            $ref: '#/components/schemas/Group'
                 required: true
             responses:
                 "200":
@@ -999,7 +1004,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/UserGroup'
+                                $ref: '#/components/schemas/Group'
                 default:
                     description: Default error response
                     content:
@@ -1227,14 +1232,6 @@ paths:
                 - InstanceService
             operationId: InstanceService_ListInstances
             parameters:
-                - name: parent
-                  in: query
-                  description: |-
-                    The parent parameter's value depends on the target resource for the request.
-                     - instances.list(): An empty string. This method doesn't require a resource; it simply returns all instances the user has access to.
-                     - projects.instances.list(): projects/{PROJECT_ID}. This method lists all instances that have databases in the project.
-                  schema:
-                    type: string
                 - name: pageSize
                   in: query
                   description: |-
@@ -1403,7 +1400,7 @@ paths:
         get:
             tags:
                 - DatabaseService
-            operationId: DatabaseService_ListDatabases
+            operationId: DatabaseService_ListInstanceDatabases
             parameters:
                 - name: instance
                   in: path
@@ -1434,7 +1431,8 @@ paths:
                 - name: filter
                   in: query
                   description: |-
-                    Filter is used to filter databases returned in the list.
+                    Deprecated.
+                     Filter is used to filter databases returned in the list.
                      For example, `project == "projects/{project}"` can be used to list databases in a project.
                      Note: the project filter will be moved to parent.
                   schema:
@@ -1445,7 +1443,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListDatabasesResponse'
+                                $ref: '#/components/schemas/ListInstanceDatabasesResponse'
                 default:
                     description: Default error response
                     content:
@@ -1839,6 +1837,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 - name: pageSize
@@ -1909,6 +1908,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
             requestBody:
@@ -2236,64 +2236,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}/databases/{database}/slowQueries:
-        get:
-            tags:
-                - DatabaseService
-            operationId: DatabaseService_ListSlowQueries
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: database
-                  in: path
-                  description: The database id.
-                  required: true
-                  schema:
-                    type: string
-                - name: filter
-                  in: query
-                  description: |-
-                    The filter of the slow query log.
-                     follow the [ebnf](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form) syntax.
-                     Support filter by project and start_time in SlowQueryDetails for now.
-                     For example:
-                     Search the slow query log of the specific project:
-                       - the specific project: project = "projects/{project}"
-                     Search the slow query log that start_time after 2022-01-01T12:00:00.000Z:
-                       - start_time > "2022-01-01T12:00:00.000Z"
-                       - Should use [RFC-3339 format](https://www.rfc-editor.org/rfc/rfc3339).
-                       - Currently we only support filtering down to date granularity.
-                  schema:
-                    type: string
-                - name: orderBy
-                  in: query
-                  description: |-
-                    The order by of the slow query log.
-                     Support order by count, latest_log_time, average_query_time, maximum_query_time,
-                     average_rows_sent, maximum_rows_sent, average_rows_examined, maximum_rows_examined for now.
-                     For example:
-                      - order by count: order_by = "count"
-                      - order by latest_log_time desc: order_by = "latest_log_time desc"
-                     Default: order by average_query_time desc.
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListSlowQueriesResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/databases/{database}:adviseIndex:
         post:
             tags:
@@ -2445,6 +2387,7 @@ paths:
         post:
             tags:
                 - SQLService
+            description: Deprecated.
             operationId: SQLService_GenerateRestoreSQL
             parameters:
                 - name: instance
@@ -2608,6 +2551,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 - name: pageSize
@@ -2672,6 +2616,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
             requestBody:
@@ -2850,36 +2795,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - InstanceRoleService
-            operationId: InstanceRoleService_CreateInstanceRole
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/InstanceRole'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/InstanceRole'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/instances/{instance}/roles/{role}:
         get:
             tags:
@@ -2898,112 +2813,6 @@ paths:
                   required: true
                   schema:
                     type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/InstanceRole'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        delete:
-            tags:
-                - InstanceRoleService
-            operationId: InstanceRoleService_DeleteInstanceRole
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: role
-                  in: path
-                  description: The role id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        patch:
-            tags:
-                - InstanceRoleService
-            operationId: InstanceRoleService_UpdateInstanceRole
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: role
-                  in: path
-                  description: The role id.
-                  required: true
-                  schema:
-                    type: string
-                - name: updateMask
-                  in: query
-                  description: The list of fields to update.
-                  schema:
-                    type: string
-                    format: field-mask
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/InstanceRole'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/InstanceRole'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}/roles/{role}:undelete:
-        post:
-            tags:
-                - InstanceRoleService
-            operationId: InstanceRoleService_UndeleteInstanceRole
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-                - name: role
-                  in: path
-                  description: The role id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/UndeleteInstanceRoleRequest'
-                required: true
             responses:
                 "200":
                     description: OK
@@ -3042,37 +2851,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Instance'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/instances/{instance}:execute:
-        post:
-            tags:
-                - SQLService
-            operationId: SQLService_Execute
-            parameters:
-                - name: instance
-                  in: path
-                  description: The instance id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ExecuteRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ExecuteResponse'
                 default:
                     description: Default error response
                     content:
@@ -3297,12 +3075,12 @@ paths:
         post:
             tags:
                 - InstanceService
-            operationId: InstanceService_BatchSyncInstance
+            operationId: InstanceService_BatchSyncInstances
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/BatchSyncInstanceRequest'
+                            $ref: '#/components/schemas/BatchSyncInstancesRequest'
                 required: true
             responses:
                 "200":
@@ -3310,39 +3088,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/BatchSyncInstanceResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/instances:search:
-        get:
-            tags:
-                - InstanceService
-            operationId: InstanceService_SearchInstances
-            parameters:
-                - name: parent
-                  in: query
-                  description: |-
-                    The parent parameter's value depends on the target resource for the request.
-                     - instances.list(): An empty string. This method doesn't require a resource; it simply returns all instances the user has access to.
-                     - projects.instances.list(): projects/{PROJECT_ID}. This method lists all instances that have databases in the project.
-                  schema:
-                    type: string
-                - name: showDeleted
-                  in: query
-                  description: Show deleted instances if specified.
-                  schema:
-                    type: boolean
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/SearchInstancesResponse'
+                                $ref: '#/components/schemas/BatchSyncInstancesResponse'
                 default:
                     description: Default error response
                     content:
@@ -3375,6 +3121,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 - name: pageSize
@@ -3443,6 +3190,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
             requestBody:
@@ -3712,6 +3460,100 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Project'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/projects/{project}/auditLogs:export:
+        post:
+            tags:
+                - AuditLogService
+            operationId: AuditLogService_ExportAuditLogs
+            parameters:
+                - name: project
+                  in: path
+                  description: The project id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExportAuditLogsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExportAuditLogsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/projects/{project}/auditLogs:search:
+        get:
+            tags:
+                - AuditLogService
+            operationId: AuditLogService_SearchAuditLogs
+            parameters:
+                - name: project
+                  in: path
+                  description: The project id.
+                  required: true
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    The filter of the log. It should be a valid CEL expression.
+                     For example:
+                      - filter = "method == '/bytebase.v1.SQLService/Query'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR' && user == 'users/bb@bytebase.com'"
+                      - filter = "method == '/bytebase.v1.SQLService/Query' && severity == 'ERROR' && create_time <= '2021-01-01T00:00:00Z' && create_time >= '2020-01-01T00:00:00Z'"
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: |-
+                    The order by of the log.
+                     Only support order by create_time.
+                     For example:
+                      - order_by = "create_time asc"
+                      - order_by = "create_time desc"
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of logs to return.
+                     The service may return fewer than this value.
+                     If unspecified, at most 100 log entries will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `SearchLogs` call.
+                     Provide this to retrieve the subsequent page.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchAuditLogsResponse'
                 default:
                     description: Default error response
                     content:
@@ -4284,8 +4126,8 @@ paths:
     /v1/projects/{project}/databaseGroups:
         get:
             tags:
-                - ProjectService
-            operationId: ProjectService_ListDatabaseGroups
+                - DatabaseGroupService
+            operationId: DatabaseGroupService_ListDatabaseGroups
             parameters:
                 - name: project
                   in: path
@@ -4328,8 +4170,8 @@ paths:
                                 $ref: '#/components/schemas/Status'
         post:
             tags:
-                - ProjectService
-            operationId: ProjectService_CreateDatabaseGroup
+                - DatabaseGroupService
+            operationId: DatabaseGroupService_CreateDatabaseGroup
             parameters:
                 - name: project
                   in: path
@@ -4374,8 +4216,8 @@ paths:
     /v1/projects/{project}/databaseGroups/{databaseGroup}:
         get:
             tags:
-                - ProjectService
-            operationId: ProjectService_GetDatabaseGroup
+                - DatabaseGroupService
+            operationId: DatabaseGroupService_GetDatabaseGroup
             parameters:
                 - name: project
                   in: path
@@ -4414,8 +4256,8 @@ paths:
                                 $ref: '#/components/schemas/Status'
         delete:
             tags:
-                - ProjectService
-            operationId: ProjectService_DeleteDatabaseGroup
+                - DatabaseGroupService
+            operationId: DatabaseGroupService_DeleteDatabaseGroup
             parameters:
                 - name: project
                   in: path
@@ -4441,8 +4283,8 @@ paths:
                                 $ref: '#/components/schemas/Status'
         patch:
             tags:
-                - ProjectService
-            operationId: ProjectService_UpdateDatabaseGroup
+                - DatabaseGroupService
+            operationId: DatabaseGroupService_UpdateDatabaseGroup
             parameters:
                 - name: project
                   in: path
@@ -4511,14 +4353,6 @@ paths:
 
                      When paginating, all other parameters provided to `ListDatabases` must match
                      the call that provided the page token.
-                  schema:
-                    type: string
-                - name: filter
-                  in: query
-                  description: |-
-                    Filter is used to filter databases returned in the list.
-                     For example, `project == "projects/{project}"` can be used to list databases in a project.
-                     Note: the project filter will be moved to parent.
                   schema:
                     type: string
             responses:
@@ -4595,86 +4429,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/DeploymentConfig'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/projects/{project}/instances:
-        get:
-            tags:
-                - InstanceService
-            operationId: InstanceService_ListInstances
-            parameters:
-                - name: project
-                  in: path
-                  description: The project id.
-                  required: true
-                  schema:
-                    type: string
-                - name: pageSize
-                  in: query
-                  description: |-
-                    The maximum number of instances to return. The service may return fewer than
-                     this value.
-                     If unspecified, at most 50 instances will be returned.
-                     The maximum value is 1000; values above 1000 will be coerced to 1000.
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  description: |-
-                    A page token, received from a previous `ListInstances` call.
-                     Provide this to retrieve the subsequent page.
-
-                     When paginating, all other parameters provided to `ListInstances` must match
-                     the call that provided the page token.
-                  schema:
-                    type: string
-                - name: showDeleted
-                  in: query
-                  description: Show deleted instances if specified.
-                  schema:
-                    type: boolean
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListInstancesResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/projects/{project}/instances:search:
-        get:
-            tags:
-                - InstanceService
-            operationId: InstanceService_SearchInstances
-            parameters:
-                - name: project
-                  in: path
-                  description: The project id.
-                  required: true
-                  schema:
-                    type: string
-                - name: showDeleted
-                  in: query
-                  description: Show deleted instances if specified.
-                  schema:
-                    type: boolean
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/SearchInstancesResponse'
                 default:
                     description: Default error response
                     content:
@@ -4898,6 +4652,9 @@ paths:
         post:
             tags:
                 - IssueService
+            description: |-
+                ApproveIssue approves the issue.
+                 The access is based on approval flow.
             operationId: IssueService_ApproveIssue
             parameters:
                 - name: project
@@ -5051,6 +4808,9 @@ paths:
         post:
             tags:
                 - IssueService
+            description: |-
+                RejectIssue rejects the issue.
+                 The access is based on approval flow.
             operationId: IssueService_RejectIssue
             parameters:
                 - name: project
@@ -5088,6 +4848,9 @@ paths:
         post:
             tags:
                 - IssueService
+            description: |-
+                RequestIssue requests the issue.
+                 The access is based on approval flow.
             operationId: IssueService_RequestIssue
             parameters:
                 - name: project
@@ -5317,6 +5080,9 @@ paths:
         patch:
             tags:
                 - PlanService
+            description: |-
+                UpdatePlan updates the plan.
+                 The plan creator and the user with bb.plans.update permission on the project can update the plan.
             operationId: PlanService_UpdatePlan
             parameters:
                 - name: project
@@ -5394,6 +5160,11 @@ paths:
                      the call that provided the page token.
                   schema:
                     type: string
+                - name: latestOnly
+                  in: query
+                  description: If set to true, only the latest plan check run will be returned.
+                  schema:
+                    type: boolean
             responses:
                 "200":
                     description: OK
@@ -5401,6 +5172,43 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListPlanCheckRunsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/projects/{project}/plans/{plan}/planCheckRuns:batchCancel:
+        post:
+            tags:
+                - PlanService
+            operationId: PlanService_BatchCancelPlanCheckRuns
+            parameters:
+                - name: project
+                  in: path
+                  description: The project id.
+                  required: true
+                  schema:
+                    type: string
+                - name: plan
+                  in: path
+                  description: The plan id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BatchCancelPlanCheckRunsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BatchCancelPlanCheckRunsResponse'
                 default:
                     description: Default error response
                     content:
@@ -5448,6 +5256,7 @@ paths:
         get:
             tags:
                 - PlanService
+            description: Search for plans that the caller has the bb.plans.get permission on and also satisfy the specified filter & query.
             operationId: PlanService_SearchPlans
             parameters:
                 - name: project
@@ -5519,6 +5328,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 - name: pageSize
@@ -5583,6 +5393,7 @@ paths:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
             requestBody:
@@ -5705,61 +5516,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Policy'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/projects/{project}/protectionRules:
-        get:
-            tags:
-                - ProjectService
-            operationId: ProjectService_GetProjectProtectionRules
-            parameters:
-                - name: project
-                  in: path
-                  description: The project id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ProtectionRules'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        patch:
-            tags:
-                - ProjectService
-            operationId: ProjectService_UpdateProjectProtectionRules
-            parameters:
-                - name: project
-                  in: path
-                  description: The project id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/UpdateProjectProtectionRulesRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ProtectionRules'
                 default:
                     description: Default error response
                     content:
@@ -5940,10 +5696,62 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/projects/{project}/rollouts/{rollout}/stages/{stage}/tasks/{task}/taskRuns/{taskRun}/session:
+        get:
+            tags:
+                - RolloutService
+            operationId: RolloutService_GetTaskRunSession
+            parameters:
+                - name: project
+                  in: path
+                  description: The project id.
+                  required: true
+                  schema:
+                    type: string
+                - name: rollout
+                  in: path
+                  description: The rollout id.
+                  required: true
+                  schema:
+                    type: string
+                - name: stage
+                  in: path
+                  description: The stage id.
+                  required: true
+                  schema:
+                    type: string
+                - name: task
+                  in: path
+                  description: The task id.
+                  required: true
+                  schema:
+                    type: string
+                - name: taskRun
+                  in: path
+                  description: The taskRun id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskRunSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/projects/{project}/rollouts/{rollout}/stages/{stage}/tasks/{task}/taskRuns:batchCancel:
         post:
             tags:
                 - RolloutService
+            description: |-
+                BatchSkipTasks cancels the specified task runs in batch.
+                 The access is the same as BatchRunTasks().
             operationId: RolloutService_BatchCancelTaskRuns
             parameters:
                 - name: project
@@ -5993,6 +5801,11 @@ paths:
         post:
             tags:
                 - RolloutService
+            description: |-
+                BatchRunTasks creates task runs for the specified tasks.
+                 DataExport issue only allows the creator to run the task.
+                 Users with "bb.taskRuns.create" permission can run the task, e.g. Workspace Admin and DBA.
+                 Follow role-based rollout policy for the environment.
             operationId: RolloutService_BatchRunTasks
             parameters:
                 - name: project
@@ -6036,6 +5849,9 @@ paths:
         post:
             tags:
                 - RolloutService
+            description: |-
+                BatchSkipTasks skips the specified tasks.
+                 The access is the same as BatchRunTasks().
             operationId: RolloutService_BatchSkipTasks
             parameters:
                 - name: project
@@ -6184,6 +6000,58 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Sheet'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/projects/{project}/slowQueries:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListSlowQueries
+            parameters:
+                - name: project
+                  in: path
+                  description: The project id.
+                  required: true
+                  schema:
+                    type: string
+                - name: filter
+                  in: query
+                  description: |-
+                    The filter of the slow query log.
+                     follow the [ebnf](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form) syntax.
+                     Support filter by database and start_time in SlowQueryDetails for now.
+                     For example:
+                     Search the slow query log of the specific database:
+                       - the specific database: database = "instances/{instance}/databases/{database}"
+                     Search the slow query log that start_time after 2022-01-01T12:00:00.000Z:
+                       - start_time > "2022-01-01T12:00:00.000Z"
+                       - Should use [RFC-3339 format](https://www.rfc-editor.org/rfc/rfc3339).
+                       - Currently we only support filtering down to date granularity.
+                  schema:
+                    type: string
+                - name: orderBy
+                  in: query
+                  description: |-
+                    The order by of the slow query log.
+                     Support order by count, latest_log_time, average_query_time, maximum_query_time,
+                     average_rows_sent, maximum_rows_sent, average_rows_examined, maximum_rows_examined for now.
+                     For example:
+                      - order by count: order_by = "count"
+                      - order by latest_log_time desc: order_by = "latest_log_time desc"
+                     Default: order by average_query_time desc.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSlowQueriesResponse'
                 default:
                     description: Default error response
                     content:
@@ -6685,6 +6553,7 @@ paths:
         get:
             tags:
                 - SQLService
+            description: SearchQueryHistories searches query histories for the caller.
             operationId: SQLService_SearchQueryHistories
             parameters:
                 - name: pageSize
@@ -7423,6 +7292,9 @@ paths:
         get:
             tags:
                 - AuthService
+            description: |-
+                List all users.
+                 Any authenticated user can list users.
             operationId: AuthService_ListUsers
             parameters:
                 - name: pageSize
@@ -7466,6 +7338,10 @@ paths:
         post:
             tags:
                 - AuthService
+            description: |-
+                Create a user.
+                 When Disallow Signup is enabled, only the caller with bb.users.create on the workspace can create a user.
+                 Otherwise, any unauthenticated user can create a user.
             operationId: AuthService_CreateUser
             requestBody:
                 content:
@@ -7490,6 +7366,9 @@ paths:
         get:
             tags:
                 - AuthService
+            description: |-
+                Get the user.
+                 Any authenticated user can get the user.
             operationId: AuthService_GetUser
             parameters:
                 - name: user
@@ -7514,6 +7393,9 @@ paths:
         delete:
             tags:
                 - AuthService
+            description: |-
+                Only the user with bb.users.delete permission on the workspace can delete the user.
+                 The last remaining workspace admin cannot be deleted.
             operationId: AuthService_DeleteUser
             parameters:
                 - name: user
@@ -7535,6 +7417,7 @@ paths:
         patch:
             tags:
                 - AuthService
+            description: Only the user itself and the user with bb.users.update permission on the workspace can update the user.
             operationId: AuthService_UpdateUser
             parameters:
                 - name: user
@@ -7589,6 +7472,7 @@ paths:
         post:
             tags:
                 - AuthService
+            description: Only the user with bb.users.undelete permission on the workspace can undelete the user.
             operationId: AuthService_UndeleteUser
             parameters:
                 - name: user
@@ -7827,6 +7711,7 @@ paths:
         post:
             tags:
                 - WorksheetService
+            description: Create a personal worksheet used in SQL Editor.
             operationId: WorksheetService_CreateWorksheet
             requestBody:
                 content:
@@ -7851,6 +7736,12 @@ paths:
         get:
             tags:
                 - WorksheetService
+            description: |-
+                Get a worksheet by name.
+                 The users can access this method if,
+                 - they are the creator of the worksheet;
+                 - they have bb.worksheets.get permission on the workspace;
+                 - the sheet is shared with them with PROJECT_READ and PROJECT_WRITE visibility, and they have bb.projects.get permission on the project.
             operationId: WorksheetService_GetWorksheet
             parameters:
                 - name: worksheet
@@ -7875,6 +7766,9 @@ paths:
         delete:
             tags:
                 - WorksheetService
+            description: |-
+                Delete a worksheet.
+                 The access is the same as UpdateWorksheet method.
             operationId: WorksheetService_DeleteWorksheet
             parameters:
                 - name: worksheet
@@ -7896,6 +7790,12 @@ paths:
         patch:
             tags:
                 - WorksheetService
+            description: |-
+                Update a worksheet.
+                 The users can access this method if,
+                 - they are the creator of the worksheet;
+                 - they have bb.worksheets.manage permission on the workspace;
+                 - the sheet is shared with them with PROJECT_WRITE visibility, and they have bb.projects.get permission on the project.
             operationId: WorksheetService_UpdateWorksheet
             parameters:
                 - name: worksheet
@@ -7941,6 +7841,9 @@ paths:
         patch:
             tags:
                 - WorksheetService
+            description: |-
+                Update the organizer of a worksheet.
+                 The access is the same as UpdateWorksheet method.
             operationId: WorksheetService_UpdateWorksheetOrganizer
             parameters:
                 - name: worksheet
@@ -7982,6 +7885,10 @@ paths:
         get:
             tags:
                 - WorksheetService
+            description: |-
+                Search for worksheets.
+                 This is used for finding my worksheets or worksheets shared by other people.
+                 The sheet accessibility is the same as GetWorksheet().
             operationId: WorksheetService_SearchWorksheets
             parameters:
                 - name: filter
@@ -8022,6 +7929,107 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/SearchWorksheetsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/databases:
+        get:
+            tags:
+                - DatabaseService
+            operationId: DatabaseService_ListDatabases
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of databases to return. The service may return fewer than
+                     this value.
+                     If unspecified, at most 50 databases will be returned.
+                     The maximum value is 1000; values above 1000 will be coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous `ListDatabases` call.
+                     Provide this to retrieve the subsequent page.
+
+                     When paginating, all other parameters provided to `ListDatabases` must match
+                     the call that provided the page token.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDatabasesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}:getIamPolicy:
+        get:
+            tags:
+                - WorkspaceService
+            operationId: WorkspaceService_GetIamPolicy
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IamPolicy'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}:setIamPolicy:
+        post:
+            tags:
+                - WorkspaceService
+            operationId: WorkspaceService_SetIamPolicy
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetIamPolicyRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IamPolicy'
                 default:
                     description: Default error response
                     content:
@@ -8146,7 +8154,7 @@ components:
                     description: lsp is the enablement of lsp in SQL Editor.
                 preUpdateBackup:
                     type: boolean
-                    description: lsp is the enablement of data backup prior to data update.
+                    description: pre_update_backup is the enablement of data backup prior to data update.
                 iamGuard:
                     type: boolean
                     description: iam_guard is the enablement of IAM checks.
@@ -8159,11 +8167,11 @@ components:
                  Actuator concept is similar to the Spring Boot Actuator.
         AddDataSourceRequest:
             required:
-                - instance
+                - name
                 - dataSource
             type: object
             properties:
-                instance:
+                name:
                     type: string
                     description: |-
                         The name of the instance to add a data source to.
@@ -8233,6 +8241,14 @@ components:
                 detail:
                     type: string
                     description: The advice detail.
+                startPosition:
+                    allOf:
+                        - $ref: '#/components/schemas/Position'
+                    description: |-
+                        1-based Position of the SQL statement.
+                         To supersede `line` and `column` above.
+                endPosition:
+                    $ref: '#/components/schemas/Position'
         AdviseIndexResponse:
             type: object
             properties:
@@ -8546,6 +8562,35 @@ components:
                          Some fields are omitted because they are too large or contain sensitive information.
                 status:
                     $ref: '#/components/schemas/Status'
+                serviceData:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: service-specific data about the request, response, and other activities.
+                requestMetadata:
+                    allOf:
+                        - $ref: '#/components/schemas/RequestMetadata'
+                    description: Metadata about the operation.
+        BatchCancelPlanCheckRunsRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: |-
+                        The name of the parent of the planChecks.
+                         Format: projects/{project}/plans/{plan}
+                planCheckRuns:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        TODO(d): update this API.
+                         The planCheckRuns to cancel.
+                         Format: projects/{project}/plans/{plan}/planCheckRuns/{planCheckRun}
+        BatchCancelPlanCheckRunsResponse:
+            type: object
+            properties: {}
         BatchCancelTaskRunsRequest:
             type: object
             properties:
@@ -8649,7 +8694,7 @@ components:
         BatchSkipTasksResponse:
             type: object
             properties: {}
-        BatchSyncInstanceRequest:
+        BatchSyncInstancesRequest:
             required:
                 - requests
             type: object
@@ -8661,7 +8706,7 @@ components:
                     description: |-
                         The request message specifying the instances to sync.
                          A maximum of 1000 instances can be synced in a batch.
-        BatchSyncInstanceResponse:
+        BatchSyncInstancesResponse:
             type: object
             properties: {}
         BatchUpdateDatabasesRequest:
@@ -8692,6 +8737,8 @@ components:
                         $ref: '#/components/schemas/Database'
                     description: Databases updated.
         BatchUpdateIssuesStatusRequest:
+            required:
+                - parent
             type: object
             properties:
                 parent:
@@ -8956,6 +9003,11 @@ components:
             properties:
                 name:
                     type: string
+                ranges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Range'
+                    description: The ranges of sub-strings correspond to the statements on the sheet.
         ChangedResources:
             type: object
             properties:
@@ -9000,16 +9052,16 @@ components:
             description: CheckConstraintMetadata is the metadata for check constraints.
         CheckRequest:
             required:
-                - database
+                - name
             type: object
             properties:
-                statement:
-                    type: string
-                database:
+                name:
                     type: string
                     description: |-
                         The database name to check against.
-                         Format: instances/{instance}/databases/{databaseName}
+                         Format: instances/{instance}/databases/{database}
+                statement:
+                    type: string
                 metadata:
                     allOf:
                         - $ref: '#/components/schemas/DatabaseMetadata'
@@ -9339,6 +9391,16 @@ components:
                 mountPath:
                     type: string
                     description: The path where the approle auth method is mounted.
+        DataSourceQueryPolicy:
+            type: object
+            properties:
+                adminDataSourceRestriction:
+                    enum:
+                        - RESTRICTION_UNSPECIFIED
+                        - FALLBACK
+                        - DISALLOW
+                    type: string
+                    format: enum
         DataSource_Address:
             type: object
             properties:
@@ -9403,6 +9465,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/InstanceResource'
                     description: The instance resource.
+                backupAvailable:
+                    readOnly: true
+                    type: boolean
+                    description: The database is available for DML prior backup.
         DatabaseConfig:
             type: object
             properties:
@@ -9470,20 +9536,6 @@ components:
                     type: string
                     description: The schema dump from database.
             description: DatabaseSchema is the metadata for databases.
-        DebugLog:
-            type: object
-            properties:
-                recordTime:
-                    type: string
-                    format: date-time
-                requestPath:
-                    type: string
-                role:
-                    type: string
-                error:
-                    type: string
-                stackTrace:
-                    type: string
         DeploymentConfig:
             type: object
             properties:
@@ -9678,6 +9730,8 @@ components:
                     type: string
                     format: enum
         ExecuteRequest:
+            required:
+                - name
             type: object
             properties:
                 name:
@@ -9721,8 +9775,12 @@ components:
                     description: The column number, starting from 0.
                     format: int32
         ExportAuditLogsRequest:
+            required:
+                - parent
             type: object
             properties:
+                parent:
+                    type: string
                 filter:
                     type: string
                     description: |-
@@ -9970,6 +10028,12 @@ components:
                     description: |-
                         The last updater of the function in branch.
                          Format: users/{userUID}.
+                sourceBranch:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The last change come from branch.
+                         Format: projcets/{project}/branches/{branch}
                 updateTime:
                     readOnly: true
                     type: string
@@ -9983,11 +10047,13 @@ components:
                 name:
                     type: string
                     description: |-
-                        The name is the instance name to execute the query against.
+                        The database name to execute the query against.
                          Format: instances/{instance}/databases/{databaseName}
-                statement:
+                sheet:
                     type: string
-                    description: The original SQL statement.
+                    description: |-
+                        The resource name of the sheet. It is used to get the original statement.
+                         Format: projects/{project}/sheets/{sheet}
                 backupDataSource:
                     type: string
                     description: |-
@@ -10043,6 +10109,50 @@ components:
                 expiration:
                     pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
                     type: string
+        Group:
+            type: object
+            properties:
+                name:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The name of the group to retrieve.
+                         Format: groups/{group}, group is an email.
+                title:
+                    type: string
+                description:
+                    type: string
+                creator:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The name for the creator.
+                         Format: users/hello@world.com
+                members:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GroupMember'
+                createTime:
+                    readOnly: true
+                    type: string
+                    description: The timestamp when the group was created.
+                    format: date-time
+        GroupMember:
+            type: object
+            properties:
+                member:
+                    type: string
+                    description: |-
+                        Member is the principal who belong to this group.
+
+                         Format: users/{userUID}.
+                role:
+                    enum:
+                        - ROLE_UNSPECIFIED
+                        - OWNER
+                        - MEMBER
+                    type: string
+                    format: enum
         IamPolicy:
             type: object
             properties:
@@ -10052,7 +10162,7 @@ components:
                         $ref: '#/components/schemas/Binding'
                     description: |-
                         Collection of binding.
-                         A binding binds one or more project members to a single project role.
+                         A binding binds one or more members or groups to a single role.
         IdentityProvider:
             type: object
             properties:
@@ -10060,7 +10170,7 @@ components:
                     type: string
                     description: |-
                         The name of the identity provider.
-                         Format: idps/{identity_provider}
+                         Format: idps/{idp}
                 uid:
                     readOnly: true
                     type: string
@@ -10214,6 +10324,11 @@ components:
                     type: boolean
                 options:
                     $ref: '#/components/schemas/InstanceOptions'
+                roles:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InstanceRole'
         InstanceOptions:
             type: object
             properties:
@@ -10281,22 +10396,17 @@ components:
                     description: |-
                         The environment resource.
                          Format: environments/prod where prod is the environment resource ID.
+                roles:
+                    readOnly: true
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InstanceRole'
         InstanceRole:
             type: object
             properties:
                 name:
                     type: string
-                    description: |-
-                        The name of the role.
-                         Format: instances/{instance}/roles/{role name}
-                         The role name is the unique name for the role.
-                roleName:
-                    type: string
-                    description: The role name. It's unique within the instance.
-                password:
-                    writeOnly: true
-                    type: string
-                    description: The role password.
+                    description: The role name.
                 connectionLimit:
                     type: integer
                     description: The connection count limit for this role.
@@ -10343,11 +10453,6 @@ components:
                         - CANCELED
                     type: string
                     format: enum
-                assignee:
-                    type: string
-                    description: 'Format: users/hello@world.com'
-                assigneeAttention:
-                    type: boolean
                 approvers:
                     type: array
                     items:
@@ -10512,14 +10617,14 @@ components:
                         - CANCELED
                     type: string
                     format: enum
-                fromAssignee:
-                    type: string
-                    description: |-
-                        TODO(d): deprecate from_assignee and to_assignee.
-                         Format: users/{email}
-                toAssignee:
-                    type: string
-                    description: 'Format: users/{email}'
+                fromLabels:
+                    type: array
+                    items:
+                        type: string
+                toLabels:
+                    type: array
+                    items:
+                        type: string
         IssueComment_StageEnd:
             type: object
             properties:
@@ -10584,6 +10689,18 @@ components:
                 principal:
                     type: string
                     description: 'Format: users/hello@world.com'
+        Item_Table:
+            type: object
+            properties:
+                database:
+                    type: string
+                    description: |-
+                        The database information.
+                         Format: instances/{instance}/databases/{database}
+                schema:
+                    type: string
+                table:
+                    type: string
         KerberosConfig:
             type: object
             properties:
@@ -10745,19 +10862,6 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
-        ListDebugLogResponse:
-            type: object
-            properties:
-                logs:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/DebugLog'
-                    description: The logs from the specified request.
-                nextPageToken:
-                    type: string
-                    description: |-
-                        A token, which can be sent as `page_token` to retrieve the next page.
-                         If this field is omitted, there are no subsequent pages.
         ListEnvironmentsResponse:
             type: object
             properties:
@@ -10771,6 +10875,19 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListGroupsResponse:
+            type: object
+            properties:
+                groups:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Group'
+                    description: The groups from the specified request.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
         ListIdentityProvidersResponse:
             type: object
             properties:
@@ -10779,6 +10896,19 @@ components:
                     items:
                         $ref: '#/components/schemas/IdentityProvider'
                     description: The identity providers from the specified request.
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as `page_token` to retrieve the next page.
+                         If this field is omitted, there are no subsequent pages.
+        ListInstanceDatabasesResponse:
+            type: object
+            properties:
+                databases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Database'
+                    description: The databases from the specified request.
                 nextPageToken:
                     type: string
                     description: |-
@@ -10967,19 +11097,6 @@ components:
                     items:
                         $ref: '#/components/schemas/TaskRun'
                     description: The taskRuns from the specified request.
-                nextPageToken:
-                    type: string
-                    description: |-
-                        A token, which can be sent as `page_token` to retrieve the next page.
-                         If this field is omitted, there are no subsequent pages.
-        ListUserGroupsResponse:
-            type: object
-            properties:
-                groups:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/UserGroup'
-                    description: The groups from the specified request.
                 nextPageToken:
                     type: string
                     description: |-
@@ -11196,6 +11313,14 @@ components:
                         - FULL
                     type: string
                     format: enum
+        MaximumSQLResultSizeSetting:
+            type: object
+            properties:
+                limit:
+                    type: string
+                    description: |-
+                        The limit is in bytes.
+                         The default value is 100MB, we will use the default value if the setting not exists, or the limit <= 0.
         OAuth2IdentityProviderConfig:
             type: object
             properties:
@@ -11422,8 +11547,6 @@ components:
                         The resource name of the target.
                          Format: instances/{instance-id}/databases/{database-name}.
                          Format: projects/{project}/databaseGroups/{databaseGroup}.
-                         Format: projects/{project}/deploymentConfigs/default. The plan should
-                         have a single step and single spec for the deployment configuration type.
                 sheet:
                     type: string
                     description: |-
@@ -11602,6 +11725,7 @@ components:
                         - MASKING_EXCEPTION
                         - RESTRICT_ISSUE_CREATION_FOR_SQL_REVIEW
                         - TAG
+                        - DATA_SOURCE_QUERY
                     type: string
                     format: enum
                 rolloutPolicy:
@@ -11620,6 +11744,8 @@ components:
                     $ref: '#/components/schemas/RestrictIssueCreationForSQLReviewPolicy'
                 tagPolicy:
                     $ref: '#/components/schemas/TagPolicy'
+                dataSourceQueryPolicy:
+                    $ref: '#/components/schemas/DataSourceQueryPolicy'
                 enforce:
                     type: boolean
                 resourceType:
@@ -11638,6 +11764,52 @@ components:
                     readOnly: true
                     type: string
                     description: The system-assigned, unique identifier for the resource.
+        Position:
+            type: object
+            properties:
+                line:
+                    type: integer
+                    format: int32
+                column:
+                    type: integer
+                    format: int32
+        Postgres_Session:
+            type: object
+            properties:
+                pid:
+                    type: string
+                blockedByPids:
+                    type: array
+                    items:
+                        type: string
+                query:
+                    type: string
+                state:
+                    type: string
+                waitEventType:
+                    type: string
+                waitEvent:
+                    type: string
+                datname:
+                    type: string
+                usename:
+                    type: string
+                applicationName:
+                    type: string
+                clientAddr:
+                    type: string
+                clientPort:
+                    type: string
+                backendStart:
+                    type: string
+                    format: date-time
+                xactStart:
+                    type: string
+                    format: date-time
+                queryStart:
+                    type: string
+                    format: date-time
+            description: Read from `pg_stat_activity`
         PrettyRequest:
             type: object
             properties:
@@ -11701,6 +11873,28 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/Plan'
                     description: The plan used to preview rollout.
+        PriorBackupDetail:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriorBackupDetail_Item'
+        PriorBackupDetail_Item:
+            type: object
+            properties:
+                sourceTable:
+                    allOf:
+                        - $ref: '#/components/schemas/Item_Table'
+                    description: The original table information.
+                targetTable:
+                    allOf:
+                        - $ref: '#/components/schemas/Item_Table'
+                    description: The target backup table information.
+                startPosition:
+                    $ref: '#/components/schemas/Position'
+                endPosition:
+                    $ref: '#/components/schemas/Position'
         ProcedureConfig:
             type: object
             properties:
@@ -11713,6 +11907,12 @@ components:
                     description: |-
                         The last updater of the procedure in branch.
                          Format: users/{userUID}.
+                sourceBranch:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The last change come from branch.
+                         Format: projcets/{project}/branches/{branch}
                 updateTime:
                     readOnly: true
                     type: string
@@ -11721,10 +11921,6 @@ components:
         Project:
             type: object
             properties:
-                protectionRules:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/ProtectionRule'
                 issueLabels:
                     type: array
                     items:
@@ -11738,47 +11934,6 @@ components:
                 autoResolveIssue:
                     type: boolean
                     description: Enable auto resolve issue.
-        ProtectionRule:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: A unique identifier for a node in UUID format.
-                target:
-                    enum:
-                        - PROTECTION_TARGET_UNSPECIFIED
-                        - BRANCH
-                        - CHANGELIST
-                    type: string
-                    format: enum
-                nameFilter:
-                    type: string
-                    description: The name of the branch/changelist or wildcard.
-                allowedRoles:
-                    type: array
-                    items:
-                        type: string
-                    description: |-
-                        The roles allowed to create branches or changelists, rebase branches, delete branches.
-                         Format: roles/projectOwner.
-                branchSource:
-                    enum:
-                        - BRANCH_SOURCE_UNSPECIFIED
-                        - DATABASE
-                    type: string
-                    format: enum
-        ProtectionRules:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The name of the protection rules.
-                         Format: projects/{project}/protectionRules
-                rules:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/ProtectionRule'
         QueryHistory:
             type: object
             properties:
@@ -11914,6 +12069,15 @@ components:
                     items:
                         $ref: '#/components/schemas/RowValue'
                     description: Row values of the query result.
+        Range:
+            type: object
+            properties:
+                start:
+                    type: integer
+                    format: int32
+                end:
+                    type: integer
+                    format: int32
         RangeMask_Slice:
             type: object
             properties:
@@ -11957,11 +12121,11 @@ components:
                     type: string
         RemoveDataSourceRequest:
             required:
-                - instance
+                - name
                 - dataSource
             type: object
             properties:
-                instance:
+                name:
                     type: string
                     description: |-
                         The name of the instance to remove a data source from.
@@ -11993,6 +12157,18 @@ components:
                          Format: projects/{project}/issues/{issue}
                 comment:
                     type: string
+        RequestMetadata:
+            type: object
+            properties:
+                callerIp:
+                    type: string
+                    description: The IP address of the caller.
+                callerSuppliedUserAgent:
+                    type: string
+                    description: |-
+                        The user agent of the caller.
+                         This information is not authenticated and should be treated accordingly.
+            description: Metadata about the request.
         ResourcePackage:
             type: object
             properties:
@@ -12021,6 +12197,14 @@ components:
                     type: integer
                     description: Code from sql review.
                     format: int32
+                startPosition:
+                    allOf:
+                        - $ref: '#/components/schemas/Position'
+                    description: |-
+                        1-based Position of the SQL statement.
+                         To supersede `line` and `column` above.
+                endPosition:
+                    $ref: '#/components/schemas/Position'
         Result_SqlSummaryReport:
             type: object
             properties:
@@ -12045,7 +12229,7 @@ components:
                     type: string
                     description: |-
                         The name of the sql review to retrieve.
-                         Format: reviewConfigs/{uid}
+                         Format: reviewConfigs/{reviewConfig}
                 title:
                     type: string
                 enabled:
@@ -12325,6 +12509,14 @@ components:
                     description: The title of the deployment (stage) in a schedule.
                 spec:
                     $ref: '#/components/schemas/DeploymentSpec'
+        SchedulerInfo_WaitingCause:
+            type: object
+            properties:
+                connectionLimit:
+                    type: boolean
+                taskUid:
+                    type: integer
+                    format: int32
         SchemaConfig:
             type: object
             properties:
@@ -12522,14 +12714,7 @@ components:
                     description: |-
                         A token, which can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
-        SearchInstancesResponse:
-            type: object
-            properties:
-                instances:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/Instance'
-                    description: The instances from the specified request.
+            description: Deprecated.
         SearchIssuesResponse:
             type: object
             properties:
@@ -12670,17 +12855,21 @@ components:
                          use the default full mask algorithm.
         SetIamPolicyRequest:
             required:
-                - project
+                - resource
                 - policy
             type: object
             properties:
-                project:
+                resource:
                     type: string
                     description: |-
-                        The name of the project to set the IAM policy.
+                        The name of the resource to set the IAM policy.
                          Format: projects/{project}
+                         Format: workspaces/{workspace}
                 policy:
                     $ref: '#/components/schemas/IamPolicy'
+                etag:
+                    type: string
+                    description: The current etag of the policy.
         Setting:
             type: object
             properties:
@@ -12689,7 +12878,7 @@ components:
                     description: |-
                         The resource name of the setting. Must be one of the following forms:
 
-                         - `setting/{setting_name}`
+                         - `setting/{setting}`
                          For example, "settings/bb.branding.logo"
                 value:
                     allOf:
@@ -13128,6 +13317,12 @@ components:
                     description: |-
                         The last updater of the table in branch.
                          Format: users/{userUID}.
+                sourceBranch:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The last change come from branch.
+                         Format: projcets/{project}/branches/{branch}
                 updateTime:
                     readOnly: true
                     type: string
@@ -13397,6 +13592,14 @@ components:
                         - EXPORTED
                     type: string
                     format: enum
+                priorBackupDetail:
+                    allOf:
+                        - $ref: '#/components/schemas/TaskRun_PriorBackupDetail'
+                    description: The prior backup detail that will be used to rollback the task run.
+                schedulerInfo:
+                    readOnly: true
+                    allOf:
+                        - $ref: '#/components/schemas/TaskRun_SchedulerInfo'
         TaskRunLog:
             type: object
             properties:
@@ -13411,8 +13614,12 @@ components:
                         - DATABASE_SYNC_END
                         - TASK_RUN_STATUS_UPDATE
                         - TRANSACTION_CONTROL
+                        - PRIOR_BACKUP_START
+                        - PRIOR_BACKUP_END
                     type: string
                     format: enum
+                deployId:
+                    type: string
                 schemaDumpStart:
                     $ref: '#/components/schemas/TaskRunLog_SchemaDumpStart'
                 schemaDumpEnd:
@@ -13429,6 +13636,10 @@ components:
                     $ref: '#/components/schemas/TaskRunLog_TaskRunStatusUpdate'
                 transactionControl:
                     $ref: '#/components/schemas/TaskRunLog_TransactionControl'
+                priorBackupStart:
+                    $ref: '#/components/schemas/TaskRunLog_PriorBackupStart'
+                priorBackupEnd:
+                    $ref: '#/components/schemas/TaskRunLog_PriorBackupEnd'
         TaskRunLog_CommandExecute:
             type: object
             properties:
@@ -13468,6 +13679,16 @@ components:
         TaskRunLog_DatabaseSyncStart:
             type: object
             properties: {}
+        TaskRunLog_PriorBackupEnd:
+            type: object
+            properties:
+                priorBackupDetail:
+                    $ref: '#/components/schemas/PriorBackupDetail'
+                error:
+                    type: string
+        TaskRunLog_PriorBackupStart:
+            type: object
+            properties: {}
         TaskRunLog_SchemaDumpEnd:
             type: object
             properties:
@@ -13499,6 +13720,31 @@ components:
                     format: enum
                 error:
                     type: string
+        TaskRunSession:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: projects/{project}/rollouts/{rollout}/stages/{stage}/tasks/{task}/taskRuns/{taskRun}/session'
+                postgres:
+                    $ref: '#/components/schemas/TaskRunSession_Postgres'
+        TaskRunSession_Postgres:
+            type: object
+            properties:
+                session:
+                    allOf:
+                        - $ref: '#/components/schemas/Postgres_Session'
+                    description: '`session` is the session of the task run executing commands.'
+                blockingSessions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Postgres_Session'
+                    description: '`blocking_sessions` block `session`.'
+                blockedSessions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Postgres_Session'
+                    description: '`blocked_sessions` are blocked by `session`.'
         TaskRun_ExecutionDetail:
             type: object
             properties:
@@ -13513,6 +13759,21 @@ components:
                     $ref: '#/components/schemas/ExecutionDetail_Position'
                 commandEndPosition:
                     $ref: '#/components/schemas/ExecutionDetail_Position'
+        TaskRun_PriorBackupDetail:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PriorBackupDetail_Item'
+        TaskRun_SchedulerInfo:
+            type: object
+            properties:
+                reportTime:
+                    type: string
+                    format: date-time
+                waitingCause:
+                    $ref: '#/components/schemas/SchedulerInfo_WaitingCause'
         Task_DatabaseCreate:
             type: object
             properties:
@@ -13652,16 +13913,6 @@ components:
                     description: |-
                         The name of the deleted instance.
                          Format: instances/{instance}
-        UndeleteInstanceRoleRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The name of the deleted role.
-                         Format: instances/{instance}/roles/{role name}
         UndeleteProjectRequest:
             required:
                 - name
@@ -13684,11 +13935,11 @@ components:
                          Format: users/{user}
         UpdateDataSourceRequest:
             required:
-                - instance
+                - name
                 - dataSource
             type: object
             properties:
-                instance:
+                name:
                     type: string
                     description: |-
                         The name of the instance to update a data source.
@@ -13721,13 +13972,6 @@ components:
                     type: string
                     description: The list of fields to update.
                     format: field-mask
-        UpdateProjectProtectionRulesRequest:
-            required:
-                - protectionRules
-            type: object
-            properties:
-                protectionRules:
-                    $ref: '#/components/schemas/ProtectionRules'
         UpdateWebhookRequest:
             required:
                 - webhook
@@ -13791,57 +14035,6 @@ components:
                     description: |-
                         Should be a valid E.164 compliant phone number.
                          Could be empty.
-                roles:
-                    type: array
-                    items:
-                        type: string
-                    description: |-
-                        The roles of the user.
-                         This filed is to supersede the `user_role` field.
-        UserGroup:
-            type: object
-            properties:
-                name:
-                    readOnly: true
-                    type: string
-                    description: |-
-                        The name of the group to retrieve.
-                         Format: groups/{email}
-                title:
-                    type: string
-                description:
-                    type: string
-                creator:
-                    readOnly: true
-                    type: string
-                    description: |-
-                        The name for the creator.
-                         Format: users/hello@world.com
-                members:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/UserGroupMember'
-                createTime:
-                    readOnly: true
-                    type: string
-                    description: The timestamp when the group was created.
-                    format: date-time
-        UserGroupMember:
-            type: object
-            properties:
-                member:
-                    type: string
-                    description: |-
-                        Member is the principal who belong to this user group.
-
-                         Format: users/{userUID}.
-                role:
-                    enum:
-                        - ROLE_UNSPECIFIED
-                        - OWNER
-                        - MEMBER
-                    type: string
-                    format: enum
         VCSConnector:
             type: object
             properties:
@@ -13967,6 +14160,8 @@ components:
                     $ref: '#/components/schemas/SemanticTypeSetting'
                 maskingAlgorithmSettingValue:
                     $ref: '#/components/schemas/MaskingAlgorithmSetting'
+                maximumSqlResultSizeSetting:
+                    $ref: '#/components/schemas/MaximumSQLResultSizeSetting'
             description: The data in setting value.
         ViewConfig:
             type: object
@@ -13980,6 +14175,12 @@ components:
                     description: |-
                         The last updater of the view in branch.
                          Format: users/{userUID}.
+                sourceBranch:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        The last change come from branch.
+                         Format: projcets/{project}/branches/{branch}
                 updateTime:
                     readOnly: true
                     type: string
@@ -14242,8 +14443,10 @@ tags:
     - name: BranchService
     - name: CelService
     - name: ChangelistService
+    - name: DatabaseGroupService
     - name: DatabaseService
     - name: EnvironmentService
+    - name: GroupService
     - name: IdentityProviderService
     - name: InstanceRoleService
     - name: InstanceService
@@ -14259,7 +14462,7 @@ tags:
     - name: SettingService
     - name: SheetService
     - name: SubscriptionService
-    - name: UserGroupService
     - name: VCSConnectorService
     - name: VCSProviderService
     - name: WorksheetService
+    - name: WorkspaceService

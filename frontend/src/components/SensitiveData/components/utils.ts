@@ -3,12 +3,12 @@ import type { SelectOption } from "naive-ui";
 import type { Factor, Operator } from "@/plugins/cel";
 import { EqualityOperatorList, CollectionOperatorList } from "@/plugins/cel";
 import {
+  useInstanceResourceList,
   useEnvironmentV1Store,
-  useInstanceV1List,
   useProjectV1List,
   useSettingV1Store,
 } from "@/store";
-import { DEFAULT_PROJECT_V1_NAME } from "@/types";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import type { MaskingAlgorithmSetting_Algorithm } from "@/types/proto/v1/setting_service";
 import {
   extractEnvironmentResourceName,
@@ -38,16 +38,16 @@ export const getClassificationLevelOptions = () => {
 export const getEnvironmentIdOptions = () => {
   const environmentList = useEnvironmentV1Store().getEnvironmentList();
   return environmentList.map<SelectOption>((env) => {
-    const environmentId = extractEnvironmentResourceName(env.name);
+    const environmentName = extractEnvironmentResourceName(env.name);
     return {
-      label: environmentId,
-      value: environmentId,
+      label: environmentName,
+      value: environmentName,
     };
   });
 };
 
 export const getInstanceIdOptions = () => {
-  const { instanceList } = useInstanceV1List(false);
+  const instanceList = useInstanceResourceList();
   return instanceList.value.map<SelectOption>((ins) => {
     const instanceId = extractInstanceResourceName(ins.name);
     return {
@@ -60,7 +60,7 @@ export const getInstanceIdOptions = () => {
 export const getProjectIdOptions = () => {
   const { projectList } = useProjectV1List();
   return projectList.value
-    .filter((proj) => proj.name != DEFAULT_PROJECT_V1_NAME)
+    .filter((proj) => proj.name != DEFAULT_PROJECT_NAME)
     .map<SelectOption>((proj) => {
       const projectId = extractProjectResourceName(proj.name);
       return {
@@ -81,7 +81,11 @@ export const factorOperatorOverrideMap = new Map<Factor, Operator[]>([
   ["project_id", uniq([...EqualityOperatorList, ...CollectionOperatorList])],
 ]);
 
-export type MaskingType = "full-mask" | "range-mask" | "md5-mask" | "inner-outer-mask";
+export type MaskingType =
+  | "full-mask"
+  | "range-mask"
+  | "md5-mask"
+  | "inner-outer-mask";
 
 export const getMaskingType = (
   algorithm: MaskingAlgorithmSetting_Algorithm
@@ -95,7 +99,7 @@ export const getMaskingType = (
       } else if (algorithm.rangeMask) {
         return "range-mask";
       } else if (algorithm.innerOuterMask) {
-        return "inner-outer-mask"
+        return "inner-outer-mask";
       }
       break;
     default:

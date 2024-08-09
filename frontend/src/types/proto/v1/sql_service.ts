@@ -13,6 +13,7 @@ import {
   exportFormatFromJSON,
   exportFormatToJSON,
   exportFormatToNumber,
+  Position,
 } from "./common";
 import { DatabaseMetadata } from "./database_service";
 
@@ -156,6 +157,12 @@ export interface Advice {
   column: number;
   /** The advice detail. */
   detail: string;
+  /**
+   * 1-based Position of the SQL statement.
+   * To supersede `line` and `column` above.
+   */
+  startPosition: Position | undefined;
+  endPosition: Position | undefined;
 }
 
 export enum Advice_Status {
@@ -278,12 +285,12 @@ export interface PrettyResponse {
 }
 
 export interface CheckRequest {
-  statement: string;
   /**
    * The database name to check against.
-   * Format: instances/{instance}/databases/{databaseName}
+   * Format: instances/{instance}/databases/{database}
    */
-  database: string;
+  name: string;
+  statement: string;
   /**
    * The database metadata to check against. It can be used to check against an uncommitted metadata.
    * If not provided, the database metadata will be fetched from the database.
@@ -491,12 +498,15 @@ export function queryHistory_TypeToNumber(object: QueryHistory_Type): number {
 
 export interface GenerateRestoreSQLRequest {
   /**
-   * The name is the instance name to execute the query against.
+   * The database name to execute the query against.
    * Format: instances/{instance}/databases/{databaseName}
    */
   name: string;
-  /** The original SQL statement. */
-  statement: string;
+  /**
+   * The resource name of the sheet. It is used to get the original statement.
+   * Format: projects/{project}/sheets/{sheet}
+   */
+  sheet: string;
   /**
    * The data source to restore from.
    * Format: instances/{instance}/databases/{databaseName}, for general engines.
@@ -1610,7 +1620,17 @@ export const RowValue = {
 };
 
 function createBaseAdvice(): Advice {
-  return { status: Advice_Status.STATUS_UNSPECIFIED, code: 0, title: "", content: "", line: 0, column: 0, detail: "" };
+  return {
+    status: Advice_Status.STATUS_UNSPECIFIED,
+    code: 0,
+    title: "",
+    content: "",
+    line: 0,
+    column: 0,
+    detail: "",
+    startPosition: undefined,
+    endPosition: undefined,
+  };
 }
 
 export const Advice = {
@@ -1635,6 +1655,12 @@ export const Advice = {
     }
     if (message.detail !== "") {
       writer.uint32(58).string(message.detail);
+    }
+    if (message.startPosition !== undefined) {
+      Position.encode(message.startPosition, writer.uint32(66).fork()).ldelim();
+    }
+    if (message.endPosition !== undefined) {
+      Position.encode(message.endPosition, writer.uint32(74).fork()).ldelim();
     }
     return writer;
   },
@@ -1695,6 +1721,20 @@ export const Advice = {
 
           message.detail = reader.string();
           continue;
+        case 8:
+          if (tag !== 66) {
+            break;
+          }
+
+          message.startPosition = Position.decode(reader, reader.uint32());
+          continue;
+        case 9:
+          if (tag !== 74) {
+            break;
+          }
+
+          message.endPosition = Position.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1713,6 +1753,8 @@ export const Advice = {
       line: isSet(object.line) ? globalThis.Number(object.line) : 0,
       column: isSet(object.column) ? globalThis.Number(object.column) : 0,
       detail: isSet(object.detail) ? globalThis.String(object.detail) : "",
+      startPosition: isSet(object.startPosition) ? Position.fromJSON(object.startPosition) : undefined,
+      endPosition: isSet(object.endPosition) ? Position.fromJSON(object.endPosition) : undefined,
     };
   },
 
@@ -1739,6 +1781,12 @@ export const Advice = {
     if (message.detail !== "") {
       obj.detail = message.detail;
     }
+    if (message.startPosition !== undefined) {
+      obj.startPosition = Position.toJSON(message.startPosition);
+    }
+    if (message.endPosition !== undefined) {
+      obj.endPosition = Position.toJSON(message.endPosition);
+    }
     return obj;
   },
 
@@ -1754,6 +1802,12 @@ export const Advice = {
     message.line = object.line ?? 0;
     message.column = object.column ?? 0;
     message.detail = object.detail ?? "";
+    message.startPosition = (object.startPosition !== undefined && object.startPosition !== null)
+      ? Position.fromPartial(object.startPosition)
+      : undefined;
+    message.endPosition = (object.endPosition !== undefined && object.endPosition !== null)
+      ? Position.fromPartial(object.endPosition)
+      : undefined;
     return message;
   },
 };
@@ -2284,21 +2338,16 @@ export const PrettyResponse = {
 };
 
 function createBaseCheckRequest(): CheckRequest {
-  return {
-    statement: "",
-    database: "",
-    metadata: undefined,
-    changeType: CheckRequest_ChangeType.CHANGE_TYPE_UNSPECIFIED,
-  };
+  return { name: "", statement: "", metadata: undefined, changeType: CheckRequest_ChangeType.CHANGE_TYPE_UNSPECIFIED };
 }
 
 export const CheckRequest = {
   encode(message: CheckRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
     if (message.statement !== "") {
       writer.uint32(10).string(message.statement);
-    }
-    if (message.database !== "") {
-      writer.uint32(18).string(message.database);
     }
     if (message.metadata !== undefined) {
       DatabaseMetadata.encode(message.metadata, writer.uint32(26).fork()).ldelim();
@@ -2316,19 +2365,19 @@ export const CheckRequest = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
         case 1:
           if (tag !== 10) {
             break;
           }
 
           message.statement = reader.string();
-          continue;
-        case 2:
-          if (tag !== 18) {
-            break;
-          }
-
-          message.database = reader.string();
           continue;
         case 3:
           if (tag !== 26) {
@@ -2355,8 +2404,8 @@ export const CheckRequest = {
 
   fromJSON(object: any): CheckRequest {
     return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
       statement: isSet(object.statement) ? globalThis.String(object.statement) : "",
-      database: isSet(object.database) ? globalThis.String(object.database) : "",
       metadata: isSet(object.metadata) ? DatabaseMetadata.fromJSON(object.metadata) : undefined,
       changeType: isSet(object.changeType)
         ? checkRequest_ChangeTypeFromJSON(object.changeType)
@@ -2366,11 +2415,11 @@ export const CheckRequest = {
 
   toJSON(message: CheckRequest): unknown {
     const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
     if (message.statement !== "") {
       obj.statement = message.statement;
-    }
-    if (message.database !== "") {
-      obj.database = message.database;
     }
     if (message.metadata !== undefined) {
       obj.metadata = DatabaseMetadata.toJSON(message.metadata);
@@ -2386,8 +2435,8 @@ export const CheckRequest = {
   },
   fromPartial(object: DeepPartial<CheckRequest>): CheckRequest {
     const message = createBaseCheckRequest();
+    message.name = object.name ?? "";
     message.statement = object.statement ?? "";
-    message.database = object.database ?? "";
     message.metadata = (object.metadata !== undefined && object.metadata !== null)
       ? DatabaseMetadata.fromPartial(object.metadata)
       : undefined;
@@ -3064,7 +3113,7 @@ export const QueryHistory = {
 };
 
 function createBaseGenerateRestoreSQLRequest(): GenerateRestoreSQLRequest {
-  return { name: "", statement: "", backupDataSource: "", backupTable: "" };
+  return { name: "", sheet: "", backupDataSource: "", backupTable: "" };
 }
 
 export const GenerateRestoreSQLRequest = {
@@ -3072,8 +3121,8 @@ export const GenerateRestoreSQLRequest = {
     if (message.name !== "") {
       writer.uint32(10).string(message.name);
     }
-    if (message.statement !== "") {
-      writer.uint32(18).string(message.statement);
+    if (message.sheet !== "") {
+      writer.uint32(18).string(message.sheet);
     }
     if (message.backupDataSource !== "") {
       writer.uint32(26).string(message.backupDataSource);
@@ -3103,7 +3152,7 @@ export const GenerateRestoreSQLRequest = {
             break;
           }
 
-          message.statement = reader.string();
+          message.sheet = reader.string();
           continue;
         case 3:
           if (tag !== 26) {
@@ -3131,7 +3180,7 @@ export const GenerateRestoreSQLRequest = {
   fromJSON(object: any): GenerateRestoreSQLRequest {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
-      statement: isSet(object.statement) ? globalThis.String(object.statement) : "",
+      sheet: isSet(object.sheet) ? globalThis.String(object.sheet) : "",
       backupDataSource: isSet(object.backupDataSource) ? globalThis.String(object.backupDataSource) : "",
       backupTable: isSet(object.backupTable) ? globalThis.String(object.backupTable) : "",
     };
@@ -3142,8 +3191,8 @@ export const GenerateRestoreSQLRequest = {
     if (message.name !== "") {
       obj.name = message.name;
     }
-    if (message.statement !== "") {
-      obj.statement = message.statement;
+    if (message.sheet !== "") {
+      obj.sheet = message.sheet;
     }
     if (message.backupDataSource !== "") {
       obj.backupDataSource = message.backupDataSource;
@@ -3160,7 +3209,7 @@ export const GenerateRestoreSQLRequest = {
   fromPartial(object: DeepPartial<GenerateRestoreSQLRequest>): GenerateRestoreSQLRequest {
     const message = createBaseGenerateRestoreSQLRequest();
     message.name = object.name ?? "";
-    message.statement = object.statement ?? "";
+    message.sheet = object.sheet ?? "";
     message.backupDataSource = object.backupDataSource ?? "";
     message.backupTable = object.backupTable ?? "";
     return message;
@@ -3237,6 +3286,9 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([16, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               80,
@@ -3333,42 +3385,22 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
-          578365826: [
+          800010: [
             new Uint8Array([
-              84,
-              58,
-              1,
-              42,
-              90,
-              35,
-              58,
-              1,
-              42,
-              34,
-              30,
-              47,
-              118,
-              49,
-              47,
-              123,
-              110,
+              20,
+              98,
+              98,
+              46,
+              100,
               97,
-              109,
-              101,
-              61,
-              105,
-              110,
-              115,
               116,
               97,
-              110,
-              99,
+              98,
+              97,
+              115,
               101,
               115,
-              47,
-              42,
-              125,
-              58,
+              46,
               101,
               120,
               101,
@@ -3376,6 +3408,16 @@ export const SQLServiceDefinition = {
               117,
               116,
               101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
+          578365826: [
+            new Uint8Array([
+              47,
+              58,
+              1,
+              42,
               34,
               42,
               47,
@@ -3433,12 +3475,45 @@ export const SQLServiceDefinition = {
       responseStream: true,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([
+              25,
+              98,
+              98,
+              46,
+              105,
+              110,
+              115,
+              116,
+              97,
+              110,
+              99,
+              101,
+              115,
+              46,
+              97,
+              100,
+              109,
+              105,
+              110,
+              69,
+              120,
+              101,
+              99,
+              117,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([18, 18, 16, 47, 118, 49, 58, 97, 100, 109, 105, 110, 69, 120, 101, 99, 117, 116, 101]),
           ],
         },
       },
     },
+    /** SearchQueryHistories searches query histories for the caller. */
     searchQueryHistories: {
       name: "SearchQueryHistories",
       requestType: SearchQueryHistoriesRequest,
@@ -3447,6 +3522,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               27,
@@ -3490,6 +3566,9 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([16, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
+          800024: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               126,
@@ -3632,6 +3711,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800000: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               26,
@@ -3674,6 +3754,10 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [
+            new Uint8Array([18, 98, 98, 46, 100, 97, 116, 97, 98, 97, 115, 101, 115, 46, 99, 104, 101, 99, 107]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([18, 58, 1, 42, 34, 13, 47, 118, 49, 47, 115, 113, 108, 47, 99, 104, 101, 99, 107]),
           ],
@@ -3688,6 +3772,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800000: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               31,
@@ -3735,6 +3820,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800000: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([19, 58, 1, 42, 34, 14, 47, 118, 49, 47, 115, 113, 108, 47, 112, 114, 101, 116, 116, 121]),
           ],
@@ -3749,6 +3835,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800000: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               39,
@@ -3796,6 +3883,7 @@ export const SQLServiceDefinition = {
         },
       },
     },
+    /** Deprecated. */
     generateRestoreSQL: {
       name: "GenerateRestoreSQL",
       requestType: GenerateRestoreSQLRequest,
@@ -3804,6 +3892,7 @@ export const SQLServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               58,

@@ -126,9 +126,9 @@
 
   <TargetDatabasesSelectPanel
     v-if="selectTargetDatabasesContext.show"
-    :project-id="project.uid"
+    :project-name="project.name"
     :engine="dirtyBranch.engine"
-    :selected-database-id-list="[]"
+    :selected-database-name-list="[]"
     :loading="!!state.applyingToDatabaseStatus"
     @close="selectTargetDatabasesContext.show = false"
     @update="handleApplyToDatabase"
@@ -145,6 +145,7 @@ import type { CSSProperties } from "vue";
 import { computed, nextTick, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBButtonConfirm } from "@/bbkit";
 import DatabaseInfo from "@/components/DatabaseInfo.vue";
 import { validateDatabaseMetadata } from "@/components/SchemaEditorLite";
 import TargetDatabasesSelectPanel from "@/components/SyncDatabaseSchema/TargetDatabasesSelectPanel.vue";
@@ -167,7 +168,7 @@ import { getProjectAndBranchId } from "@/store/modules/v1/common";
 import {
   unknownDatabase,
   type ComposedProject,
-  type ProjectPermission,
+  type Permission,
 } from "@/types";
 import { Branch } from "@/types/proto/v1/branch_service";
 import { DatabaseMetadata } from "@/types/proto/v1/database_service";
@@ -175,7 +176,6 @@ import {
   defer,
   extractProjectResourceName,
   hasProjectPermissionV2,
-  isOwnerOfProjectV1,
 } from "@/utils";
 import { getErrorCode } from "@/utils/grpcweb";
 import { provideSQLCheckContext } from "../SQLCheck";
@@ -228,7 +228,7 @@ const selectTargetDatabasesContext = ref<{
 
 const currentUser = useCurrentUserV1();
 
-const checkPermission = (permission: ProjectPermission): boolean => {
+const checkPermission = (permission: Permission): boolean => {
   return (
     hasProjectPermissionV2(props.project, currentUser.value, permission) ||
     extractUserEmail(props.cleanBranch.creator) === currentUser.value.email
@@ -236,10 +236,19 @@ const checkPermission = (permission: ProjectPermission): boolean => {
 };
 
 const allowEdit = computed(() => {
-  return checkPermission("bb.branches.update");
+  if (!checkPermission("bb.branches.update")) {
+    return false;
+  }
+  if (props.dirtyBranch.parentBranch === "") {
+    return checkPermission("bb.branches.admin");
+  }
+  return true;
 });
 
 const allowDelete = computed(() => {
+  if (props.dirtyBranch.parentBranch === "") {
+    return checkPermission("bb.branches.admin");
+  }
   return checkPermission("bb.branches.delete");
 });
 
@@ -273,19 +282,20 @@ const showMergeBranchButton = computed(() => {
 const showRebaseBranchButton = computed(() => {
   // For main branches: only project owners are allowed
   if (!parentBranch.value) {
-    return isOwnerOfProjectV1(props.project, currentUser.value);
+    return hasProjectPermissionV2(
+      props.project,
+      useCurrentUserV1().value,
+      "bb.branches.admin"
+    );
   }
 
   // For feature branches: project owners and branch creator
   return allowEdit.value;
 });
 
-// Only show apply to database button when the branch is main branch.
 const showApplyBranchButton = computed(() => {
-  return (
-    !parentBranch.value &&
-    isOwnerOfProjectV1(props.project, currentUser.value)
-  );
+  // only main branches can be applied to databases.
+  return !parentBranch.value;
 });
 
 const rebuildMetadataEdit = () => {

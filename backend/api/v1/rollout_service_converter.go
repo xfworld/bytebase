@@ -275,9 +275,9 @@ func convertDatabaseLabels(labelsMap map[string]string) (string, error) {
 	if len(labelsMap) > api.DatabaseLabelSizeMax {
 		return "", errors.Errorf("database labels are up to a maximum of %d", api.DatabaseLabelSizeMax)
 	}
-	var labels []*api.DatabaseLabel
+	var labels []*storepb.DatabaseLabel
 	for k, v := range labelsMap {
-		labels = append(labels, &api.DatabaseLabel{
+		labels = append(labels, &storepb.DatabaseLabel{
 			Key:   k,
 			Value: v,
 		})
@@ -395,10 +395,12 @@ func convertToPlanCheckRunResult(result *storepb.PlanCheckRunResult_Result) *v1p
 	case *storepb.PlanCheckRunResult_Result_SqlReviewReport_:
 		resultV1.Report = &v1pb.PlanCheckRun_Result_SqlReviewReport_{
 			SqlReviewReport: &v1pb.PlanCheckRun_Result_SqlReviewReport{
-				Line:   report.SqlReviewReport.Line,
-				Column: report.SqlReviewReport.Column,
-				Detail: report.SqlReviewReport.Detail,
-				Code:   report.SqlReviewReport.Code,
+				Line:          report.SqlReviewReport.Line,
+				Column:        report.SqlReviewReport.Column,
+				Detail:        report.SqlReviewReport.Detail,
+				Code:          report.SqlReviewReport.Code,
+				StartPosition: convertToPosition(report.SqlReviewReport.StartPosition),
+				EndPosition:   convertToPosition(report.SqlReviewReport.EndPosition),
 			},
 		}
 	}
@@ -454,6 +456,16 @@ func convertToTaskRun(ctx context.Context, s *store.Store, stateCfg *state.State
 		}
 	}
 
+	if v, ok := stateCfg.TaskRunSchedulerInfo.Load(taskRun.ID); ok {
+		if info, ok := v.(*storepb.SchedulerInfo); ok {
+			si, err := convertToSchedulerInfo(ctx, s, info)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to convert to scheduler info")
+			}
+			t.SchedulerInfo = si
+		}
+	}
+
 	if taskRun.Status == api.TaskRunFailed && taskRun.ResultProto.StartPosition != nil && taskRun.ResultProto.EndPosition != nil {
 		t.ExecutionDetail = &v1pb.TaskRun_ExecutionDetail{
 			CommandStartPosition: &v1pb.TaskRun_ExecutionDetail_Position{
@@ -479,7 +491,67 @@ func convertToTaskRun(ctx context.Context, s *store.Store, stateCfg *state.State
 		}
 	}
 
+	if taskRun.ResultProto.PriorBackupDetail != nil {
+		t.PriorBackupDetail = convertToTaskRunPriorBackupDetail(taskRun.ResultProto.PriorBackupDetail)
+	}
+
 	return t, nil
+}
+
+func convertToSchedulerInfo(ctx context.Context, s *store.Store, si *storepb.SchedulerInfo) (*v1pb.TaskRun_SchedulerInfo, error) {
+	if si == nil {
+		return nil, nil
+	}
+
+	cause, err := convertToSchedulerInfoWaitingCause(ctx, s, si.WaitingCause)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to convert to scheduler info waiting cause")
+	}
+
+	return &v1pb.TaskRun_SchedulerInfo{
+		ReportTime:   si.ReportTime,
+		WaitingCause: cause,
+	}, nil
+}
+
+func convertToSchedulerInfoWaitingCause(ctx context.Context, s *store.Store, c *storepb.SchedulerInfo_WaitingCause) (*v1pb.TaskRun_SchedulerInfo_WaitingCause, error) {
+	if c == nil {
+		return nil, nil
+	}
+	switch cause := c.Cause.(type) {
+	case *storepb.SchedulerInfo_WaitingCause_ConnectionLimit:
+		return &v1pb.TaskRun_SchedulerInfo_WaitingCause{
+			Cause: &v1pb.TaskRun_SchedulerInfo_WaitingCause_ConnectionLimit{
+				ConnectionLimit: cause.ConnectionLimit,
+			},
+		}, nil
+	case *storepb.SchedulerInfo_WaitingCause_TaskUid:
+		taskUID := cause.TaskUid
+		task, err := s.GetTaskV2ByID(ctx, int(taskUID))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get task %v", taskUID)
+		}
+		if task == nil {
+			return nil, errors.Errorf("task %v not found", taskUID)
+		}
+		issue, err := s.GetIssueV2(ctx, &store.FindIssueMessage{PipelineID: &task.PipelineID})
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get issue by pipeline %v", task.PipelineID)
+		}
+		if issue == nil {
+			return nil, errors.Errorf("issue not found by pipeline %v", task.PipelineID)
+		}
+		return &v1pb.TaskRun_SchedulerInfo_WaitingCause{
+			Cause: &v1pb.TaskRun_SchedulerInfo_WaitingCause_Task_{
+				Task: &v1pb.TaskRun_SchedulerInfo_WaitingCause_Task{
+					Task:  common.FormatTask(issue.Project.ResourceID, task.PipelineID, task.StageID, task.ID),
+					Issue: common.FormatIssue(issue.Project.ResourceID, issue.UID),
+				},
+			},
+		}, nil
+	default:
+		return nil, nil
+	}
 }
 
 func convertToTaskRunStatus(status api.TaskRunStatus) v1pb.TaskRun_Status {
@@ -498,6 +570,29 @@ func convertToTaskRunStatus(status api.TaskRunStatus) v1pb.TaskRun_Status {
 		return v1pb.TaskRun_CANCELED
 	default:
 		return v1pb.TaskRun_STATUS_UNSPECIFIED
+	}
+}
+
+func convertToTaskRunPriorBackupDetail(priorBackupDetail *storepb.PriorBackupDetail) *v1pb.TaskRun_PriorBackupDetail {
+	convertTable := func(table *storepb.PriorBackupDetail_Item_Table) *v1pb.TaskRun_PriorBackupDetail_Item_Table {
+		return &v1pb.TaskRun_PriorBackupDetail_Item_Table{
+			Database: table.Database,
+			Schema:   table.Schema,
+			Table:    table.Table,
+		}
+	}
+
+	items := []*v1pb.TaskRun_PriorBackupDetail_Item{}
+	for _, item := range priorBackupDetail.Items {
+		items = append(items, &v1pb.TaskRun_PriorBackupDetail_Item{
+			SourceTable:   convertTable(item.SourceTable),
+			TargetTable:   convertTable(item.TargetTable),
+			StartPosition: convertToPosition(item.StartPosition),
+			EndPosition:   convertToPosition(item.EndPosition),
+		})
+	}
+	return &v1pb.TaskRun_PriorBackupDetail{
+		Items: items,
 	}
 }
 
@@ -583,7 +678,7 @@ func convertToDatabaseLabels(labelsJSON string) (map[string]string, error) {
 	if labelsJSON == "" {
 		return nil, nil
 	}
-	var labels []*api.DatabaseLabel
+	var labels []*storepb.DatabaseLabel
 	if err := json.Unmarshal([]byte(labelsJSON), &labels); err != nil {
 		return nil, err
 	}
@@ -595,8 +690,8 @@ func convertToDatabaseLabels(labelsJSON string) (map[string]string, error) {
 }
 
 func convertToTaskFromDatabaseCreate(ctx context.Context, s *store.Store, project *store.ProjectMessage, task *store.TaskMessage) (*v1pb.Task, error) {
-	payload := &api.TaskDatabaseCreatePayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseCreatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	instance, err := s.GetInstanceV2(ctx, &store.FindInstanceMessage{
@@ -613,7 +708,7 @@ func convertToTaskFromDatabaseCreate(ctx context.Context, s *store.Store, projec
 		Name:           fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:            fmt.Sprintf("%d", task.ID),
 		Title:          task.Name,
-		SpecId:         payload.SpecID,
+		SpecId:         payload.SpecId,
 		Type:           convertToTaskType(task.Type),
 		Status:         convertToTaskStatus(task.LatestTaskRunStatus, payload.Skipped),
 		SkippedReason:  payload.SkippedReason,
@@ -624,10 +719,10 @@ func convertToTaskFromDatabaseCreate(ctx context.Context, s *store.Store, projec
 				Project:      "",
 				Database:     payload.DatabaseName,
 				Table:        payload.TableName,
-				Sheet:        getResourceNameForSheet(project, payload.SheetID),
+				Sheet:        getResourceNameForSheet(project, int(payload.SheetId)),
 				CharacterSet: payload.CharacterSet,
 				Collation:    payload.Collation,
-				Environment:  common.FormatEnvironment(payload.EnvironmentID),
+				Environment:  common.FormatEnvironment(payload.EnvironmentId),
 				Labels:       labels,
 			},
 		},
@@ -640,8 +735,8 @@ func convertToTaskFromSchemaBaseline(ctx context.Context, s *store.Store, projec
 	if task.DatabaseID == nil {
 		return nil, errors.Errorf("database id is nil")
 	}
-	payload := &api.TaskDatabaseSchemaBaselinePayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID, ShowDeleted: true})
@@ -655,7 +750,7 @@ func convertToTaskFromSchemaBaseline(ctx context.Context, s *store.Store, projec
 		Name:           fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:            fmt.Sprintf("%d", task.ID),
 		Title:          task.Name,
-		SpecId:         payload.SpecID,
+		SpecId:         payload.SpecId,
 		Type:           convertToTaskType(task.Type),
 		Status:         convertToTaskStatus(task.LatestTaskRunStatus, payload.Skipped),
 		SkippedReason:  payload.SkippedReason,
@@ -674,8 +769,8 @@ func convertToTaskFromSchemaUpdate(ctx context.Context, s *store.Store, project 
 	if task.DatabaseID == nil {
 		return nil, errors.Errorf("database id is nil")
 	}
-	payload := &api.TaskDatabaseSchemaUpdatePayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID, ShowDeleted: true})
@@ -690,7 +785,7 @@ func convertToTaskFromSchemaUpdate(ctx context.Context, s *store.Store, project 
 		Name:           fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:            fmt.Sprintf("%d", task.ID),
 		Title:          task.Name,
-		SpecId:         payload.SpecID,
+		SpecId:         payload.SpecId,
 		Type:           convertToTaskType(task.Type),
 		Status:         convertToTaskStatus(task.LatestTaskRunStatus, payload.Skipped),
 		SkippedReason:  payload.SkippedReason,
@@ -698,7 +793,7 @@ func convertToTaskFromSchemaUpdate(ctx context.Context, s *store.Store, project 
 		Target:         fmt.Sprintf("%s%s/%s%s", common.InstanceNamePrefix, database.InstanceID, common.DatabaseIDPrefix, database.DatabaseName),
 		Payload: &v1pb.Task_DatabaseSchemaUpdate_{
 			DatabaseSchemaUpdate: &v1pb.Task_DatabaseSchemaUpdate{
-				Sheet:         getResourceNameForSheet(project, payload.SheetID),
+				Sheet:         getResourceNameForSheet(project, int(payload.SheetId)),
 				SchemaVersion: payload.SchemaVersion,
 			},
 		},
@@ -710,8 +805,8 @@ func convertToTaskFromSchemaUpdateGhostCutover(ctx context.Context, s *store.Sto
 	if task.DatabaseID == nil {
 		return nil, errors.Errorf("database id is nil")
 	}
-	payload := &api.TaskDatabaseSchemaUpdateGhostCutoverPayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID, ShowDeleted: true})
@@ -725,7 +820,7 @@ func convertToTaskFromSchemaUpdateGhostCutover(ctx context.Context, s *store.Sto
 		Name:           fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:            fmt.Sprintf("%d", task.ID),
 		Title:          task.Name,
-		SpecId:         payload.SpecID,
+		SpecId:         payload.SpecId,
 		Status:         convertToTaskStatus(task.LatestTaskRunStatus, payload.Skipped),
 		SkippedReason:  payload.SkippedReason,
 		Type:           convertToTaskType(task.Type),
@@ -740,8 +835,8 @@ func convertToTaskFromDataUpdate(ctx context.Context, s *store.Store, project *s
 	if task.DatabaseID == nil {
 		return nil, errors.Errorf("database id is nil")
 	}
-	payload := &api.TaskDatabaseDataUpdatePayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID, ShowDeleted: true})
@@ -756,7 +851,7 @@ func convertToTaskFromDataUpdate(ctx context.Context, s *store.Store, project *s
 		Name:           fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:            fmt.Sprintf("%d", task.ID),
 		Title:          task.Name,
-		SpecId:         payload.SpecID,
+		SpecId:         payload.SpecId,
 		Type:           convertToTaskType(task.Type),
 		Status:         convertToTaskStatus(task.LatestTaskRunStatus, payload.Skipped),
 		SkippedReason:  payload.SkippedReason,
@@ -766,7 +861,7 @@ func convertToTaskFromDataUpdate(ctx context.Context, s *store.Store, project *s
 	}
 	v1pbTaskPayload := &v1pb.Task_DatabaseDataUpdate_{
 		DatabaseDataUpdate: &v1pb.Task_DatabaseDataUpdate{
-			Sheet:         getResourceNameForSheet(project, payload.SheetID),
+			Sheet:         getResourceNameForSheet(project, int(payload.SheetId)),
 			SchemaVersion: payload.SchemaVersion,
 		},
 	}
@@ -779,8 +874,8 @@ func convertToTaskFromDatabaseDataExport(ctx context.Context, s *store.Store, pr
 	if task.DatabaseID == nil {
 		return nil, errors.Errorf("database id is nil")
 	}
-	payload := &api.TaskDatabaseDataExportPayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseDataExportPayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal task payload")
 	}
 	database, err := s.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID, ShowDeleted: true})
@@ -791,7 +886,7 @@ func convertToTaskFromDatabaseDataExport(ctx context.Context, s *store.Store, pr
 		return nil, errors.Errorf("database not found")
 	}
 	targetDatabaseName := fmt.Sprintf("%s%s/%s%s", common.InstanceNamePrefix, database.InstanceID, common.DatabaseIDPrefix, database.DatabaseName)
-	sheet := getResourceNameForSheet(project, payload.SheetID)
+	sheet := getResourceNameForSheet(project, int(payload.SheetId))
 	v1pbTaskPayload := v1pb.Task_DatabaseDataExport_{
 		DatabaseDataExport: &v1pb.Task_DatabaseDataExport{
 			Target:   targetDatabaseName,
@@ -804,7 +899,7 @@ func convertToTaskFromDatabaseDataExport(ctx context.Context, s *store.Store, pr
 		Name:    fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", common.ProjectNamePrefix, project.ResourceID, common.RolloutPrefix, task.PipelineID, common.StagePrefix, task.StageID, common.TaskPrefix, task.ID),
 		Uid:     fmt.Sprintf("%d", task.ID),
 		Title:   task.Name,
-		SpecId:  payload.SpecID,
+		SpecId:  payload.SpecId,
 		Type:    convertToTaskType(task.Type),
 		Status:  convertToTaskStatus(task.LatestTaskRunStatus, false),
 		Target:  targetDatabaseName,
@@ -873,8 +968,9 @@ func convertToTaskRunLogEntries(logs []*store.TaskRunLog) []*v1pb.TaskRunLogEntr
 		switch l.Payload.Type {
 		case storepb.TaskRunLog_SCHEMA_DUMP_START:
 			e := &v1pb.TaskRunLogEntry{
-				Type:    v1pb.TaskRunLogEntry_SCHEMA_DUMP,
-				LogTime: timestamppb.New(l.T),
+				Type:     v1pb.TaskRunLogEntry_SCHEMA_DUMP,
+				LogTime:  timestamppb.New(l.T),
+				DeployId: l.Payload.DeployId,
 				SchemaDump: &v1pb.TaskRunLogEntry_SchemaDump{
 					StartTime: timestamppb.New(l.T),
 				},
@@ -894,8 +990,9 @@ func convertToTaskRunLogEntries(logs []*store.TaskRunLog) []*v1pb.TaskRunLogEntr
 
 		case storepb.TaskRunLog_COMMAND_EXECUTE:
 			e := &v1pb.TaskRunLogEntry{
-				Type:    v1pb.TaskRunLogEntry_COMMAND_EXECUTE,
-				LogTime: timestamppb.New(l.T),
+				Type:     v1pb.TaskRunLogEntry_COMMAND_EXECUTE,
+				LogTime:  timestamppb.New(l.T),
+				DeployId: l.Payload.DeployId,
 				CommandExecute: &v1pb.TaskRunLogEntry_CommandExecute{
 					LogTime:        timestamppb.New(l.T),
 					CommandIndexes: l.Payload.CommandExecute.CommandIndexes,
@@ -923,8 +1020,9 @@ func convertToTaskRunLogEntries(logs []*store.TaskRunLog) []*v1pb.TaskRunLogEntr
 
 		case storepb.TaskRunLog_DATABASE_SYNC_START:
 			e := &v1pb.TaskRunLogEntry{
-				Type:    v1pb.TaskRunLogEntry_DATABASE_SYNC,
-				LogTime: timestamppb.New(l.T),
+				Type:     v1pb.TaskRunLogEntry_DATABASE_SYNC,
+				LogTime:  timestamppb.New(l.T),
+				DeployId: l.Payload.DeployId,
 				DatabaseSync: &v1pb.TaskRunLogEntry_DatabaseSync{
 					StartTime: timestamppb.New(l.T),
 				},
@@ -944,8 +1042,9 @@ func convertToTaskRunLogEntries(logs []*store.TaskRunLog) []*v1pb.TaskRunLogEntr
 
 		case storepb.TaskRunLog_TASK_RUN_STATUS_UPDATE:
 			e := &v1pb.TaskRunLogEntry{
-				Type:    v1pb.TaskRunLogEntry_TASK_RUN_STATUS_UPDATE,
-				LogTime: timestamppb.New(l.T),
+				Type:     v1pb.TaskRunLogEntry_TASK_RUN_STATUS_UPDATE,
+				LogTime:  timestamppb.New(l.T),
+				DeployId: l.Payload.DeployId,
 				TaskRunStatusUpdate: &v1pb.TaskRunLogEntry_TaskRunStatusUpdate{
 					Status: convertTaskRunLogTaskRunStatus(l.Payload.TaskRunStatusUpdate.Status),
 				},
@@ -954,8 +1053,9 @@ func convertToTaskRunLogEntries(logs []*store.TaskRunLog) []*v1pb.TaskRunLogEntr
 
 		case storepb.TaskRunLog_TRANSACTION_CONTROL:
 			e := &v1pb.TaskRunLogEntry{
-				Type:    v1pb.TaskRunLogEntry_TRANSACTION_CONTROL,
-				LogTime: timestamppb.New(l.T),
+				Type:     v1pb.TaskRunLogEntry_TRANSACTION_CONTROL,
+				LogTime:  timestamppb.New(l.T),
+				DeployId: l.Payload.DeployId,
 				TransactionControl: &v1pb.TaskRunLogEntry_TransactionControl{
 					Type:  convertTaskRunLogTransactionControlType(l.Payload.TransactionControl.Type),
 					Error: l.Payload.TransactionControl.Error,

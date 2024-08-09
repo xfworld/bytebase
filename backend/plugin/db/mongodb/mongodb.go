@@ -58,6 +58,8 @@ func (driver *Driver) Open(ctx context.Context, _ storepb.Engine, connCfg db.Con
 		return nil, errors.Wrap(err, "failed to get SSL config")
 	}
 	if tlsConfig != nil {
+		// TODO(zp): User uses ssh tunnel?
+		tlsConfig.InsecureSkipVerify = true
 		opts.SetTLSConfig(tlsConfig)
 	}
 	client, err := mongo.Connect(ctx, opts)
@@ -87,11 +89,6 @@ func (driver *Driver) Ping(ctx context.Context) error {
 	return nil
 }
 
-// GetType returns the database type.
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_MONGODB
-}
-
 // GetDB gets the database.
 func (*Driver) GetDB() *sql.DB {
 	return nil
@@ -115,19 +112,48 @@ func (driver *Driver) Execute(ctx context.Context, statement string, _ db.Execut
 		"--quiet",
 	}
 
-	if driver.connCfg.TLSConfig.SslCA != "" {
+	if driver.connCfg.TLSConfig.UseSSL {
 		mongoshArgs = append(mongoshArgs, "--tls")
-		// Write the tlsCAFile to a temporary file, and use the temporary file as the value of --tlsCAFile.
-		// The reason is that the --tlsCAFile option of mongosh does not support the value of the certificate directly.
-		caFileName := fmt.Sprintf("mongodb-tls-ca-%s-%s", driver.connCfg.ConnectionDatabase, uuid.New().String())
-		defer func() {
-			// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
-			_ = os.Remove(caFileName)
-		}()
-		if err := os.WriteFile(caFileName, []byte(driver.connCfg.TLSConfig.SslCA), 0400); err != nil {
-			return 0, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+		mongoshArgs = append(mongoshArgs, "--tlsAllowInvalidHostnames")
+
+		uuid := uuid.New().String()
+		if driver.connCfg.TLSConfig.SslCA == "" {
+			mongoshArgs = append(mongoshArgs, "--tlsUseSystemCA")
+		} else {
+			// Write the tlsCAFile to a temporary file, and use the temporary file as the value of --tlsCAFile.
+			// The reason is that the --tlsCAFile option of mongosh does not support the value of the certificate directly.
+			caFileName := fmt.Sprintf("mongodb-tls-ca-%s-%s", driver.connCfg.ConnectionDatabase, uuid)
+			defer func() {
+				// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
+				_ = os.Remove(caFileName)
+			}()
+			if err := os.WriteFile(caFileName, []byte(driver.connCfg.TLSConfig.SslCA), 0400); err != nil {
+				return 0, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+			}
+			mongoshArgs = append(mongoshArgs, "--tlsCAFile", caFileName)
 		}
-		mongoshArgs = append(mongoshArgs, "--tlsCAFile", caFileName)
+
+		if driver.connCfg.TLSConfig.SslKey != "" && driver.connCfg.TLSConfig.SslCert != "" {
+			clientCertName := fmt.Sprintf("mongodb-tls-client-cert-%s-%s", driver.connCfg.ConnectionDatabase, uuid)
+			defer func() {
+				// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
+				_ = os.Remove(clientCertName)
+			}()
+			var sb strings.Builder
+			if _, err := sb.WriteString(driver.connCfg.TLSConfig.SslKey); err != nil {
+				return 0, errors.Wrapf(err, "failed to write ssl key into string builder")
+			}
+			if _, err := sb.WriteString("\n"); err != nil {
+				return 0, errors.Wrapf(err, "failed to write new line into string builder")
+			}
+			if _, err := sb.WriteString(driver.connCfg.TLSConfig.SslCert); err != nil {
+				return 0, errors.Wrapf(err, "failed to write ssl cert into string builder")
+			}
+			if err := os.WriteFile(clientCertName, []byte(sb.String()), 0400); err != nil {
+				return 0, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+			}
+			mongoshArgs = append(mongoshArgs, "--tlsCertificateKeyFile", clientCertName)
+		}
 	}
 
 	// First, we create a temporary file to store the statement.
@@ -159,7 +185,8 @@ func (*Driver) Dump(_ context.Context, _ io.Writer) (string, error) {
 	return "", nil
 }
 
-// getBasicMongoDBConnectionURI returns the MongoDB connection URI.
+// getBasicMongoDBConnectionURI returns the basic MongoDB connection URI, the following fields are excluded:
+// - TLS related
 // https://www.mongodb.com/docs/manual/reference/connection-string/
 func getBasicMongoDBConnectionURI(connConfig db.ConnectionConfig) string {
 	u := &url.URL{
@@ -199,15 +226,6 @@ func getBasicMongoDBConnectionURI(connConfig db.ConnectionConfig) string {
 		values.Add("replicaSet", connConfig.ReplicaSet)
 	}
 	values.Add("appName", "bytebase")
-	// Add SSL options if provided
-	if connConfig.TLSConfig.SslCA != "" {
-		values.Add("tlsCAFile", connConfig.TLSConfig.SslCA)
-		if connConfig.TLSConfig.SslCert != "" && connConfig.TLSConfig.SslKey != "" {
-			values.Add("tlsCertificateKeyFile", connConfig.TLSConfig.SslCert)
-			values.Add("tlsCertificateKeyFilePassword", connConfig.TLSConfig.SslKey)
-		}
-		values.Add("tlsAllowInvalidHostnames", "true")
-	}
 	if connConfig.DirectConnection {
 		values.Add("directConnection", "true")
 	}
@@ -254,19 +272,48 @@ func (driver *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement stri
 		"false",
 	}
 
-	if driver.connCfg.TLSConfig.SslCA != "" {
+	if driver.connCfg.TLSConfig.UseSSL {
 		mongoshArgs = append(mongoshArgs, "--tls")
-		// Write the tlsCAFile to a temporary file, and use the temporary file as the value of --tlsCAFile.
-		// The reason is that the --tlsCAFile option of mongosh does not support the value of the certificate directly.
-		caFileName := fmt.Sprintf("mongodb-tls-ca-%s-%s", driver.connCfg.ConnectionDatabase, uuid.New().String())
-		defer func() {
-			// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
-			_ = os.Remove(caFileName)
-		}()
-		if err := os.WriteFile(caFileName, []byte(driver.connCfg.TLSConfig.SslCA), 0400); err != nil {
-			return nil, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+		mongoshArgs = append(mongoshArgs, "--tlsAllowInvalidHostnames")
+
+		uuid := uuid.New().String()
+		if driver.connCfg.TLSConfig.SslCA == "" {
+			mongoshArgs = append(mongoshArgs, "--tlsUseSystemCA")
+		} else {
+			// Write the tlsCAFile to a temporary file, and use the temporary file as the value of --tlsCAFile.
+			// The reason is that the --tlsCAFile option of mongosh does not support the value of the certificate directly.
+			caFileName := fmt.Sprintf("mongodb-tls-ca-%s-%s", driver.connCfg.ConnectionDatabase, uuid)
+			defer func() {
+				// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
+				_ = os.Remove(caFileName)
+			}()
+			if err := os.WriteFile(caFileName, []byte(driver.connCfg.TLSConfig.SslCA), 0400); err != nil {
+				return nil, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+			}
+			mongoshArgs = append(mongoshArgs, "--tlsCAFile", caFileName)
 		}
-		mongoshArgs = append(mongoshArgs, "--tlsCAFile", caFileName)
+
+		if driver.connCfg.TLSConfig.SslKey != "" && driver.connCfg.TLSConfig.SslCert != "" {
+			clientCertName := fmt.Sprintf("mongodb-tls-client-cert-%s-%s", driver.connCfg.ConnectionDatabase, uuid)
+			defer func() {
+				// While error occurred in mongosh, the temporary file may not created, so we ignore the error here.
+				_ = os.Remove(clientCertName)
+			}()
+			var sb strings.Builder
+			if _, err := sb.WriteString(driver.connCfg.TLSConfig.SslKey); err != nil {
+				return nil, errors.Wrapf(err, "failed to write ssl key into string builder")
+			}
+			if _, err := sb.WriteString("\n"); err != nil {
+				return nil, errors.Wrapf(err, "failed to write new line into string builder")
+			}
+			if _, err := sb.WriteString(driver.connCfg.TLSConfig.SslCert); err != nil {
+				return nil, errors.Wrapf(err, "failed to write ssl cert into string builder")
+			}
+			if err := os.WriteFile(clientCertName, []byte(sb.String()), 0400); err != nil {
+				return nil, errors.Wrap(err, "failed to write tlsCAFile to temporary file")
+			}
+			mongoshArgs = append(mongoshArgs, "--tlsCertificateKeyFile", clientCertName)
+		}
 	}
 
 	queryResultFileName := fmt.Sprintf("mongodb-query-%s-%s", driver.connCfg.ConnectionDatabase, uuid.New().String())
@@ -299,11 +346,11 @@ func (driver *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement stri
 	if err != nil {
 		return nil, err
 	}
-	if fileInfo.Size() > common.MaximumSQLResultSize {
+	if int64(fileInfo.Size()) > driver.connCfg.MaximumSQLResultSize {
 		return []*v1pb.QueryResult{{
 			Latency:   durationpb.New(time.Since(startTime)),
 			Statement: statement,
-			Error:     common.MaximumSQLResultSizeExceeded,
+			Error:     common.FormatMaximumSQLResultSizeMessage(driver.connCfg.MaximumSQLResultSize),
 		}}, nil
 	}
 
@@ -467,11 +514,6 @@ func convertRows(data []byte) ([]any, error) {
 		rows = []any{a}
 	}
 	return rows, nil
-}
-
-// RunStatement runs a SQL statement in a given connection.
-func (driver *Driver) RunStatement(ctx context.Context, _ *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	return driver.QueryConn(ctx, nil, statement, nil)
 }
 
 func isMongoStatement(statement string) bool {

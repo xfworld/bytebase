@@ -60,12 +60,19 @@ type PullRequestFile struct {
 	Path         string
 	LastCommitID string
 	IsDeleted    bool
+	// WebURL is the changed file web url in the pull request.
+	WebURL string
 }
 
 // BranchInfo is the API message for repository branch.
 type BranchInfo struct {
 	Name         string
 	LastCommitID string
+}
+
+type PullRequestComment struct {
+	ID      string
+	Content string
 }
 
 // Provider is the interface for VCS provider.
@@ -82,11 +89,17 @@ type Provider interface {
 	// GetBranch gets the given branch in the repository.
 	GetBranch(ctx context.Context, repositoryID, branchName string) (*BranchInfo, error)
 
-	// CreatePullRequest creates the pull request in the repository.
+	// ListPullRequestFile lists changed files in a pull request.
 	ListPullRequestFile(ctx context.Context, repositoryID, pullRequestID string) ([]*PullRequestFile, error)
 
 	// CreatePullRequestComment creates a pull request comment.
 	CreatePullRequestComment(ctx context.Context, repositoryID, pullRequestID, comment string) error
+
+	// UpdatePullRequestComment updates a pull request comment.
+	UpdatePullRequestComment(ctx context.Context, repositoryID, pullRequestID string, comment *PullRequestComment) error
+
+	// ListPullRequestComments lists comments in a pull request.
+	ListPullRequestComments(ctx context.Context, repositoryID, pullRequestID string) ([]*PullRequestComment, error)
 
 	// Creates a webhook. Returns the created webhook ID on success.
 	CreateWebhook(ctx context.Context, repositoryID string, payload []byte) (string, error)

@@ -21,7 +21,7 @@
     <div class="textinfolabel">
       {{ $t("project.members.description") }}
       <a
-        href="https://www.bytebase.com/docs/concepts/roles-and-permissions/#project-roles?source=console"
+        href="https://www.bytebase.com/docs/concepts/roles-and-permissions/?source=console#project-roles"
         target="_blank"
         class="normal-link inline-flex flex-row items-center"
       >
@@ -83,9 +83,9 @@ import {
   useProjectIamPolicy,
   useProjectIamPolicyStore,
   useUserStore,
-  useUserGroupStore,
+  useGroupStore,
 } from "@/store";
-import type { ComposedProject } from "@/types";
+import type { ComposedProject, ComposedUser } from "@/types";
 import {
   getUserEmailInBinding,
   getGroupEmailInBinding,
@@ -93,9 +93,10 @@ import {
   PRESET_WORKSPACE_ROLES,
   groupBindingPrefix,
 } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
 import { State } from "@/types/proto/v1/common";
-import type { UserGroup } from "@/types/proto/v1/user_group";
+import type { Group } from "@/types/proto/v1/group";
+import { FeatureAttention } from "../FeatureGuard";
+import { SearchBox } from "../v2";
 import AddProjectMembersPanel from "./AddProjectMember/AddProjectMembersPanel.vue";
 import ProjectMemberDataTable from "./ProjectMemberDataTable/index.vue";
 import ProjectMemberDataTableByRole from "./ProjectMemberDataTableByRole/index.vue";
@@ -120,7 +121,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const dialog = useDialog();
 const currentUserV1 = useCurrentUserV1();
-const groupStore = useUserGroupStore();
+const groupStore = useGroupStore();
 const projectResourceName = computed(() => props.project.name);
 const { policy: iamPolicy } = useProjectIamPolicy(projectResourceName);
 
@@ -150,7 +151,7 @@ const activeUserList = computed(() => {
         ({
           ...unknownUser(),
           email,
-        } as User)
+        } as ComposedUser)
       );
     });
 
@@ -170,7 +171,7 @@ const activeGroupList = computed(() => {
     .map((member) => {
       return groupStore.getGroupByIdentifier(member);
     })
-    .filter((group) => !!group) as UserGroup[];
+    .filter((group) => !!group) as Group[];
 });
 
 const groupRoleMap = computed(() => {

@@ -47,13 +47,12 @@ const (
 	ChangelistsPrefix          = "changelists/"
 	VCSConnectorPrefix         = "vcsConnectors/"
 	AuditLogPrefix             = "auditLogs/"
-	UserGroupPrefix            = "groups/"
+	GroupPrefix                = "groups/"
 	ReviewConfigPrefix         = "reviewConfigs/"
 
-	SchemaSuffix          = "/schema"
-	MetadataSuffix        = "/metadata"
-	GitOpsInfoSuffix      = "/gitOpsInfo"
-	ProtectionRulesSuffix = "/protectionRules"
+	SchemaSuffix     = "/schema"
+	MetadataSuffix   = "/metadata"
+	GitOpsInfoSuffix = "/gitOpsInfo"
 )
 
 // GetProjectID returns the project ID from a resource name.
@@ -294,19 +293,6 @@ func GetTaskID(name string) (int, error) {
 	return taskID, nil
 }
 
-// GetPlanID returns the plan ID from a resource name.
-func GetPlanID(name string) (int64, error) {
-	tokens, err := GetNameParentTokens(name, ProjectNamePrefix, PlanPrefix)
-	if err != nil {
-		return 0, err
-	}
-	planID, err := strconv.ParseInt(tokens[1], 10, 64)
-	if err != nil {
-		return 0, errors.Errorf("invalid plan ID %q", tokens[1])
-	}
-	return planID, nil
-}
-
 // GetProjectIDPlanID returns the project ID and plan ID from a resource name.
 func GetProjectIDPlanID(name string) (string, int64, error) {
 	tokens, err := GetNameParentTokens(name, ProjectNamePrefix, PlanPrefix)
@@ -318,6 +304,23 @@ func GetProjectIDPlanID(name string) (string, int64, error) {
 		return "", 0, errors.Errorf("invalid plan ID %q", tokens[1])
 	}
 	return tokens[0], planID, nil
+}
+
+// GetProjectIDPlanIDPlanCheckRunID returns the project ID, plan ID and plan check run ID from a resource name.
+func GetProjectIDPlanIDPlanCheckRunID(name string) (string, int, int, error) {
+	tokens, err := GetNameParentTokens(name, ProjectNamePrefix, PlanPrefix, PlanCheckRunPrefix)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	planID, err := strconv.Atoi(tokens[1])
+	if err != nil {
+		return "", 0, 0, errors.Errorf("invalid plan ID %q", tokens[1])
+	}
+	planCheckRunID, err := strconv.Atoi(tokens[2])
+	if err != nil {
+		return "", 0, 0, errors.Errorf("invalid plan check run ID %q", tokens[2])
+	}
+	return tokens[0], planID, planCheckRunID, nil
 }
 
 // GetProjectIDRolloutID returns the project ID and rollout ID from a resource name.
@@ -528,9 +531,9 @@ func GetWorkspaceProjectVCSConnectorID(name string) (string, string, string, err
 	return tokens[0], tokens[1], tokens[2], nil
 }
 
-// GetUserGroupEmail returns the group email.
-func GetUserGroupEmail(name string) (string, error) {
-	tokens, err := GetNameParentTokens(name, UserGroupPrefix)
+// GetGroupEmail returns the group email.
+func GetGroupEmail(name string) (string, error) {
+	tokens, err := GetNameParentTokens(name, GroupPrefix)
 	if err != nil {
 		return "", err
 	}
@@ -583,7 +586,7 @@ func FormatUserUID(uid int) string {
 }
 
 func FormatGroupEmail(email string) string {
-	return fmt.Sprintf("%s%s", UserGroupPrefix, email)
+	return fmt.Sprintf("%s%s", GroupPrefix, email)
 }
 
 func FormatReviewConfig(id string) string {
@@ -616,4 +619,8 @@ func FormatIssue(projectID string, issueUID int) string {
 
 func FormatTask(projectID string, pipelineUID, stageUID, taskUID int) string {
 	return fmt.Sprintf("%s%s/%s%d/%s%d/%s%d", ProjectNamePrefix, projectID, RolloutPrefix, pipelineUID, StagePrefix, stageUID, TaskPrefix, taskUID)
+}
+
+func FormatBranchResourceID(projectID string, branchID string) string {
+	return fmt.Sprintf("%s%s/%s%s", ProjectNamePrefix, projectID, BranchPrefix, branchID)
 }

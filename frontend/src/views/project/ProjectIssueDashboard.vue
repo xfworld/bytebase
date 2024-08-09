@@ -4,18 +4,15 @@
 
 <script lang="ts" setup>
 import { computed } from "vue";
-import { useProjectV1Store } from "@/store";
+import ProjectIssuesPanel from "@/components/Project/ProjectIssuesPanel.vue";
+import { useProjectByName } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 
 const props = defineProps<{
   projectId: string;
 }>();
 
-const projectV1Store = useProjectV1Store();
-
-const project = computed(() => {
-  return projectV1Store.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 </script>

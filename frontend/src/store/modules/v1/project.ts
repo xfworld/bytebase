@@ -1,3 +1,4 @@
+import { orderBy } from "lodash-es";
 import { defineStore } from "pinia";
 import { computed, reactive, ref, unref, watchEffect } from "vue";
 import { projectServiceClient } from "@/grpcweb";
@@ -8,19 +9,18 @@ import {
   EMPTY_PROJECT_NAME,
   unknownProject,
   defaultProject,
-  UNKNOWN_ID,
   UNKNOWN_PROJECT_NAME,
-  DEFAULT_PROJECT_V1_NAME,
+  DEFAULT_PROJECT_NAME,
+  UNKNOWN_ID,
 } from "@/types";
 import { State } from "@/types/proto/v1/common";
 import type { Project } from "@/types/proto/v1/project_service";
 import { hasWorkspacePermissionV2 } from "@/utils";
 import { useCurrentUserV1 } from "../auth";
-import { projectNamePrefix } from "./common";
+import { useListCache } from "./cache";
 import { useProjectIamPolicyStore } from "./projectIamPolicy";
 
 export const useProjectV1Store = defineStore("project_v1", () => {
-  const currentUser = useCurrentUserV1();
   const projectMapByName = reactive(new Map<ResourceId, ComposedProject>());
 
   const reset = () => {
@@ -29,33 +29,26 @@ export const useProjectV1Store = defineStore("project_v1", () => {
 
   // Getters
   const projectList = computed(() => {
-    return Array.from(projectMapByName.values());
+    return orderBy(
+      Array.from(projectMapByName.values()),
+      (project) => project.name,
+      "asc"
+    );
   });
 
   // Actions
   const updateProjectCache = (project: ComposedProject) => {
     projectMapByName.set(project.name, project);
   };
-
   const upsertProjectMap = async (projectList: Project[]) => {
     const composedProjectList = await batchComposeProjectIamPolicy(projectList);
     composedProjectList.forEach((project) => {
       updateProjectCache(project);
     });
-  };
-  const fetchProjectList = async (showDeleted = false) => {
-    const request = hasWorkspacePermissionV2(
-      currentUser.value,
-      "bb.projects.list"
-    )
-      ? projectServiceClient.listProjects
-      : projectServiceClient.searchProjects;
-    const { projects } = await request({ showDeleted });
-    await upsertProjectMap(projects);
-    return projects;
+    return composedProjectList;
   };
   const getProjectList = (showDeleted = false) => {
-    if (unref(showDeleted)) {
+    if (showDeleted) {
       return projectList.value;
     }
     return projectList.value.filter(
@@ -65,12 +58,15 @@ export const useProjectV1Store = defineStore("project_v1", () => {
   const getProjectByName = (name: string) => {
     if (name === EMPTY_PROJECT_NAME) return emptyProject();
     if (name === UNKNOWN_PROJECT_NAME) return unknownProject();
-    if (name === DEFAULT_PROJECT_V1_NAME) return defaultProject();
+    if (name === DEFAULT_PROJECT_NAME) return defaultProject();
     return projectMapByName.get(name) ?? unknownProject();
   };
-  const getProjectByUID = (uid: string) => {
+  const findProjectByUID = (uid: string) => {
     if (uid === String(EMPTY_ID)) {
       return emptyProject();
+    }
+    if (uid === String(UNKNOWN_ID)) {
+      return unknownProject();
     }
     return (
       projectList.value.find((project) => project.uid === uid) ??
@@ -82,26 +78,12 @@ export const useProjectV1Store = defineStore("project_v1", () => {
     await upsertProjectMap([project]);
     return project as ComposedProject;
   };
-  const fetchProjectByUID = async (uid: string, silent = false) => {
-    return fetchProjectByName(`${projectNamePrefix}${uid}`, silent);
-  };
   const getOrFetchProjectByName = async (name: string, silent = false) => {
     const cachedData = projectMapByName.get(name);
     if (cachedData) {
       return cachedData;
     }
     return fetchProjectByName(name, silent);
-  };
-  const getOrFetchProjectByUID = async (uid: string, silent = false) => {
-    if (uid === String(EMPTY_ID)) return emptyProject();
-    if (uid === String(UNKNOWN_ID)) return unknownProject();
-
-    const cachedData = projectList.value.find((project) => project.uid === uid);
-    if (cachedData) {
-      return cachedData;
-    }
-    await fetchProjectByUID(uid, silent);
-    return getProjectByUID(uid);
   };
   const createProject = async (project: Project, resourceId: string) => {
     const created = await projectServiceClient.createProject({
@@ -137,17 +119,12 @@ export const useProjectV1Store = defineStore("project_v1", () => {
 
   return {
     reset,
-    projectMapByName,
     projectList,
-    getProjectList,
     upsertProjectMap,
-    getProjectByUID,
+    getProjectList,
+    findProjectByUID,
     getProjectByName,
-    fetchProjectList,
-    fetchProjectByName,
-    fetchProjectByUID,
     getOrFetchProjectByName,
-    getOrFetchProjectByUID,
     createProject,
     updateProject,
     archiveProject,
@@ -156,39 +133,59 @@ export const useProjectV1Store = defineStore("project_v1", () => {
   };
 });
 
-export const useProjectV1List = (
-  showDeleted: MaybeRef<boolean> = false,
-  forceUpdate = false
-) => {
+export const useProjectV1List = (showDeleted: boolean = false) => {
+  const currentUser = useCurrentUserV1();
+  const listCache = useListCache("project");
   const store = useProjectV1Store();
-  const ready = ref(false);
-  watchEffect(() => {
-    if (!unref(forceUpdate)) {
-      ready.value = true;
+  const cacheKey = listCache.getCacheKey(showDeleted ? "" : "active");
+
+  const cache = computed(() => listCache.getCache(cacheKey));
+
+  watchEffect(async () => {
+    // Skip if request is already in progress or cache is available.
+    if (cache.value?.isFetching || cache.value) {
       return;
     }
-    ready.value = false;
-    store.fetchProjectList(unref(showDeleted)).then(() => {
-      ready.value = true;
+
+    listCache.cacheMap.set(cacheKey, {
+      timestamp: Date.now(),
+      isFetching: true,
+    });
+    const request = hasWorkspacePermissionV2(
+      currentUser.value,
+      "bb.projects.list"
+    )
+      ? projectServiceClient.listProjects
+      : projectServiceClient.searchProjects;
+    const { projects } = await request({ showDeleted });
+    await store.upsertProjectMap(projects);
+    listCache.cacheMap.set(cacheKey, {
+      timestamp: Date.now(),
+      isFetching: false,
     });
   });
+
   const projectList = computed(() => {
-    return store.getProjectList(unref(showDeleted));
+    return store.getProjectList(showDeleted);
   });
-  return { projectList, ready };
+
+  return {
+    projectList,
+    ready: computed(() => cache.value && !cache.value.isFetching),
+  };
 };
 
-export const useProjectV1ByUID = (uid: MaybeRef<string>) => {
+export const useProjectByName = (name: MaybeRef<string>) => {
   const store = useProjectV1Store();
   const ready = ref(false);
   watchEffect(() => {
     ready.value = false;
-    store.getOrFetchProjectByUID(unref(uid)).then(() => {
+    store.getOrFetchProjectByName(unref(name)).then(() => {
       ready.value = true;
     });
   });
   const project = computed(() => {
-    return store.getProjectByUID(unref(uid));
+    return store.getProjectByName(unref(name));
   });
   return { project, ready };
 };

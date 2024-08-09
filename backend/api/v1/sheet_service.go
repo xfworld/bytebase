@@ -13,9 +13,7 @@ import (
 	"github.com/bytebase/bytebase/backend/component/iam"
 	"github.com/bytebase/bytebase/backend/component/sheet"
 	enterprise "github.com/bytebase/bytebase/backend/enterprise/api"
-	api "github.com/bytebase/bytebase/backend/legacyapi"
 	"github.com/bytebase/bytebase/backend/store"
-	"github.com/bytebase/bytebase/backend/utils"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
@@ -85,21 +83,11 @@ func (s *SheetService) CreateSheet(ctx context.Context, request *v1pb.CreateShee
 		}
 
 		find := &store.FindDatabaseMessage{
-			ProjectID:  &projectResourceID,
-			InstanceID: &instanceResourceID,
+			ProjectID:           &projectResourceID,
+			InstanceID:          &instanceResourceID,
+			DatabaseName:        &databaseName,
+			IgnoreCaseSensitive: store.IgnoreDatabaseAndTableCaseSensitive(instance),
 		}
-		// It's chaos. We return /instance/{resource id}/databases/{uid} database in find sheet request,
-		// but the frontend use both /instance/{resource id}/databases/{uid} and /instance/{resource id}/databases/{name}, sometimes the name will convert to int id incorrectly.
-		// For database v1 api, we should only use the /instance/{resource id}/databases/{name}
-		// We need to remove legacy code after the migration.
-		dbUID, isNumber := isNumber(databaseName)
-		if instanceResourceID == "-" && isNumber {
-			find.UID = &dbUID
-		} else {
-			find.DatabaseName = &databaseName
-			find.IgnoreCaseSensitive = store.IgnoreDatabaseAndTableCaseSensitive(instance)
-		}
-
 		database, err := s.store.GetDatabaseV2(ctx, find)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get database with name %q, err: %s", databaseName, err.Error()))
@@ -134,56 +122,29 @@ func (s *SheetService) GetSheet(ctx context.Context, request *v1pb.GetSheetReque
 		return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("invalid sheet id %d, must be positive integer", sheetUID))
 	}
 
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &projectResourceID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %s not found", projectResourceID))
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %s not found", projectResourceID))
+	}
+	if project.Deleted {
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q had deleted", projectResourceID))
+	}
+
 	find := &store.FindSheetMessage{
-		UID:      &sheetUID,
-		LoadFull: request.Raw,
+		ProjectUID: &project.UID,
+		UID:        &sheetUID,
+		LoadFull:   request.Raw,
 	}
-
-	// this allows get the sheet only by the id: /projects/-/sheets/{sheet uid}.
-	// so that we can easily get the sheet from the issue.
-	// we can remove this after migrate the issue to v1 API.
-	if projectResourceID != "-" {
-		project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			ResourceID: &projectResourceID,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %s not found", projectResourceID))
-		}
-		if project == nil {
-			return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %s not found", projectResourceID))
-		}
-		if project.Deleted {
-			return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q had deleted", projectResourceID))
-		}
-		find.ProjectUID = &project.UID
-	}
-
 	sheet, err := s.findSheet(ctx, find)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check the bb.issues.get permission.
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-		UID: &sheet.ProjectUID,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get project %q", sheet.ProjectUID)
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", sheet.ProjectUID)
-	}
-	ok, err = s.iamManager.CheckPermission(ctx, iam.PermissionIssuesGet, user, project.ResourceID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check permission: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied to get sheet")
-	}
 	v1pbSheet, err := s.convertToAPISheetMessage(ctx, sheet)
 	if err != nil {
 		return nil, err
@@ -238,13 +199,6 @@ func (s *SheetService) UpdateSheet(ctx context.Context, request *v1pb.UpdateShee
 	if sheet == nil {
 		return nil, status.Errorf(codes.NotFound, "sheet %q not found", request.Sheet.Name)
 	}
-	canAccess, err := s.canWriteSheet(ctx, sheet)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to check access with error: %v", err))
-	}
-	if !canAccess {
-		return nil, status.Errorf(codes.PermissionDenied, "cannot write sheet %s", sheet.Title)
-	}
 
 	sheetPatch := &store.PatchSheetMessage{
 		UID:       sheet.UID,
@@ -281,39 +235,6 @@ func (s *SheetService) findSheet(ctx context.Context, find *store.FindSheetMessa
 		return nil, status.Errorf(codes.NotFound, "cannot find the sheet")
 	}
 	return sheet, nil
-}
-
-// canWriteSheet check if the principal can write the sheet.
-// sheet if writable when:
-// PRIVATE: the creator only.
-// PROJECT: the creator or project role can manage sheet, workspace Owner and DBA.
-// PUBLIC: the creator only.
-func (s *SheetService) canWriteSheet(ctx context.Context, sheet *store.SheetMessage) (bool, error) {
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return false, status.Errorf(codes.Internal, "user not found")
-	}
-
-	if sheet.CreatorID == user.ID {
-		return true, nil
-	}
-
-	projectRoles, err := findProjectRoles(ctx, s.store, sheet.ProjectUID, user)
-	if err != nil {
-		return false, err
-	}
-	if len(projectRoles) == 0 {
-		return false, nil
-	}
-	return projectRoles[api.ProjectOwner], nil
-}
-
-func findProjectRoles(ctx context.Context, stores *store.Store, projectUID int, user *store.UserMessage) (map[api.Role]bool, error) {
-	policy, err := stores.GetProjectIamPolicy(ctx, projectUID)
-	if err != nil {
-		return nil, err
-	}
-	return utils.GetUserRolesMap(ctx, stores, user, policy)
 }
 
 func (s *SheetService) convertToAPISheetMessage(ctx context.Context, sheet *store.SheetMessage) (*v1pb.Sheet, error) {

@@ -7,11 +7,11 @@ import {
   useActuatorV1Store,
   useRouterStore,
   useCurrentUserV1,
-  usePageMode,
   useProjectV1Store,
   useDatabaseV1Store,
   useInstanceV1Store,
   useSQLEditorTabStore,
+  useAppFeature,
 } from "@/store";
 import authRoutes, {
   AUTH_2FA_SETUP_MODULE,
@@ -29,7 +29,7 @@ import {
   ENVIRONMENT_V1_ROUTE_DASHBOARD,
   INSTANCE_ROUTE_DASHBOARD,
   PROJECT_V1_ROUTE_DASHBOARD,
-  WORKSPACE_HOME_MODULE,
+  WORKSPACE_ROOT_MODULE,
 } from "./dashboard/workspaceRoutes";
 import { SETTING_ROUTE } from "./dashboard/workspaceSetting";
 import sqlEditorRoutes from "./sqlEditor";
@@ -58,10 +58,12 @@ export const router = createRouter({
 router.beforeEach((to, from, next) => {
   console.debug("Router %s -> %s", from.name, to.name);
 
-  const pageMode = usePageMode();
+  const disallowNavigateAwaySQLEditor = useAppFeature(
+    "bb.feature.disallow-navigate-to-console"
+  );
 
   // In standalone mode, we don't want to user get out of some standalone pages.
-  if (pageMode.value === "STANDALONE") {
+  if (disallowNavigateAwaySQLEditor.value) {
     // If user is trying to navigate away from SQL Editor, we'll explicitly return false to cancel the navigation.
     if (
       from.name?.toString().startsWith("sql-editor") &&
@@ -77,10 +79,10 @@ router.beforeEach((to, from, next) => {
 
   const fromModule = from.name
     ? from.name.toString().split(".")[0]
-    : WORKSPACE_HOME_MODULE;
+    : WORKSPACE_ROOT_MODULE;
   const toModule = to.name
     ? to.name.toString().split(".")[0]
-    : WORKSPACE_HOME_MODULE;
+    : WORKSPACE_ROOT_MODULE;
 
   if (toModule != fromModule) {
     routerStore.setBackPath(from.fullPath);
@@ -117,7 +119,7 @@ router.beforeEach((to, from, next) => {
         location.replace(to.query.redirect);
         return;
       }
-      next({ name: WORKSPACE_HOME_MODULE, replace: true });
+      next({ name: WORKSPACE_ROOT_MODULE, replace: true });
     } else {
       next();
     }

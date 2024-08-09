@@ -5,8 +5,8 @@ import {
   databaseNamePrefix,
   instanceNamePrefix,
 } from "@/store/modules/v1/common";
-import type { ComposedDatabase, ProjectPermission } from "@/types";
-import { DEFAULT_PROJECT_V1_NAME } from "@/types";
+import type { ComposedDatabase, Permission } from "@/types";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import {
   hasProjectPermissionV2,
   instanceV1HasAlterSchema,
@@ -52,7 +52,7 @@ export const provideDatabaseDetailContext = (
     );
   });
 
-  const checkPermission = (permission: ProjectPermission): boolean => {
+  const checkPermission = (permission: Permission): boolean => {
     return hasProjectPermissionV2(
       database.value.projectEntity,
       me.value,
@@ -70,7 +70,7 @@ export const provideDatabaseDetailContext = (
     checkPermission("bb.databases.sync")
   );
   const allowTransferDatabase = computed(() => {
-    if (database.value.project === DEFAULT_PROJECT_V1_NAME) {
+    if (database.value.project === DEFAULT_PROJECT_NAME) {
       return true;
     }
     return allowUpdateDatabase.value;
@@ -82,13 +82,13 @@ export const provideDatabaseDetailContext = (
 
   const allowChangeData = computed(() => {
     return (
-      database.value.project !== DEFAULT_PROJECT_V1_NAME &&
+      database.value.project !== DEFAULT_PROJECT_NAME &&
       hasPermissionToCreateChangeDatabaseIssue(database.value, me.value)
     );
   });
   const allowAlterSchema = computed(() => {
     return (
-      database.value.project !== DEFAULT_PROJECT_V1_NAME &&
+      database.value.project !== DEFAULT_PROJECT_NAME &&
       hasPermissionToCreateChangeDatabaseIssue(database.value, me.value) &&
       instanceV1HasAlterSchema(database.value.instanceResource)
     );

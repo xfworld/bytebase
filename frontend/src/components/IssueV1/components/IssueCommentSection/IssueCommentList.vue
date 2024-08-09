@@ -5,9 +5,9 @@
       <IssueCommentView
         v-for="(item, index) in issueComments"
         :key="item.comment.name"
-        :issue-comments="issueComments"
         :issue="issue"
         :index="index"
+        :is-last="index === issueComments.length - 1"
         :issue-comment="item.comment"
         :similar="item.similar"
       >
@@ -108,9 +108,11 @@
 </template>
 
 <script setup lang="ts">
+import { NButton } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch, watchEffect } from "vue";
 import { useRoute } from "vue-router";
 import MarkdownEditor from "@/components/MarkdownEditor";
+import UserAvatar from "@/components/User/UserAvatar.vue";
 import {
   useCurrentUserV1,
   useIssueCommentStore,
@@ -118,11 +120,11 @@ import {
   type ComposedIssueComment,
 } from "@/store";
 import { getIssueCommentId } from "@/store/modules/v1/common";
-import { UNKNOWN_PROJECT_NAME } from "@/types";
+import { isValidProjectName } from "@/types";
 import type { ComposedIssue } from "@/types";
 import { ListIssueCommentsRequest } from "@/types/proto/v1/issue_service";
 import { extractUserResourceName, hasProjectPermissionV2 } from "@/utils";
-import { doSubscribeIssue, useIssueContext } from "../../logic";
+import { useIssueContext } from "../../logic";
 import {
   IssueCommentView,
   isSimilarIssueComment,
@@ -156,7 +158,7 @@ const issueCommentStore = useIssueCommentStore();
 const prepareIssueListForMarkdownEditor = async () => {
   const project = issue.value.project;
   issueList.value = [];
-  if (project === UNKNOWN_PROJECT_NAME) return;
+  if (!isValidProjectName(project)) return;
 
   const list = await issueV1Store.listIssues({
     find: {
@@ -220,13 +222,6 @@ const doCreateComment = async (comment: string) => {
   });
   state.newComment = "";
   await prepareIssueComments();
-  // Because the user just added a comment and we assume she is interested in this
-  // issue, and we add her to the subscriber list if she is not there
-  try {
-    await doSubscribeIssue(issue.value, currentUser.value);
-  } catch {
-    // Nothing
-  }
 };
 
 const allowEditIssueComment = (comment: ComposedIssueComment) => {

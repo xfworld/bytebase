@@ -5,9 +5,10 @@ package bytebase.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
-import "google/type/expr.proto";
+import "v1/annotation.proto";
 import "v1/common.proto";
 import "v1/iam_policy.proto";
 
@@ -17,16 +18,22 @@ service ProjectService {
   rpc GetProject(GetProjectRequest) returns (Project) {
     option (google.api.http) = {get: "/v1/{name=projects/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.projects.get";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
     option (google.api.http) = {get: "/v1/projects"};
     option (google.api.method_signature) = "";
+    option (bytebase.v1.permission) = "bb.projects.list";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc SearchProjects(SearchProjectsRequest) returns (SearchProjectsResponse) {
     option (google.api.http) = {get: "/v1/projects:search"};
     option (google.api.method_signature) = "";
+    option (bytebase.v1.auth_method) = CUSTOM;
+    // TODO(d): secure it.
   }
 
   rpc CreateProject(CreateProjectRequest) returns (Project) {
@@ -35,6 +42,8 @@ service ProjectService {
       body: "project"
     };
     option (google.api.method_signature) = "";
+    option (bytebase.v1.permission) = "bb.projects.create";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc UpdateProject(UpdateProjectRequest) returns (Project) {
@@ -43,11 +52,15 @@ service ProjectService {
       body: "project"
     };
     option (google.api.method_signature) = "project,update_mask";
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc DeleteProject(DeleteProjectRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=projects/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.projects.delete";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc UndeleteProject(UndeleteProjectRequest) returns (Project) {
@@ -55,32 +68,46 @@ service ProjectService {
       post: "/v1/{name=projects/*}:undelete"
       body: "*"
     };
+    option (bytebase.v1.permission) = "bb.projects.undelete";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc GetIamPolicy(GetIamPolicyRequest) returns (IamPolicy) {
-    option (google.api.http) = {get: "/v1/{project=projects/*}:getIamPolicy"};
+    option (google.api.http) = {get: "/v1/{resource=projects/*}:getIamPolicy"};
+    option (bytebase.v1.permission) = "bb.projects.getIamPolicy";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
+  // Deprecated.
   rpc BatchGetIamPolicy(BatchGetIamPolicyRequest) returns (BatchGetIamPolicyResponse) {
     option (google.api.http) = {get: "/v1/{scope=*/*}/iamPolicies:batchGet"};
+    option (bytebase.v1.permission) = "bb.projects.getIamPolicy";
+    option (bytebase.v1.auth_method) = CUSTOM;
   }
 
   rpc SetIamPolicy(SetIamPolicyRequest) returns (IamPolicy) {
     option (google.api.http) = {
-      post: "/v1/{project=projects/*}:setIamPolicy"
+      post: "/v1/{resource=projects/*}:setIamPolicy"
       body: "*"
     };
+    option (bytebase.v1.permission) = "bb.projects.setIamPolicy";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 
   rpc GetDeploymentConfig(GetDeploymentConfigRequest) returns (DeploymentConfig) {
     option (google.api.http) = {get: "/v1/{name=projects/*/deploymentConfigs/*}"};
+    option (bytebase.v1.permission) = "bb.projects.get";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc UpdateDeploymentConfig(UpdateDeploymentConfigRequest) returns (DeploymentConfig) {
     option (google.api.http) = {
-      patch: "/v1/{config.name=projects/*/deploymentConfigs/*}"
-      body: "config"
+      patch: "/v1/{deployment_config.name=projects/*/deploymentConfigs/*}"
+      body: "deployment_config"
     };
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc AddWebhook(AddWebhookRequest) returns (Project) {
@@ -88,6 +115,8 @@ service ProjectService {
       post: "/v1/{project=projects/*}:addWebhook"
       body: "*"
     };
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc UpdateWebhook(UpdateWebhookRequest) returns (Project) {
@@ -96,6 +125,8 @@ service ProjectService {
       body: "*"
     };
     option (google.api.method_signature) = "webhook,update_mask";
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc RemoveWebhook(RemoveWebhookRequest) returns (Project) {
@@ -103,6 +134,8 @@ service ProjectService {
       post: "/v1/{webhook.name=projects/*/webhooks/*}:removeWebhook"
       body: "*"
     };
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 
   rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse) {
@@ -110,55 +143,18 @@ service ProjectService {
       post: "/v1/{project=projects/*}:testWebhook"
       body: "*"
     };
-  }
-
-  rpc ListDatabaseGroups(ListDatabaseGroupsRequest) returns (ListDatabaseGroupsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=projects/*}/databaseGroups"};
-    option (google.api.method_signature) = "parent";
-  }
-
-  rpc GetDatabaseGroup(GetDatabaseGroupRequest) returns (DatabaseGroup) {
-    option (google.api.http) = {get: "/v1/{name=projects/*/databaseGroups/*}"};
-    option (google.api.method_signature) = "name";
-  }
-
-  rpc CreateDatabaseGroup(CreateDatabaseGroupRequest) returns (DatabaseGroup) {
-    option (google.api.http) = {
-      post: "/v1/{parent=projects/*}/databaseGroups"
-      body: "database_group"
-    };
-    option (google.api.method_signature) = "parent,databaseGroup";
-  }
-
-  rpc UpdateDatabaseGroup(UpdateDatabaseGroupRequest) returns (DatabaseGroup) {
-    option (google.api.http) = {
-      patch: "/v1/{database_group.name=projects/*/databaseGroups/*}"
-      body: "database_group"
-    };
-    option (google.api.method_signature) = "database_group,update_mask";
-  }
-
-  rpc DeleteDatabaseGroup(DeleteDatabaseGroupRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/{name=projects/*/databaseGroups/*}"};
-    option (google.api.method_signature) = "name";
-  }
-
-  rpc GetProjectProtectionRules(GetProjectProtectionRulesRequest) returns (ProtectionRules) {
-    option (google.api.http) = {get: "/v1/{name=projects/*/protectionRules}"};
-  }
-
-  rpc UpdateProjectProtectionRules(UpdateProjectProtectionRulesRequest) returns (ProtectionRules) {
-    option (google.api.http) = {
-      patch: "/v1/{protection_rules.name=projects/*/protectionRules}"
-      body: "*"
-    };
+    option (bytebase.v1.permission) = "bb.projects.update";
+    option (bytebase.v1.auth_method) = IAM;
   }
 }
 
 message GetProjectRequest {
   // The name of the project to retrieve.
   // Format: projects/{project}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 }
 
 message ListProjectsRequest {
@@ -224,7 +220,10 @@ message UpdateProjectRequest {
 message DeleteProjectRequest {
   // The name of the project to delete.
   // Format: projects/{project}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 
   // If set to true, any databases and sheets from this project will also be moved to default project, and all open issues will be closed.
   bool force = 2;
@@ -233,13 +232,10 @@ message DeleteProjectRequest {
 message UndeleteProjectRequest {
   // The name of the deleted project.
   // Format: projects/{project}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message GetIamPolicyRequest {
-  // The name of the project to get the IAM policy.
-  // Format: projects/{project}
-  string project = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 }
 
 message BatchGetIamPolicyRequest {
@@ -258,22 +254,17 @@ message BatchGetIamPolicyResponse {
   repeated PolicyResult policy_results = 1;
 }
 
-message SetIamPolicyRequest {
-  // The name of the project to set the IAM policy.
-  // Format: projects/{project}
-  string project = 1 [(google.api.field_behavior) = REQUIRED];
-
-  IamPolicy policy = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
 message GetDeploymentConfigRequest {
   // The name of the resource.
   // Format: projects/{project}/deploymentConfigs/default.
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/DeploymentConfig"}
+  ];
 }
 
 message UpdateDeploymentConfigRequest {
-  DeploymentConfig config = 1 [(google.api.field_behavior) = REQUIRED];
+  DeploymentConfig deployment_config = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message Label {
@@ -283,7 +274,10 @@ message Label {
 }
 
 message Project {
-  reserved 8;
+  option (google.api.resource) = {
+    type: "bytebase.com/Project"
+    pattern: "projects/{project}"
+  };
 
   // The name of the project.
   // Format: projects/{project}
@@ -325,7 +319,10 @@ enum Workflow {
 message AddWebhookRequest {
   // The name of the project to add the webhook to.
   // Format: projects/{project}
-  string project = 1 [(google.api.field_behavior) = REQUIRED];
+  string project = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 
   // The webhook to add.
   Webhook webhook = 2 [(google.api.field_behavior) = REQUIRED];
@@ -347,7 +344,10 @@ message RemoveWebhookRequest {
 message TestWebhookRequest {
   // The name of the project which owns the webhook to test.
   // Format: projects/{project}
-  string project = 1 [(google.api.field_behavior) = REQUIRED];
+  string project = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Project"}
+  ];
 
   // The webhook to test. Identified by its url.
   Webhook webhook = 2 [(google.api.field_behavior) = REQUIRED];
@@ -359,6 +359,11 @@ message TestWebhookResponse {
 }
 
 message Webhook {
+  option (google.api.resource) = {
+    type: "bytebase.com/Webhook"
+    pattern: "projects/{project}/webhooks/{webhook}"
+  };
+
   // name is the name of the webhook, generated by the server.
   // format: projects/{project}/webhooks/{webhook}
   string name = 1;
@@ -400,6 +405,11 @@ message Webhook {
 }
 
 message DeploymentConfig {
+  option (google.api.resource) = {
+    type: "bytebase.com/DeploymentConfig"
+    pattern: "projects/{project}/deploymentConfigs/default"
+  };
+
   // The name of the resource.
   // Format: projects/{project}/deploymentConfigs/default.
   string name = 1;
@@ -461,7 +471,7 @@ message Activity {
     TYPE_ISSUE_CREATE = 1;
     // TYPE_ISSUE_COMMENT_CREATE represents commenting on an issue.
     TYPE_ISSUE_COMMENT_CREATE = 2;
-    // TYPE_ISSUE_FIELD_UPDATE represents updating the issue field, likes title, description, assignee, etc.
+    // TYPE_ISSUE_FIELD_UPDATE represents updating the issue field, likes title, description, etc.
     TYPE_ISSUE_FIELD_UPDATE = 3;
     // TYPE_ISSUE_STATUS_UPDATE represents the issue status change, including OPEN, CLOSE, CANCEL fow now.
     TYPE_ISSUE_STATUS_UPDATE = 4;
@@ -504,161 +514,4 @@ message Activity {
     // TYPE_SQL_EDITOR_QUERY represents executing query in SQL Editor.
     TYPE_SQL_EDITOR_QUERY = 19;
   }
-}
-
-message ListDatabaseGroupsRequest {
-  // The parent resource whose database groups are to be listed.
-  // Format: projects/{project}
-  // Using "projects/-" will list database groups across all projects.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // Not used. The maximum number of anomalies to return. The service may return fewer than
-  // this value.
-  // If unspecified, at most 50 anomalies will be returned.
-  // The maximum value is 1000; values above 1000 will be coerced to 1000.
-  int32 page_size = 2;
-
-  // Not used. A page token, received from a previous `ListDatabaseGroups` call.
-  // Provide this to retrieve the subsequent page.
-  //
-  // When paginating, all other parameters provided to `ListDatabaseGroups` must match
-  // the call that provided the page token.
-  string page_token = 3;
-}
-
-message ListDatabaseGroupsResponse {
-  // database_groups is the list of database groups.
-  repeated DatabaseGroup database_groups = 1;
-
-  // Not used. A token, which can be sent as `page_token` to retrieve the next page.
-  // If this field is omitted, there are no subsequent pages.
-  string next_page_token = 2;
-}
-
-message GetDatabaseGroupRequest {
-  // The name of the database group to retrieve.
-  // Format: projects/{project}/databaseGroups/{databaseGroup}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The view to return. Defaults to DATABASE_GROUP_VIEW_BASIC.
-  DatabaseGroupView view = 2;
-}
-
-message CreateDatabaseGroupRequest {
-  // The parent resource where this database group will be created.
-  // Format: projects/{project}
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The database group to create.
-  DatabaseGroup database_group = 2 [(google.api.field_behavior) = REQUIRED];
-
-  // The ID to use for the database group, which will become the final component of
-  // the database group's resource name.
-  //
-  // This value should be 4-63 characters, and valid characters
-  // are /[a-z][0-9]-/.
-  string database_group_id = 3;
-
-  // If set, validate the create request and preview the full database group response, but do not actually create it.
-  bool validate_only = 4;
-}
-
-message UpdateDatabaseGroupRequest {
-  // The database group to update.
-  //
-  // The database group's `name` field is used to identify the database group to update.
-  // Format: projects/{project}/databaseGroups/{databaseGroup}
-  DatabaseGroup database_group = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The list of fields to update.
-  google.protobuf.FieldMask update_mask = 2;
-}
-
-message DeleteDatabaseGroupRequest {
-  // The name of the database group to delete.
-  // Format: projects/{project}/databaseGroups/{databaseGroup}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-enum DatabaseGroupView {
-  // The default / unset value.
-  // The API will default to the BASIC view.
-  DATABASE_GROUP_VIEW_UNSPECIFIED = 0;
-
-  // Include basic information about the database group, but exclude the list of matched databases and unmatched databases.
-  DATABASE_GROUP_VIEW_BASIC = 1;
-
-  // Include everything.
-  DATABASE_GROUP_VIEW_FULL = 2;
-}
-
-message DatabaseGroup {
-  // The name of the database group.
-  // Format: projects/{project}/databaseGroups/{databaseGroup}
-  string name = 1;
-
-  // The short name used in actual databases specified by users.
-  // For example, the placeholder for db1_2010, db1_2021, db1_2023 will be "db1".
-  string database_placeholder = 2;
-
-  // The condition that is associated with this database group.
-  google.type.Expr database_expr = 3;
-
-  message Database {
-    // The resource name of the database.
-    // Format: instances/{instance}/databases/{database}
-    string name = 1;
-  }
-  // The list of databases that match the database group condition.
-  repeated Database matched_databases = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // The list of databases that match the database group condition.
-  repeated Database unmatched_databases = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  bool multitenancy = 6;
-}
-
-message GetProjectProtectionRulesRequest {
-  // The name of the protection rules.
-  // Format: projects/{project}/protectionRules
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message UpdateProjectProtectionRulesRequest {
-  ProtectionRules protection_rules = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ProtectionRules {
-  // The name of the protection rules.
-  // Format: projects/{project}/protectionRules
-  string name = 1;
-
-  repeated ProtectionRule rules = 2;
-}
-
-message ProtectionRule {
-  // A unique identifier for a node in UUID format.
-  string id = 1;
-
-  // The type of target.
-  enum Target {
-    PROTECTION_TARGET_UNSPECIFIED = 0;
-    BRANCH = 1;
-    CHANGELIST = 2;
-  }
-
-  Target target = 2;
-
-  // The name of the branch/changelist or wildcard.
-  string name_filter = 3;
-
-  // The roles allowed to create branches or changelists, rebase branches, delete branches.
-  // Format: roles/projectOwner.
-  repeated string allowed_roles = 4;
-
-  enum BranchSource {
-    BRANCH_SOURCE_UNSPECIFIED = 0;
-    DATABASE = 1;
-  }
-  BranchSource branch_source = 5;
 }

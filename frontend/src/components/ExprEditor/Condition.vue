@@ -1,9 +1,7 @@
 <!-- eslint-disable vue/no-mutating-props -->
 
 <template>
-  <NInputGroup
-    class="bb-risk-expr-editor-condition w-full flex items-center overflow-x-hidden"
-  >
+  <NInputGroup class="w-full flex items-center overflow-x-hidden">
     <FactorSelect :expr="expr" />
 
     <OperatorSelect :expr="expr" />

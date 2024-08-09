@@ -92,7 +92,6 @@ export interface ListIssuesRequest {
   /**
    * The parent, which owns this collection of issues.
    * Format: projects/{project}
-   * Use "projects/-" to list all issues from all projects.
    */
   parent: string;
   /**
@@ -238,9 +237,6 @@ export interface Issue {
   description: string;
   type: Issue_Type;
   status: IssueStatus;
-  /** Format: users/hello@world.com */
-  assignee: string;
-  assigneeAttention: boolean;
   approvers: Issue_Approver[];
   approvalTemplates: ApprovalTemplate[];
   /**
@@ -871,18 +867,9 @@ export interface IssueComment_IssueUpdate {
   fromDescription?: string | undefined;
   toDescription?: string | undefined;
   fromStatus?: IssueStatus | undefined;
-  toStatus?:
-    | IssueStatus
-    | undefined;
-  /**
-   * TODO(d): deprecate from_assignee and to_assignee.
-   * Format: users/{email}
-   */
-  fromAssignee?:
-    | string
-    | undefined;
-  /** Format: users/{email} */
-  toAssignee?: string | undefined;
+  toStatus?: IssueStatus | undefined;
+  fromLabels: string[];
+  toLabels: string[];
 }
 
 export interface IssueComment_StageEnd {
@@ -1984,8 +1971,6 @@ function createBaseIssue(): Issue {
     description: "",
     type: Issue_Type.TYPE_UNSPECIFIED,
     status: IssueStatus.ISSUE_STATUS_UNSPECIFIED,
-    assignee: "",
-    assigneeAttention: false,
     approvers: [],
     approvalTemplates: [],
     approvalFindingDone: false,
@@ -2023,12 +2008,6 @@ export const Issue = {
     }
     if (message.status !== IssueStatus.ISSUE_STATUS_UNSPECIFIED) {
       writer.uint32(48).int32(issueStatusToNumber(message.status));
-    }
-    if (message.assignee !== "") {
-      writer.uint32(58).string(message.assignee);
-    }
-    if (message.assigneeAttention === true) {
-      writer.uint32(64).bool(message.assigneeAttention);
     }
     for (const v of message.approvers) {
       Issue_Approver.encode(v!, writer.uint32(74).fork()).ldelim();
@@ -2126,20 +2105,6 @@ export const Issue = {
           }
 
           message.status = issueStatusFromJSON(reader.int32());
-          continue;
-        case 7:
-          if (tag !== 58) {
-            break;
-          }
-
-          message.assignee = reader.string();
-          continue;
-        case 8:
-          if (tag !== 64) {
-            break;
-          }
-
-          message.assigneeAttention = reader.bool();
           continue;
         case 9:
           if (tag !== 74) {
@@ -2266,8 +2231,6 @@ export const Issue = {
       description: isSet(object.description) ? globalThis.String(object.description) : "",
       type: isSet(object.type) ? issue_TypeFromJSON(object.type) : Issue_Type.TYPE_UNSPECIFIED,
       status: isSet(object.status) ? issueStatusFromJSON(object.status) : IssueStatus.ISSUE_STATUS_UNSPECIFIED,
-      assignee: isSet(object.assignee) ? globalThis.String(object.assignee) : "",
-      assigneeAttention: isSet(object.assigneeAttention) ? globalThis.Boolean(object.assigneeAttention) : false,
       approvers: globalThis.Array.isArray(object?.approvers)
         ? object.approvers.map((e: any) => Issue_Approver.fromJSON(e))
         : [],
@@ -2322,12 +2285,6 @@ export const Issue = {
     }
     if (message.status !== IssueStatus.ISSUE_STATUS_UNSPECIFIED) {
       obj.status = issueStatusToJSON(message.status);
-    }
-    if (message.assignee !== "") {
-      obj.assignee = message.assignee;
-    }
-    if (message.assigneeAttention === true) {
-      obj.assigneeAttention = message.assigneeAttention;
     }
     if (message.approvers?.length) {
       obj.approvers = message.approvers.map((e) => Issue_Approver.toJSON(e));
@@ -2394,8 +2351,6 @@ export const Issue = {
     message.description = object.description ?? "";
     message.type = object.type ?? Issue_Type.TYPE_UNSPECIFIED;
     message.status = object.status ?? IssueStatus.ISSUE_STATUS_UNSPECIFIED;
-    message.assignee = object.assignee ?? "";
-    message.assigneeAttention = object.assigneeAttention ?? false;
     message.approvers = object.approvers?.map((e) => Issue_Approver.fromPartial(e)) || [];
     message.approvalTemplates = object.approvalTemplates?.map((e) => ApprovalTemplate.fromPartial(e)) || [];
     message.approvalFindingDone = object.approvalFindingDone ?? false;
@@ -3681,8 +3636,8 @@ function createBaseIssueComment_IssueUpdate(): IssueComment_IssueUpdate {
     toDescription: undefined,
     fromStatus: undefined,
     toStatus: undefined,
-    fromAssignee: undefined,
-    toAssignee: undefined,
+    fromLabels: [],
+    toLabels: [],
   };
 }
 
@@ -3706,11 +3661,11 @@ export const IssueComment_IssueUpdate = {
     if (message.toStatus !== undefined) {
       writer.uint32(48).int32(issueStatusToNumber(message.toStatus));
     }
-    if (message.fromAssignee !== undefined) {
-      writer.uint32(58).string(message.fromAssignee);
+    for (const v of message.fromLabels) {
+      writer.uint32(74).string(v!);
     }
-    if (message.toAssignee !== undefined) {
-      writer.uint32(66).string(message.toAssignee);
+    for (const v of message.toLabels) {
+      writer.uint32(82).string(v!);
     }
     return writer;
   },
@@ -3764,19 +3719,19 @@ export const IssueComment_IssueUpdate = {
 
           message.toStatus = issueStatusFromJSON(reader.int32());
           continue;
-        case 7:
-          if (tag !== 58) {
+        case 9:
+          if (tag !== 74) {
             break;
           }
 
-          message.fromAssignee = reader.string();
+          message.fromLabels.push(reader.string());
           continue;
-        case 8:
-          if (tag !== 66) {
+        case 10:
+          if (tag !== 82) {
             break;
           }
 
-          message.toAssignee = reader.string();
+          message.toLabels.push(reader.string());
           continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
@@ -3795,8 +3750,10 @@ export const IssueComment_IssueUpdate = {
       toDescription: isSet(object.toDescription) ? globalThis.String(object.toDescription) : undefined,
       fromStatus: isSet(object.fromStatus) ? issueStatusFromJSON(object.fromStatus) : undefined,
       toStatus: isSet(object.toStatus) ? issueStatusFromJSON(object.toStatus) : undefined,
-      fromAssignee: isSet(object.fromAssignee) ? globalThis.String(object.fromAssignee) : undefined,
-      toAssignee: isSet(object.toAssignee) ? globalThis.String(object.toAssignee) : undefined,
+      fromLabels: globalThis.Array.isArray(object?.fromLabels)
+        ? object.fromLabels.map((e: any) => globalThis.String(e))
+        : [],
+      toLabels: globalThis.Array.isArray(object?.toLabels) ? object.toLabels.map((e: any) => globalThis.String(e)) : [],
     };
   },
 
@@ -3820,11 +3777,11 @@ export const IssueComment_IssueUpdate = {
     if (message.toStatus !== undefined) {
       obj.toStatus = issueStatusToJSON(message.toStatus);
     }
-    if (message.fromAssignee !== undefined) {
-      obj.fromAssignee = message.fromAssignee;
+    if (message.fromLabels?.length) {
+      obj.fromLabels = message.fromLabels;
     }
-    if (message.toAssignee !== undefined) {
-      obj.toAssignee = message.toAssignee;
+    if (message.toLabels?.length) {
+      obj.toLabels = message.toLabels;
     }
     return obj;
   },
@@ -3840,8 +3797,8 @@ export const IssueComment_IssueUpdate = {
     message.toDescription = object.toDescription ?? undefined;
     message.fromStatus = object.fromStatus ?? undefined;
     message.toStatus = object.toStatus ?? undefined;
-    message.fromAssignee = object.fromAssignee ?? undefined;
-    message.toAssignee = object.toAssignee ?? undefined;
+    message.fromLabels = object.fromLabels?.map((e) => e) || [];
+    message.toLabels = object.toLabels?.map((e) => e) || [];
     return message;
   },
 };
@@ -4242,6 +4199,8 @@ export const IssueServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800010: [new Uint8Array([13, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               32,
@@ -4291,6 +4250,8 @@ export const IssueServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([12, 112, 97, 114, 101, 110, 116, 44, 105, 115, 115, 117, 101])],
+          800010: [new Uint8Array([16, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 99, 114, 101, 97, 116, 101])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               39,
@@ -4347,6 +4308,8 @@ export const IssueServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [new Uint8Array([14, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 108, 105, 115, 116])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               32,
@@ -4396,6 +4359,8 @@ export const IssueServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([13, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 103, 101, 116])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               39,
@@ -4452,6 +4417,8 @@ export const IssueServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([17, 105, 115, 115, 117, 101, 44, 117, 112, 100, 97, 116, 101, 95, 109, 97, 115, 107])],
+          800010: [new Uint8Array([16, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 117, 112, 100, 97, 116, 101])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               45,
@@ -4514,6 +4481,33 @@ export const IssueServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([6, 112, 97, 114, 101, 110, 116])],
+          800010: [
+            new Uint8Array([
+              21,
+              98,
+              98,
+              46,
+              105,
+              115,
+              115,
+              117,
+              101,
+              67,
+              111,
+              109,
+              109,
+              101,
+              110,
+              116,
+              115,
+              46,
+              108,
+              105,
+              115,
+              116,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               48,
@@ -4603,6 +4597,35 @@ export const IssueServiceDefinition = {
               116,
             ]),
           ],
+          800010: [
+            new Uint8Array([
+              23,
+              98,
+              98,
+              46,
+              105,
+              115,
+              115,
+              117,
+              101,
+              67,
+              111,
+              109,
+              109,
+              101,
+              110,
+              116,
+              115,
+              46,
+              99,
+              114,
+              101,
+              97,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               57,
@@ -4713,6 +4736,35 @@ export const IssueServiceDefinition = {
               107,
             ]),
           ],
+          800010: [
+            new Uint8Array([
+              23,
+              98,
+              98,
+              46,
+              105,
+              115,
+              115,
+              117,
+              101,
+              67,
+              111,
+              109,
+              109,
+              101,
+              110,
+              116,
+              115,
+              46,
+              117,
+              112,
+              100,
+              97,
+              116,
+              101,
+            ]),
+          ],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               57,
@@ -4786,6 +4838,8 @@ export const IssueServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800010: [new Uint8Array([16, 98, 98, 46, 105, 115, 115, 117, 101, 115, 46, 117, 112, 100, 97, 116, 101])],
+          800016: [new Uint8Array([1])],
           578365826: [
             new Uint8Array([
               53,
@@ -4847,6 +4901,10 @@ export const IssueServiceDefinition = {
         },
       },
     },
+    /**
+     * ApproveIssue approves the issue.
+     * The access is based on approval flow.
+     */
     approveIssue: {
       name: "ApproveIssue",
       requestType: ApproveIssueRequest,
@@ -4855,6 +4913,7 @@ export const IssueServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               43,
@@ -4906,6 +4965,10 @@ export const IssueServiceDefinition = {
         },
       },
     },
+    /**
+     * RejectIssue rejects the issue.
+     * The access is based on approval flow.
+     */
     rejectIssue: {
       name: "RejectIssue",
       requestType: RejectIssueRequest,
@@ -4914,6 +4977,7 @@ export const IssueServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               42,
@@ -4964,6 +5028,10 @@ export const IssueServiceDefinition = {
         },
       },
     },
+    /**
+     * RequestIssue requests the issue.
+     * The access is based on approval flow.
+     */
     requestIssue: {
       name: "RequestIssue",
       requestType: RequestIssueRequest,
@@ -4972,6 +5040,7 @@ export const IssueServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               43,

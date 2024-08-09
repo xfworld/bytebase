@@ -1,11 +1,10 @@
 import { useLocalStorage } from "@vueuse/core";
-import { cloneDeep, orderBy, uniq } from "lodash-es";
+import { cloneDeep, orderBy, pullAt, uniq } from "lodash-es";
 import { defineStore, storeToRefs } from "pinia";
 import { computed, reactive, ref, watch } from "vue";
 import { useCurrentUserV1 } from "@/store";
 import type {
   ComposedDatabase,
-  ComposedInstance,
   ComposedProject,
   SQLEditorTreeFactor as Factor,
   SQLEditorTreeNode as TreeNode,
@@ -21,9 +20,14 @@ import {
   LeafTreeNodeTypes,
 } from "@/types";
 import type { Environment } from "@/types/proto/v1/environment_service";
+import type { InstanceResource } from "@/types/proto/v1/instance_service";
 import { getSemanticLabelValue, groupBy, isDatabaseV1Queryable } from "@/utils";
 import { useFilterStore } from "../filter";
-import { useEnvironmentV1Store, useInstanceV1Store } from "../v1";
+import {
+  useAppFeature,
+  useEnvironmentV1Store,
+  useInstanceResourceByName,
+} from "../v1";
 import { useSQLEditorStore } from "./editor";
 
 export const ROOT_NODE_ID = "ROOT";
@@ -32,12 +36,22 @@ const defaultEnvironmentFactor: StatefulFactor = {
   factor: "environment",
   disabled: false,
 };
+const defaultInstanceFactor: StatefulFactor = {
+  factor: "instance",
+  disabled: false,
+};
 
 export const useSQLEditorTreeStore = defineStore("sqlEditorTree", () => {
   const { filter } = useFilterStore();
   const me = useCurrentUserV1();
+  const hideEnvironments = useAppFeature(
+    "bb.feature.sql-editor.hide-environments"
+  );
 
   const defaultFactorList = (): StatefulFactor[] => {
+    if (hideEnvironments.value) {
+      return [defaultInstanceFactor];
+    }
     return [defaultEnvironmentFactor];
   };
 
@@ -82,6 +96,11 @@ export const useSQLEditorTreeStore = defineStore("sqlEditorTree", () => {
     cloneDeep(factorListInLocalStorage.value)
   );
 
+  const hasMissingQueryDatabases = computed(() => {
+    return databaseList.value.some(
+      (db) => !isDatabaseV1Queryable(db, me.value)
+    );
+  });
   const sortedDatabaseList = computed(() => {
     if (!showMissingQueryDatabases.value) {
       return databaseList.value.filter((db) =>
@@ -115,7 +134,9 @@ export const useSQLEditorTreeStore = defineStore("sqlEditorTree", () => {
     return factorList.value.filter((sf) => !sf.disabled).map((sf) => sf.factor);
   });
   const availableFactorList = computed(() => {
-    const PRESET_FACTORS: Factor[] = ["instance", "environment"];
+    const PRESET_FACTORS: Factor[] = hideEnvironments.value
+      ? ["instance"]
+      : ["instance", "environment"];
     const labelFactors = orderBy(
       uniq(
         databaseList.value.flatMap((db) => Object.keys(db.labels))
@@ -130,6 +151,26 @@ export const useSQLEditorTreeStore = defineStore("sqlEditorTree", () => {
       all: [...PRESET_FACTORS, ...labelFactors],
     };
   });
+
+  watch(
+    [hideEnvironments, factorList],
+    () => {
+      if (hideEnvironments.value) {
+        const index = factorList.value.findIndex(
+          (factor) => factor.factor === "environment"
+        );
+        if (index >= 0) {
+          pullAt(factorList.value, index);
+        }
+        if (factorList.value.length === 0) {
+          factorList.value = [defaultInstanceFactor];
+        }
+      }
+    },
+    {
+      immediate: true,
+    }
+  );
 
   const state = ref<TreeState>("UNSET");
   const tree = ref<TreeNode[]>([]);
@@ -216,6 +257,7 @@ export const useSQLEditorTreeStore = defineStore("sqlEditorTree", () => {
     nodesByTarget,
     buildTree,
     expandedKeys,
+    hasMissingQueryDatabases,
     showMissingQueryDatabases,
     cleanup,
   };
@@ -242,7 +284,7 @@ export const idForSQLEditorTreeNodeTarget = <T extends NodeType>(
     return (
       target as
         | ComposedProject
-        | ComposedInstance
+        | InstanceResource
         | Environment
         | ComposedDatabase
     ).name;
@@ -339,7 +381,7 @@ const mapGroupNode = (
     return mapTreeNodeByType("environment", environment, parent);
   }
   if (factor === "instance") {
-    const instance = useInstanceV1Store().getInstanceByName(value);
+    const instance = useInstanceResourceByName(value);
     return mapTreeNodeByType("instance", instance, parent);
   }
   // factor is label
@@ -389,7 +431,7 @@ const readableTargetByType = <T extends NodeType>(
     return (target as Environment).title;
   }
   if (type === "instance") {
-    return (target as ComposedInstance).title;
+    return (target as InstanceResource).title;
   }
   if (type === "database") {
     return (target as ComposedDatabase).databaseName;

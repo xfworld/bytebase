@@ -34,10 +34,7 @@
           label-placement="left"
         >
           <NFormItem path="limit" :label="$t('export-data.export-rows')">
-            <NInputNumber
-              v-model:value="formData.limit"
-              @keydown.enter.prevent
-            />
+            <MaxRowCountSelect v-model:value="formData.limit" />
           </NFormItem>
           <NFormItem path="format" :label="$t('export-data.export-format')">
             <NRadioGroup v-model:value="formData.format">
@@ -117,17 +114,18 @@ import {
   NDropdown,
   NForm,
   NFormItem,
-  NInputNumber,
   NRadio,
   NRadioGroup,
 } from "naive-ui";
 import type { BinaryLike } from "node:crypto";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { BBModal, BBTextField } from "@/bbkit";
 import { pushNotification } from "@/store";
 import { ExportFormat, exportFormatToJSON } from "@/types/proto/v1/common";
 import { defer, isNullOrUndefined } from "@/utils";
-import { ErrorTipsButton } from "./v2";
+import MaxRowCountSelect from "./Issue/panel/RequestExportPanel/MaxRowCountSelect.vue";
+import { Drawer, DrawerContent, ErrorTipsButton } from "./v2";
 
 interface LocalState {
   isRequesting: boolean;

@@ -187,7 +187,12 @@ const (
 	DisabledFunction       Code = 1702
 
 	// 1801 ~ 1899 advice error code.
+	// Advise enabling online migration for the issue.
 	AdviseOnlineMigration Code = 1801
+	// Advise using online migration to run the statement.
+	AdviseOnlineMigrationForStatement Code = 1802
+	// Advise not using online migration for the issue.
+	AdviseNoOnlineMigration Code = 1803
 
 	// 1901 ~ 1999 schema error code.
 	SchemaNotExists Code = 1901
@@ -664,6 +669,9 @@ const (
 	// OracleStatementDMLDryRun is an advisor type for Oracle DML dry run.
 	OracleStatementDMLDryRun Type = "bb.plugin.advisor.oracle.statement.dml-dry-run"
 
+	// OracleStatementDisallowMixDDLDML is an advisor type for Oracle disallow mix DDL and DML.
+	OracleStatementDisallowMixDDLDML Type = "bb.plugin.advisor.oracle.statement.disallow-mix-ddl-dml"
+
 	// Snowflake Advisor.
 
 	// SnowflakeSyntax is an advisor type for Snowflake syntax.
@@ -771,4 +779,7 @@ const (
 	MSSQLStatementWhereDisallowFunctionsAndCalculations Type = "bb.plugin.advisor.mssql.statement.disallow-functions-and-calculations"
 
 	MSSQLIndexNotRedundant Type = "bb.plugin.advisor.mssql.index.not-redundant"
+
+	// MSSQLStatementDisallowMixDDLDML is an advisor type for MSSQL disallow mix DDL and DML.
+	MSSQLStatementDisallowMixDDLDML Type = "bb.plugin.advisor.mssql.statement.disallow-mix-ddl-dml"
 )

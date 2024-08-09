@@ -32,8 +32,9 @@ func init() {
 }
 
 type Driver struct {
-	db           *sql.DB
-	databaseName string
+	db                   *sql.DB
+	databaseName         string
+	maximumSQLResultSize int64
 }
 
 func newDriver(db.DriverConfig) db.Driver {
@@ -63,6 +64,7 @@ func (driver *Driver) Open(_ context.Context, _ storepb.Engine, config db.Connec
 
 	driver.db = db
 	driver.databaseName = databaseName
+	driver.maximumSQLResultSize = config.MaximumSQLResultSize
 	return driver, nil
 }
 
@@ -72,10 +74,6 @@ func (driver *Driver) Close(context.Context) error {
 
 func (driver *Driver) Ping(ctx context.Context) error {
 	return driver.db.PingContext(ctx)
-}
-
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_OCEANBASE_ORACLE
 }
 
 func (driver *Driver) GetDB() *sql.DB {
@@ -157,11 +155,6 @@ func (driver *Driver) Execute(ctx context.Context, statement string, opts db.Exe
 }
 
 func (driver *Driver) QueryConn(ctx context.Context, conn *sql.Conn, statement string, queryContext *db.QueryContext) ([]*v1pb.QueryResult, error) {
-	// Oracle does not support transaction isolation level for read-only queries.
-	if queryContext != nil {
-		queryContext.ReadOnly = false
-	}
-
 	singleSQLs, err := plsqlparser.SplitSQL(statement)
 	if err != nil {
 		return nil, err
@@ -173,58 +166,75 @@ func (driver *Driver) QueryConn(ctx context.Context, conn *sql.Conn, statement s
 
 	var results []*v1pb.QueryResult
 	for _, singleSQL := range singleSQLs {
-		result, err := driver.querySingleSQL(ctx, conn, singleSQL, queryContext)
+		statement := singleSQL.Text
+		if queryContext != nil && queryContext.Explain {
+			startTime := time.Now()
+			randNum, err := rand.Int(rand.Reader, big.NewInt(999))
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to generate random statement ID")
+			}
+			randomID := fmt.Sprintf("%d%d", startTime.UnixMilli(), randNum.Int64())
+
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", randomID, statement)); err != nil {
+				return nil, err
+			}
+			statement = fmt.Sprintf(`SELECT LPAD(' ', LEVEL-1) || OPERATION || ' (' || OPTIONS || ')' "Operation", OBJECT_NAME "Object", OPTIMIZER "Optimizer", COST "Cost", CARDINALITY "Cardinality", BYTES "Bytes", PARTITION_START "Partition Start", PARTITION_ID "Partition ID", ACCESS_PREDICATES "Access Predicates",FILTER_PREDICATES "Filter Predicates" FROM PLAN_TABLE START WITH ID = 0 AND statement_id = '%s' CONNECT BY PRIOR ID=PARENT_ID AND statement_id = '%s' ORDER BY id`, randomID, randomID)
+		}
+
+		if queryContext != nil && !queryContext.Explain && queryContext.Limit > 0 {
+			statement = getStatementWithResultLimit(statement, queryContext.Limit)
+		}
+
+		_, allQuery, err := base.ValidateSQLForEditor(storepb.Engine_ORACLE, statement)
 		if err != nil {
-			results = append(results, &v1pb.QueryResult{
+			return nil, err
+		}
+		startTime := time.Now()
+		queryResult, err := func() (*v1pb.QueryResult, error) {
+			if allQuery {
+				rows, err := conn.QueryContext(ctx, statement)
+				if err != nil {
+					return nil, util.FormatErrorWithQuery(err, statement)
+				}
+				defer rows.Close()
+				r, err := util.RowsToQueryResult(rows, driver.maximumSQLResultSize)
+				if err != nil {
+					return nil, err
+				}
+				if err := rows.Err(); err != nil {
+					return nil, err
+				}
+				return r, nil
+			}
+
+			sqlResult, err := conn.ExecContext(ctx, statement)
+			if err != nil {
+				return nil, err
+			}
+			affectedRows, err := sqlResult.RowsAffected()
+			if err != nil {
+				slog.Info("rowsAffected returns error", log.BBError(err))
+			}
+			return util.BuildAffectedRowsResult(affectedRows), nil
+		}()
+		stop := false
+		if err != nil {
+			queryResult = &v1pb.QueryResult{
 				Error: err.Error(),
-			})
-		} else {
-			results = append(results, result)
+			}
+			stop = true
+		}
+		queryResult.Statement = statement
+		queryResult.Latency = durationpb.New(time.Since(startTime))
+		results = append(results, queryResult)
+		if stop {
+			break
 		}
 	}
 
 	return results, nil
 }
 
-func (*Driver) querySingleSQL(ctx context.Context, conn *sql.Conn, singleSQL base.SingleSQL, queryContext *db.QueryContext) (*v1pb.QueryResult, error) {
-	statement := strings.TrimRight(singleSQL.Text, " \n\t;")
-
-	if queryContext != nil && queryContext.Explain {
-		startTime := time.Now()
-		randNum, err := rand.Int(rand.Reader, big.NewInt(999))
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to generate random statement ID")
-		}
-		randomID := fmt.Sprintf("%d%d", startTime.UnixMilli(), randNum.Int64())
-
-		statement = fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", randomID, statement)
-		if _, err := conn.ExecContext(ctx, statement); err != nil {
-			return nil, err
-		}
-		explainQuery := fmt.Sprintf(`SELECT LPAD(' ', LEVEL-1) || OPERATION || ' (' || OPTIONS || ')' "Operation", OBJECT_NAME "Object", OPTIMIZER "Optimizer", COST "Cost", CARDINALITY "Cardinality", BYTES "Bytes", PARTITION_START "Partition Start", PARTITION_ID "Partition ID", ACCESS_PREDICATES "Access Predicates",FILTER_PREDICATES "Filter Predicates" FROM PLAN_TABLE START WITH ID = 0 AND statement_id = '%s' CONNECT BY PRIOR ID=PARENT_ID AND statement_id = '%s' ORDER BY id`, randomID, randomID)
-		result, err := util.Query(ctx, storepb.Engine_ORACLE, conn, explainQuery, queryContext)
-		if err != nil {
-			return nil, err
-		}
-		result.Latency = durationpb.New(time.Since(startTime))
-		result.Statement = statement
-		return result, nil
-	}
-
-	if queryContext != nil && queryContext.Limit > 0 {
-		statement = fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", statement, queryContext.Limit)
-	}
-
-	startTime := time.Now()
-	result, err := util.Query(ctx, storepb.Engine_OCEANBASE_ORACLE, conn, statement, queryContext)
-	if err != nil {
-		return nil, err
-	}
-	result.Latency = durationpb.New(time.Since(startTime))
-	result.Statement = statement
-	return result, nil
-}
-
-func (*Driver) RunStatement(ctx context.Context, conn *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	return util.RunStatement(ctx, storepb.Engine_OCEANBASE_ORACLE, conn, statement)
+func getStatementWithResultLimit(statement string, limit int) string {
+	return fmt.Sprintf("SELECT * FROM (%s) WHERE ROWNUM <= %d", util.TrimStatement(statement), limit)
 }

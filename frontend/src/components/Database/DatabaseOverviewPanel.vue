@@ -22,64 +22,11 @@
     </div>
 
     <!-- Description list -->
-    <dl
-      class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 pt-4"
-      data-label="bb-database-overview-description-list"
-    >
-      <template
-        v-if="
-          databaseEngine !== Engine.CLICKHOUSE &&
-          databaseEngine !== Engine.SNOWFLAKE &&
-          databaseEngine !== Engine.MONGODB
-        "
-      >
-        <div class="col-span-1 col-start-1">
-          <dt class="text-sm font-medium text-control-light">
-            {{
-              databaseEngine === Engine.POSTGRES
-                ? $t("db.encoding")
-                : $t("db.character-set")
-            }}
-          </dt>
-          <dd class="mt-1 text-sm text-main">
-            {{ databaseSchemaMetadata.characterSet }}
-          </dd>
-        </div>
-
-        <div class="col-span-1">
-          <dt class="text-sm font-medium text-control-light">
-            {{ $t("db.collation") }}
-          </dt>
-          <dd class="mt-1 text-sm text-main">
-            {{ databaseSchemaMetadata.collation }}
-          </dd>
-        </div>
-      </template>
-
-      <div class="col-span-1 col-start-1">
-        <dt class="text-sm font-medium text-control-light">
-          {{ $t("database.sync-status") }}
-        </dt>
-        <dd class="mt-1 text-sm text-main">
-          <span>
-            {{ database.syncState === State.ACTIVE ? "OK" : "NOT_FOUND" }}
-          </span>
-        </dd>
-      </div>
-
-      <div class="col-span-1">
-        <dt class="text-sm font-medium text-control-light">
-          {{ $t("database.last-successful-sync") }}
-        </dt>
-        <dd class="mt-1 text-sm text-main">
-          {{ humanizeDate(database.successfulSyncTime) }}
-        </dd>
-      </div>
-    </dl>
+    <DatabaseOverviewInfo :database="database" class="pt-4" />
 
     <div v-if="allowGetSchema" class="py-6">
       <div
-        v-if="hasSchemaProperty"
+        v-if="hasSchemaPropertyV1"
         class="flex flex-row justify-start items-center mb-4"
       >
         <span class="text-lg leading-6 font-medium text-main mr-2">Schema</span>
@@ -150,7 +97,12 @@
           <DBExtensionDataTable :db-extension-list="dbExtensionList" />
         </template>
 
-        <template v-if="databaseEngine === Engine.POSTGRES || databaseEngine === Engine.MSSQL">
+        <template
+          v-if="
+            databaseEngine === Engine.POSTGRES ||
+            databaseEngine === Engine.MSSQL
+          "
+        >
           <div class="mt-6 text-lg leading-6 font-medium text-main mb-4">
             {{ $t("db.functions") }}
           </div>
@@ -202,16 +154,18 @@ import TableDataTable from "@/components/TableDataTable.vue";
 import TaskTable from "@/components/TaskTable.vue";
 import ViewDataTable from "@/components/ViewDataTable.vue";
 import { useDBSchemaV1Store } from "@/store";
-import type { ComposedDatabase, DataSource } from "@/types";
+import type { ComposedDatabase } from "@/types";
 import type { Anomaly } from "@/types/proto/v1/anomaly_service";
-import { Engine, State } from "@/types/proto/v1/common";
+import { Engine } from "@/types/proto/v1/common";
 import { DatabaseMetadataView } from "@/types/proto/v1/database_service";
+import { hasSchemaProperty } from "@/utils";
+import { SearchBox } from "../v2";
+import DatabaseOverviewInfo from "./DatabaseOverviewInfo.vue";
 
 interface LocalState {
   selectedSchemaName: string;
   tableNameSearchKeyword: string;
   externalTableNameSearchKeyword: string;
-  editingDataSource?: DataSource;
 }
 
 const props = defineProps({
@@ -251,16 +205,8 @@ const databaseEngine = computed(() => {
   return props.database.instanceResource.engine;
 });
 
-const hasSchemaProperty = computed(() => {
-  return (
-    databaseEngine.value === Engine.POSTGRES ||
-    databaseEngine.value === Engine.SNOWFLAKE ||
-    databaseEngine.value === Engine.ORACLE ||
-    databaseEngine.value === Engine.DM ||
-    databaseEngine.value === Engine.MSSQL ||
-    databaseEngine.value === Engine.REDSHIFT ||
-    databaseEngine.value === Engine.RISINGWAVE
-  );
+const hasSchemaPropertyV1 = computed(() => {
+  return hasSchemaProperty(databaseEngine.value);
 });
 
 watch(
@@ -315,12 +261,8 @@ const schemaNameOptions = computed(() => {
   }));
 });
 
-const databaseSchemaMetadata = computed(() => {
-  return dbSchemaStore.getDatabaseMetadata(props.database.name);
-});
-
 const tableList = computed(() => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaPropertyV1.value) {
     return (
       schemaList.value.find(
         (schema) => schema.name === state.selectedSchemaName
@@ -331,7 +273,7 @@ const tableList = computed(() => {
 });
 
 const viewList = computed(() => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaPropertyV1.value) {
     return (
       schemaList.value.find(
         (schema) => schema.name === state.selectedSchemaName
@@ -353,7 +295,7 @@ const externalTableList = computed(() => {
 });
 
 const functionList = computed(() => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaPropertyV1.value) {
     return (
       schemaList.value.find(
         (schema) => schema.name === state.selectedSchemaName
@@ -364,7 +306,7 @@ const functionList = computed(() => {
 });
 
 const streamList = computed(() => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaPropertyV1.value) {
     return (
       schemaList.value.find(
         (schema) => schema.name === state.selectedSchemaName
@@ -378,7 +320,7 @@ const streamList = computed(() => {
 });
 
 const taskList = computed(() => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaPropertyV1.value) {
     return (
       schemaList.value.find(
         (schema) => schema.name === state.selectedSchemaName

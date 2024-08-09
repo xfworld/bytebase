@@ -10,9 +10,11 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
+	"github.com/bytebase/bytebase/backend/component/config"
 	"github.com/bytebase/bytebase/backend/component/state"
 	"github.com/bytebase/bytebase/backend/component/webhook"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -32,14 +34,16 @@ type SchedulerV2 struct {
 	stateCfg       *state.State
 	webhookManager *webhook.Manager
 	executorMap    map[api.TaskType]Executor
+	profile        *config.Profile
 }
 
 // NewSchedulerV2 will create a new scheduler.
-func NewSchedulerV2(store *store.Store, stateCfg *state.State, webhookManager *webhook.Manager) *SchedulerV2 {
+func NewSchedulerV2(store *store.Store, stateCfg *state.State, webhookManager *webhook.Manager, profile *config.Profile) *SchedulerV2 {
 	return &SchedulerV2{
 		store:          store,
 		stateCfg:       stateCfg,
 		webhookManager: webhookManager,
+		profile:        profile,
 		executorMap:    map[api.TaskType]Executor{},
 	}
 }
@@ -169,27 +173,14 @@ func (s *SchedulerV2) scheduleAutoRolloutTask(ctx context.Context, taskUID int) 
 		if plan == nil {
 			return true, nil
 		}
-		planCheckRuns, err := s.store.ListPlanCheckRuns(ctx, &store.FindPlanCheckRunMessage{PlanUID: &plan.UID})
+		latestRuns, err := s.store.ListPlanCheckRuns(ctx, &store.FindPlanCheckRunMessage{
+			PlanUID:    &plan.UID,
+			LatestOnly: true,
+		})
 		if err != nil {
-			return false, errors.Wrapf(err, "failed to list plan check runs")
+			return false, errors.Wrapf(err, "failed to list latest plan check runs")
 		}
-		type key struct {
-			instanceUID  int
-			databaseName string
-			checkType    store.PlanCheckRunType
-		}
-		latestRun := map[key]*store.PlanCheckRunMessage{}
-		for _, run := range planCheckRuns {
-			k := key{
-				instanceUID:  int(run.Config.InstanceUid),
-				databaseName: run.Config.DatabaseName,
-				checkType:    run.Type,
-			}
-			if latest, ok := latestRun[k]; !ok || latest.UID < run.UID {
-				latestRun[k] = run
-			}
-		}
-		for _, run := range latestRun {
+		for _, run := range latestRuns {
 			if run.Status != store.PlanCheckRunStatusDone {
 				return false, nil
 			}
@@ -298,7 +289,7 @@ func (s *SchedulerV2) schedulePendingTaskRun(ctx context.Context, taskRun *store
 	}); err != nil {
 		return errors.Wrapf(err, "failed to update task run status to running")
 	}
-	s.store.CreateTaskRunLogS(ctx, taskRun.ID, time.Now(), &storepb.TaskRunLog{
+	s.store.CreateTaskRunLogS(ctx, taskRun.ID, time.Now(), s.profile.DeployID, &storepb.TaskRunLog{
 		Type: storepb.TaskRunLog_TASK_RUN_STATUS_UPDATE,
 		TaskRunStatusUpdate: &storepb.TaskRunLog_TaskRunStatusUpdate{
 			Status: storepb.TaskRunLog_TaskRunStatusUpdate_RUNNING_WAITING,
@@ -327,10 +318,13 @@ func (s *SchedulerV2) scheduleRunningTaskRuns(ctx context.Context) error {
 		if task.DatabaseID == nil {
 			continue
 		}
-		if _, ok := minTaskIDForDatabase[*task.DatabaseID]; !ok {
-			minTaskIDForDatabase[*task.DatabaseID] = task.ID
-		} else if minTaskIDForDatabase[*task.DatabaseID] > task.ID {
-			minTaskIDForDatabase[*task.DatabaseID] = task.ID
+
+		if task.Type.Sequential() {
+			if _, ok := minTaskIDForDatabase[*task.DatabaseID]; !ok {
+				minTaskIDForDatabase[*task.DatabaseID] = task.ID
+			} else if minTaskIDForDatabase[*task.DatabaseID] > task.ID {
+				minTaskIDForDatabase[*task.DatabaseID] = task.ID
+			}
 		}
 	}
 
@@ -344,14 +338,30 @@ func (s *SchedulerV2) scheduleRunningTaskRuns(ctx context.Context) error {
 			slog.Error("failed to get task", slog.Int("task id", taskRun.TaskUID), log.BBError(err))
 			continue
 		}
-		if task.DatabaseID != nil {
-			if minTaskIDForDatabase[*task.DatabaseID] != task.ID {
-				slog.Debug("skip running task run because another task on the database has a smaller id", "task run id", taskRun.ID, "task id", task.ID, "database id", *task.DatabaseID)
+		if task.DatabaseID != nil && task.Type.Sequential() {
+			// Skip the task run if there is an ongoing migration on the database.
+			if taskUIDAny, ok := s.stateCfg.RunningDatabaseMigration.Load(*task.DatabaseID); ok {
+				if taskUID, ok := taskUIDAny.(int); ok {
+					s.stateCfg.TaskRunSchedulerInfo.Store(taskRun.ID, &storepb.SchedulerInfo{
+						ReportTime: timestamppb.Now(),
+						WaitingCause: &storepb.SchedulerInfo_WaitingCause{
+							Cause: &storepb.SchedulerInfo_WaitingCause_TaskUid{
+								TaskUid: int32(taskUID),
+							},
+						},
+					})
+				}
 				continue
 			}
-			// Skip the task run if there is an ongoing migration on the database.
-			if _, ok := s.stateCfg.RunningDatabaseMigration.Load(*task.DatabaseID); ok {
-				slog.Debug("skip running task run because another task is running on the database", "task run id", taskRun.ID, "task id", task.ID, "database id", *task.DatabaseID)
+			if taskUID := minTaskIDForDatabase[*task.DatabaseID]; taskUID != task.ID {
+				s.stateCfg.TaskRunSchedulerInfo.Store(taskRun.ID, &storepb.SchedulerInfo{
+					ReportTime: timestamppb.Now(),
+					WaitingCause: &storepb.SchedulerInfo_WaitingCause{
+						Cause: &storepb.SchedulerInfo_WaitingCause_TaskUid{
+							TaskUid: int32(taskUID),
+						},
+					},
+				})
 				continue
 			}
 		}
@@ -374,16 +384,25 @@ func (s *SchedulerV2) scheduleRunningTaskRuns(ctx context.Context) error {
 		}
 		maximumConnections := int(instance.Options.GetMaximumConnections())
 		if s.stateCfg.InstanceOutstandingConnections.Increment(task.InstanceID, maximumConnections) {
-			slog.Debug("skip running task run because instance connection is not available", "task run id", taskRun.ID, "task id", task.ID, "instance id", task.InstanceID, "database id", *task.DatabaseID)
+			s.stateCfg.TaskRunSchedulerInfo.Store(taskRun.ID, &storepb.SchedulerInfo{
+				ReportTime: timestamppb.Now(),
+				WaitingCause: &storepb.SchedulerInfo_WaitingCause{
+					Cause: &storepb.SchedulerInfo_WaitingCause_ConnectionLimit{
+						ConnectionLimit: true,
+					},
+				},
+			})
 			continue
 		}
 
+		s.stateCfg.TaskRunSchedulerInfo.Delete(taskRun.ID)
+
 		s.stateCfg.RunningTaskRuns.Store(taskRun.ID, true)
 		if task.DatabaseID != nil {
-			s.stateCfg.RunningDatabaseMigration.Store(*task.DatabaseID, true)
+			s.stateCfg.RunningDatabaseMigration.Store(*task.DatabaseID, task.ID)
 		}
 
-		s.store.CreateTaskRunLogS(ctx, taskRun.ID, time.Now(), &storepb.TaskRunLog{
+		s.store.CreateTaskRunLogS(ctx, taskRun.ID, time.Now(), s.profile.DeployID, &storepb.TaskRunLog{
 			Type: storepb.TaskRunLog_TASK_RUN_STATUS_UPDATE,
 			TaskRunStatusUpdate: &storepb.TaskRunLog_TaskRunStatusUpdate{
 				Status: storepb.TaskRunLog_TaskRunStatusUpdate_RUNNING_RUNNING,

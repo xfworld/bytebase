@@ -5,7 +5,7 @@ import type { WatchCallback } from "vue";
 import { ref, watch } from "vue";
 import { issueServiceClient } from "@/grpcweb";
 import type { ComposedIssue, IssueFilter } from "@/types";
-import { PresetRoleType, UNKNOWN_PROJECT_NAME } from "@/types";
+import { isValidProjectName, PresetRoleType } from "@/types";
 import { UserType } from "@/types/proto/v1/auth_service";
 import type { ApprovalStep } from "@/types/proto/v1/issue_service";
 import {
@@ -13,7 +13,7 @@ import {
   ApprovalNode_Type,
   ApprovalNode_GroupValue,
 } from "@/types/proto/v1/issue_service";
-import { extractProjectResourceName, memberListInProjectV1 } from "@/utils";
+import { extractProjectResourceName, memberListInIAM } from "@/utils";
 import { useUserStore } from "../user";
 import {
   shallowComposeIssue,
@@ -102,9 +102,8 @@ export const useIssueV1Store = defineStore("issue_v1", () => {
     const projectStore = useProjectV1Store();
     const issues = resp.issues.filter((issue) => {
       const proj = extractProjectResourceName(issue.name);
-      return (
-        projectStore.getProjectByName(`projects/${proj}`).name !==
-        UNKNOWN_PROJECT_NAME
+      return isValidProjectName(
+        projectStore.getProjectByName(`projects/${proj}`).name
       );
     });
 
@@ -148,7 +147,7 @@ export const candidatesOfApprovalStepV1 = (
     (user) => user.userType === UserType.USER
   );
   const project = issue.projectEntity;
-  const projectMemberList = memberListInProjectV1(project.iamPolicy).filter(
+  const projectMemberList = memberListInIAM(project.iamPolicy).filter(
     (member) => member.user.userType === UserType.USER
   );
 
@@ -185,7 +184,7 @@ export const candidatesOfApprovalStepV1 = (
       return [];
     };
     const candidatesForCustomRoles = (role: string) => {
-      const memberList = memberListInProjectV1(project.iamPolicy);
+      const memberList = memberListInIAM(project.iamPolicy);
       return memberList
         .filter((member) => member.user.userType === UserType.USER)
         .filter((member) => member.roleList.includes(role))

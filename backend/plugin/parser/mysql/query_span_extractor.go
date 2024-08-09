@@ -20,8 +20,7 @@ type querySpanExtractor struct {
 	ctx         context.Context
 	connectedDB string
 
-	listDBFunc func(ctx context.Context) ([]string, error)
-	f          base.GetDatabaseMetadataFunc
+	gCtx base.GetQuerySpanContext
 
 	ignoreCaseSensitive bool
 
@@ -37,14 +36,17 @@ type querySpanExtractor struct {
 
 	// tableSourceFrom is the table sources from the from clause.
 	tableSourceFrom []base.TableSource
+
+	// priorTableInFrom is the table sources from the from clause before the current table source.
+	// It's used to resolve the column name in JSON_TABLE functions.
+	priorTableInFrom []base.TableSource
 }
 
 // newQuerySpanExtractor creates a new query span extractor, the databaseMetadata and the ast are in the read guard.
-func newQuerySpanExtractor(connectedDB string, getDatabaseMetadata base.GetDatabaseMetadataFunc, listAllDatabaseNames func(ctx context.Context) ([]string, error), ignoreCaseSensitive bool) *querySpanExtractor {
+func newQuerySpanExtractor(connectedDB string, gCtx base.GetQuerySpanContext, ignoreCaseSensitive bool) *querySpanExtractor {
 	return &querySpanExtractor{
 		connectedDB:         connectedDB,
-		f:                   getDatabaseMetadata,
-		listDBFunc:          listAllDatabaseNames,
+		gCtx:                gCtx,
 		ignoreCaseSensitive: ignoreCaseSensitive,
 	}
 }
@@ -327,6 +329,10 @@ func (q *querySpanExtractor) extractQuerySpecification(ctx mysql.IQuerySpecifica
 		defer func() {
 			q.tableSourceFrom = q.tableSourceFrom[:originalLength]
 		}()
+		originalPriorLength := len(q.priorTableInFrom)
+		defer func() {
+			q.priorTableInFrom = q.priorTableInFrom[:originalPriorLength]
+		}()
 		fromSources, err = q.extractTableSourcesFromFromClause(ctx.FromClause())
 		if err != nil {
 			return nil, err
@@ -416,8 +422,7 @@ func (q *querySpanExtractor) extractSourceColumnSetFromExpr(ctx antlr.ParserRule
 			ctx: q.ctx,
 			// The connectedDB is the same as the outer query.
 			connectedDB:       q.connectedDB,
-			f:                 q.f,
-			listDBFunc:        q.listDBFunc,
+			gCtx:              q.gCtx,
 			ctes:              q.ctes,
 			outerTableSources: append(q.outerTableSources, q.tableSourceFrom...),
 			tableSourceFrom:   []base.TableSource{},
@@ -515,6 +520,7 @@ func (q *querySpanExtractor) extractTableReferenceList(ctx mysql.ITableReference
 		if err != nil {
 			return nil, err
 		}
+		q.priorTableInFrom = append(q.priorTableInFrom, tableResource)
 		result = append(result, tableResource)
 	}
 
@@ -1198,7 +1204,7 @@ func (q *querySpanExtractor) getFieldColumnSource(databaseName, tableName, field
 			if databaseName != "" && databaseName != tableSource.GetDatabaseName() {
 				return nil, false
 			}
-			if databaseName != "" && tableName != tableSource.GetTableName() {
+			if tableName != "" && tableName != tableSource.GetTableName() {
 				return nil, false
 			}
 		}
@@ -1239,6 +1245,12 @@ func (q *querySpanExtractor) getFieldColumnSource(databaseName, tableName, field
 		}
 	}
 
+	for i := len(q.priorTableInFrom) - 1; i >= 0; i-- {
+		if sourceColumnSet, ok := findInTableSource(q.priorTableInFrom[i]); ok {
+			return sourceColumnSet, nil
+		}
+	}
+
 	return nil, &parsererror.ResourceNotFoundError{
 		Database: &databaseName,
 		Table:    &tableName,
@@ -1270,14 +1282,14 @@ func (q *querySpanExtractor) findTableSchema(databaseName, tableName string) (ba
 	}
 
 	var dbSchema *model.DatabaseMetadata
-	allDatabaseNames, err := q.listDBFunc(q.ctx)
+	allDatabaseNames, err := q.gCtx.ListDatabaseNamesFunc(q.ctx, q.gCtx.InstanceID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list databases")
 	}
 	if q.ignoreCaseSensitive {
 		for _, db := range allDatabaseNames {
 			if strings.EqualFold(db, databaseName) {
-				_, dbSchema, err = q.f(q.ctx, db)
+				_, dbSchema, err = q.gCtx.GetDatabaseMetadataFunc(q.ctx, q.gCtx.InstanceID, db)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to get database metadata for database %q", db)
 				}
@@ -1287,7 +1299,7 @@ func (q *querySpanExtractor) findTableSchema(databaseName, tableName string) (ba
 	} else {
 		for _, db := range allDatabaseNames {
 			if db == databaseName {
-				_, dbSchema, err = q.f(q.ctx, db)
+				_, dbSchema, err = q.gCtx.GetDatabaseMetadataFunc(q.ctx, q.gCtx.InstanceID, db)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to get database metadata for database %q", db)
 				}
@@ -1368,7 +1380,7 @@ func (q *querySpanExtractor) findTableSchema(databaseName, tableName string) (ba
 }
 
 func (q *querySpanExtractor) getColumnsForView(definition string) ([]base.QuerySpanResult, error) {
-	newQ := newQuerySpanExtractor(q.connectedDB, q.f, q.listDBFunc, q.ignoreCaseSensitive)
+	newQ := newQuerySpanExtractor(q.connectedDB, q.gCtx, q.ignoreCaseSensitive)
 	span, err := newQ.getQuerySpan(q.ctx, definition)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get query span for view")

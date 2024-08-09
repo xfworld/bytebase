@@ -192,6 +192,8 @@ import { NButton, NTabPane, NTabs } from "naive-ui";
 import { computed, reactive, watch, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useRoute } from "vue-router";
+import { BBModal } from "@/bbkit";
+import SchemaEditorModal from "@/components/AlterSchemaPrepForm/SchemaEditorModal.vue";
 import DatabaseChangeHistoryPanel from "@/components/Database/DatabaseChangeHistoryPanel.vue";
 import DatabaseOverviewPanel from "@/components/Database/DatabaseOverviewPanel.vue";
 import DatabaseSlowQueryPanel from "@/components/Database/DatabaseSlowQueryPanel.vue";
@@ -201,6 +203,8 @@ import {
   SQLEditorButtonV1,
   SchemaDiagramButton,
 } from "@/components/DatabaseDetail";
+import SyncDatabaseButton from "@/components/DatabaseDetail/SyncDatabaseButton.vue";
+import TransferOutDatabaseForm from "@/components/TransferOutDatabaseForm";
 import { Drawer } from "@/components/v2";
 import {
   EnvironmentV1Name,
@@ -212,6 +216,7 @@ import { PROJECT_V1_ROUTE_DATABASE_DETAIL } from "@/router/dashboard/projectV1";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import {
   useAnomalyV1Store,
+  useAppFeature,
   useCurrentUserIamPolicy,
   useCurrentUserV1,
   useDatabaseV1Store,
@@ -221,7 +226,7 @@ import {
   databaseNamePrefix,
   instanceNamePrefix,
 } from "@/store/modules/v1/common";
-import { UNKNOWN_ID, unknownEnvironment } from "@/types";
+import { UNKNOWN_PROJECT_NAME, unknownEnvironment } from "@/types";
 import type { Anomaly } from "@/types/proto/v1/anomaly_service";
 import { State } from "@/types/proto/v1/common";
 import {
@@ -245,7 +250,7 @@ interface LocalState {
   showTransferDatabaseModal: boolean;
   showIncorrectProjectModal: boolean;
   showSchemaEditorModal: boolean;
-  currentProjectId: string;
+  currentProjectName: string;
   selectedIndex: number;
   selectedTab: DatabaseHash;
 }
@@ -263,7 +268,7 @@ const state = reactive<LocalState>({
   showTransferDatabaseModal: false,
   showIncorrectProjectModal: false,
   showSchemaEditorModal: false,
-  currentProjectId: String(UNKNOWN_ID),
+  currentProjectName: UNKNOWN_PROJECT_NAME,
   selectedIndex: 0,
   selectedTab: "overview",
 });
@@ -278,6 +283,7 @@ const {
   allowListChangeHistories,
   allowListSlowQueries,
 } = useDatabaseDetailContext();
+const disableSchemaEditor = useAppFeature("bb.feature.issue.disable-schema-editor");
 
 onMounted(async () => {
   anomalyList.value = await useAnomalyV1Store().fetchAnomalyList({
@@ -329,7 +335,7 @@ const allowQuery = computed(() => {
 });
 
 const tryTransferProject = () => {
-  state.currentProjectId = project.value.uid;
+  state.currentProjectName = project.value.name;
   state.showTransferDatabaseModal = true;
 };
 
@@ -339,7 +345,8 @@ const createMigration = async (
   if (type === "bb.issue.database.schema.update") {
     if (
       database.value.syncState === State.ACTIVE &&
-      allowUsingSchemaEditor([database.value])
+      allowUsingSchemaEditor([database.value]) &&
+      !disableSchemaEditor.value
     ) {
       state.showSchemaEditorModal = true;
       return;
@@ -373,7 +380,7 @@ const createMigration = async (
 };
 
 const handleGotoSQLEditorFailed = () => {
-  state.currentProjectId = database.value.projectEntity.uid;
+  state.currentProjectName = database.value.project;
   state.showIncorrectProjectModal = true;
 };
 

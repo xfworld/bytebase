@@ -4,17 +4,17 @@ import { type Factor, SQLTypeList } from "@/plugins/cel";
 import { t, te } from "@/plugins/i18n";
 import { useEnvironmentV1Store, useProjectV1List } from "@/store";
 import {
-  engineName,
   PresetRiskLevelList,
   SupportedSourceList,
-  DEFAULT_PROJECT_V1_NAME,
+  DEFAULT_PROJECT_NAME,
 } from "@/types";
 import type { Risk } from "@/types/proto/v1/risk_service";
 import { Risk_Source, risk_SourceToJSON } from "@/types/proto/v1/risk_service";
 import {
+  engineNameV1,
   extractEnvironmentResourceName,
   extractProjectResourceName,
-  supportedEngineList,
+  supportedEngineV1List,
 } from "@/utils";
 
 export const sourceText = (source: Risk_Source) => {
@@ -60,6 +60,7 @@ const StringFactorList = [
   "database_name",
   "db_engine",
   "sql_type",
+  "table_name",
 ] as const;
 
 const FactorList = {
@@ -84,6 +85,7 @@ const FactorList = {
   CreateDatabase: without(
     [...StringFactorList],
     "sql_type",
+    "table_name",
     "expiration_days",
     "export_rows"
   ),
@@ -95,6 +97,7 @@ const FactorList = {
       "table_rows",
       "source",
       "sql_type",
+      "table_name",
       "expiration_days",
       "export_rows"
     )
@@ -107,6 +110,7 @@ const FactorList = {
       "affected_rows",
       "table_rows",
       "sql_type",
+      "table_name",
       "export_rows"
     )
   ),
@@ -117,7 +121,8 @@ const FactorList = {
       "source",
       "affected_rows",
       "table_rows",
-      "sql_type"
+      "sql_type",
+      "table_name"
     )
   ),
 };
@@ -145,10 +150,10 @@ export const getFactorList = (source: Risk_Source) => {
 const getEnvironmentIdOptions = () => {
   const environmentList = useEnvironmentV1Store().getEnvironmentList();
   return environmentList.map<SelectOption>((env) => {
-    const environmentId = extractEnvironmentResourceName(env.name);
+    const environmentName = extractEnvironmentResourceName(env.name);
     return {
-      label: environmentId,
-      value: environmentId,
+      label: environmentName,
+      value: environmentName,
     };
   });
 };
@@ -156,7 +161,7 @@ const getEnvironmentIdOptions = () => {
 const getProjectIdOptions = () => {
   const { projectList } = useProjectV1List();
   return projectList.value
-    .filter((proj) => proj.name != DEFAULT_PROJECT_V1_NAME)
+    .filter((proj) => proj.name != DEFAULT_PROJECT_NAME)
     .map<SelectOption>((proj) => {
       const projectId = extractProjectResourceName(proj.name);
       return {
@@ -167,8 +172,8 @@ const getProjectIdOptions = () => {
 };
 
 const getDBEndingOptions = () => {
-  return supportedEngineList().map<SelectOption>((type) => ({
-    label: engineName(type),
+  return supportedEngineV1List().map<SelectOption>((type) => ({
+    label: engineNameV1(type),
     value: type,
   }));
 };

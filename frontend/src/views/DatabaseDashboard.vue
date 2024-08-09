@@ -37,15 +37,18 @@ import { computed, onMounted, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import { useCommonSearchScopeOptions } from "@/components/AdvancedSearch/useCommonSearchScopeOptions";
-import DatabaseV1Table from "@/components/v2/Model/DatabaseV1Table";
+import DatabaseV1Table, {
+  DatabaseLabelFilter,
+  DatabaseOperations,
+} from "@/components/v2/Model/DatabaseV1Table";
 import {
+  useAppFeature,
   useDatabaseV1Store,
-  usePageMode,
   useProjectV1List,
   useUIStateStore,
 } from "@/store";
 import type { ComposedDatabase } from "@/types";
-import { UNKNOWN_ID, DEFAULT_PROJECT_V1_NAME } from "@/types";
+import { UNKNOWN_ID, DEFAULT_PROJECT_NAME } from "@/types";
 import type { SearchParams } from "@/utils";
 import {
   filterDatabaseV1ByKeyword,
@@ -68,7 +71,9 @@ interface LocalState {
 
 const uiStateStore = useUIStateStore();
 const { projectList } = useProjectV1List();
-const pageMode = usePageMode();
+const hideUnassignedDatabases = useAppFeature(
+  "bb.feature.databases.hide-unassigned"
+);
 const route = useRoute();
 const router = useRouter();
 
@@ -116,8 +121,6 @@ const scopeOptions = useCommonSearchScopeOptions(
   computed(() => state.params),
   [...CommonFilterScopeIdList, "project", "project-assigned"]
 );
-
-const isStandaloneMode = computed(() => pageMode.value === "STANDALONE");
 
 const selectedInstance = computed(() => {
   return (
@@ -175,9 +178,9 @@ const filteredDatabaseList = computed(() => {
   if (selectedProjectAssigned.value !== `${UNKNOWN_ID}`) {
     list = list.filter((db) => {
       if (selectedProjectAssigned.value == "yes") {
-        return db.project !== DEFAULT_PROJECT_V1_NAME;
+        return db.project !== DEFAULT_PROJECT_NAME;
       } else {
-        return db.project === DEFAULT_PROJECT_V1_NAME;
+        return db.project === DEFAULT_PROJECT_NAME;
       }
     });
   }
@@ -197,10 +200,8 @@ const filteredDatabaseList = computed(() => {
       return state.selectedLabels.some((kv) => db.labels[kv.key] === kv.value);
     });
   }
-  if (isStandaloneMode.value) {
-    list = list.filter(
-      (db) => db.projectEntity.name !== DEFAULT_PROJECT_V1_NAME
-    );
+  if (hideUnassignedDatabases.value) {
+    list = list.filter((db) => db.projectEntity.name !== DEFAULT_PROJECT_NAME);
   }
   const keyword = state.params.query.trim().toLowerCase();
   if (keyword) {

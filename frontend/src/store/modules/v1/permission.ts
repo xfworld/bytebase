@@ -2,33 +2,27 @@ import { uniq } from "lodash-es";
 import { defineStore } from "pinia";
 import { shallowReactive } from "vue";
 import {
-  ALL_USERS_USER_EMAIL,
-  getUserEmailInBinding,
-  groupBindingPrefix,
   PRESET_WORKSPACE_ROLES,
   type ComposedProject,
-  type ProjectPermission,
-  type WorkspacePermission,
+  type ComposedUser,
+  type Permission,
 } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
-import { isBindingPolicyExpired } from "@/utils";
+import { roleListInIAM } from "@/utils";
 import { useRoleStore } from "../role";
-import { userNamePrefix } from "./common";
-import { useUserGroupStore } from "./userGroup";
 
 export const usePermissionStore = defineStore("permission", () => {
   const projectRoleListCache = shallowReactive(new Map<string, string[]>());
   const projectPermissionsCache = shallowReactive(
-    new Map<string, Set<ProjectPermission>>()
+    new Map<string, Set<Permission>>()
   );
   const workspaceLevelPermissionsMapByUserName = shallowReactive(
-    new Map<string, Set<WorkspacePermission | ProjectPermission>>()
+    new Map<string, Set<Permission>>()
   );
   const roleStore = useRoleStore();
 
   const workspaceLevelPermissionsByUser = (
-    user: User
-  ): Set<WorkspacePermission | ProjectPermission> => {
+    user: ComposedUser
+  ): Set<Permission> => {
     const cached = workspaceLevelPermissionsMapByUserName.get(user.name);
     if (cached) {
       return cached;
@@ -37,60 +31,28 @@ export const usePermissionStore = defineStore("permission", () => {
     const permissions = new Set(
       user.roles
         .map((role) => roleStore.getRoleByName(role))
-        .flatMap(
-          (role) =>
-            (role ? role.permissions : []) as (
-              | WorkspacePermission
-              | ProjectPermission
-            )[]
-        )
+        .flatMap((role) => (role ? role.permissions : []) as Permission[])
     );
     workspaceLevelPermissionsMapByUserName.set(user.name, permissions);
     return permissions;
   };
 
-  const roleListInProjectV1 = (project: ComposedProject, user: User) => {
+  const roleListInProjectV1 = (
+    project: ComposedProject,
+    user: ComposedUser
+  ) => {
     const key = `${user.name}@@${project.name}`;
     const cached = projectRoleListCache.get(key);
     if (cached) {
       return cached;
     }
 
-    const groupStore = useUserGroupStore();
-    const userInBinding = getUserEmailInBinding(user.email);
-
     const workspaceLevelProjectRoles = user.roles.filter(
       (role) => !PRESET_WORKSPACE_ROLES.includes(role)
     );
 
     const { iamPolicy } = project;
-    const projectBindingRoles = iamPolicy.bindings
-      .filter((binding) => {
-        if (isBindingPolicyExpired(binding)) {
-          return false;
-        }
-        for (const member of binding.members) {
-          if (member === ALL_USERS_USER_EMAIL) {
-            return true;
-          }
-          if (member === userInBinding) {
-            return true;
-          }
-
-          if (member.startsWith(groupBindingPrefix)) {
-            const group = groupStore.getGroupByIdentifier(member);
-            if (!group) {
-              continue;
-            }
-
-            return group.members.some(
-              (m) => m.member === `${userNamePrefix}${user.email}`
-            );
-          }
-        }
-        return false;
-      })
-      .map((binding) => binding.role);
+    const projectBindingRoles = roleListInIAM(iamPolicy, user.email);
 
     const result = uniq([
       ...projectBindingRoles,
@@ -100,7 +62,10 @@ export const usePermissionStore = defineStore("permission", () => {
     return result;
   };
 
-  const permissionsInProjectV1 = (project: ComposedProject, user: User) => {
+  const permissionsInProjectV1 = (
+    project: ComposedProject,
+    user: ComposedUser
+  ): Set<Permission> => {
     const key = `${user.name}@@${project.name}`;
     const cached = projectPermissionsCache.get(key);
     if (cached) {
@@ -112,7 +77,7 @@ export const usePermissionStore = defineStore("permission", () => {
       roles
         .map((role) => roleStore.getRoleByName(role))
         .flatMap(
-          (role) => (role ? role.permissions : []) as ProjectPermission[]
+          (role) => (role ? role.permissions : []) as Permission[]
         )
     );
     projectPermissionsCache.set(key, permissions);
@@ -130,7 +95,7 @@ export const usePermissionStore = defineStore("permission", () => {
     );
     permissionsKeys.forEach((key) => projectPermissionsCache.delete(key));
   };
-  const invalidCacheByUser = (user: User) => {
+  const invalidCacheByUser = (user: ComposedUser) => {
     workspaceLevelPermissionsMapByUserName.delete(user.name);
 
     const roleListKeys = Array.from(projectRoleListCache.keys()).filter((key) =>

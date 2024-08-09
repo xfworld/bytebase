@@ -5,31 +5,23 @@
     :data-width="containerWidth"
   >
     <div
-      v-if="!strictProject"
+      v-if="!strictProject && !hideProjects"
       class="flex flex-row items-center gap-x-1 px-1 py-1 border-b"
     >
       <ProjectSelect
         style="width: 100%"
         class="project-select"
-        :project="projectUID"
+        :project-name="projectName"
         :include-all="false"
         :include-default-project="true"
         :loading="!projectContextReady"
-        @update:project="handleSwitchProject"
+        @update:project-name="handleSwitchProject"
       />
     </div>
 
     <div class="flex-1 flex flex-row overflow-hidden">
       <div class="h-full border-r shrink-0">
-        <GutterBar
-          :size="
-            containerWidth >= 320
-              ? 'large'
-              : containerWidth < 240
-                ? 'small'
-                : 'medium'
-          "
-        />
+        <GutterBar size="medium" />
       </div>
       <div class="h-full flex-1 flex flex-col pt-1 overflow-hidden">
         <WorksheetPane v-if="asidePanelTab === 'WORKSHEET'" />
@@ -46,11 +38,11 @@ import { storeToRefs } from "pinia";
 import { computed, ref, watch } from "vue";
 import { ProjectSelect } from "@/components/v2";
 import {
-  useProjectV1Store,
   useSQLEditorTreeStore,
   useSQLEditorStore,
+  useAppFeature,
 } from "@/store";
-import { UNKNOWN_ID } from "@/types";
+import { isValidProjectName } from "@/types";
 import { useSQLEditorContext } from "../context";
 import GutterBar from "./GutterBar";
 import HistoryPane from "./HistoryPane";
@@ -64,9 +56,10 @@ const { project, projectContextReady, strictProject } =
   storeToRefs(editorStore);
 const containerRef = ref<HTMLDivElement>();
 const { width: containerWidth } = useElementSize(containerRef);
+const hideProjects = useAppFeature("bb.feature.sql-editor.hide-projects");
 
-const projectUID = computed(() => {
-  return editorStore.currentProject?.uid ?? null;
+const projectName = computed(() => {
+  return editorStore.currentProject?.name ?? null;
 });
 
 watch([project, projectContextReady], ([project, ready]) => {
@@ -79,12 +72,11 @@ watch([project, projectContextReady], ([project, ready]) => {
   }
 });
 
-const handleSwitchProject = (uid: string | undefined) => {
-  if (!uid || uid === String(UNKNOWN_ID)) {
+const handleSwitchProject = (name: string | undefined) => {
+  if (!name || !isValidProjectName(name)) {
     project.value = "";
   } else {
-    const proj = useProjectV1Store().getProjectByUID(uid);
-    project.value = proj.name;
+    project.value = name;
   }
 };
 </script>

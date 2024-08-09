@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-stretch gap-x-3">
-    <template v-if="showIssueReviewActions">
+    <template v-if="!hideIssueReviewActions">
       <ReviewActionButton
         v-for="action in issueReviewActionList"
         :key="action"
@@ -30,7 +30,7 @@ import {
   taskRolloutActionDisplayName,
   useIssueContext,
 } from "@/components/IssueV1";
-import { useActuatorV1Store, useCurrentUserV1, usePageMode } from "@/store";
+import { useCurrentUserV1, useAppFeature } from "@/store";
 import { PresetRoleType } from "@/types";
 import {
   IssueStatus,
@@ -42,9 +42,10 @@ import { IssueStatusActionButtonGroup } from "../common";
 import ReviewActionButton from "./ReviewActionButton.vue";
 
 const { t } = useI18n();
-const actuatorStore = useActuatorV1Store();
 const currentUser = useCurrentUserV1();
-const pageMode = usePageMode();
+const hideIssueReviewActions = useAppFeature(
+  "bb.feature.issue.hide-review-actions"
+);
 const { issue, phase, reviewContext, events, activeTask, activeStage } =
   useIssueContext();
 const { ready, status, done } = reviewContext;
@@ -68,7 +69,6 @@ const shouldShowApproveOrReject = computed(() => {
 });
 const shouldShowApprove = computed(() => {
   if (!shouldShowApproveOrReject.value) return false;
-
   return status.value === Issue_Approver_Status.PENDING;
 });
 const shouldShowReject = computed(() => {
@@ -147,12 +147,6 @@ const forceRolloutActionList = computed((): ExtraActionOption[] => {
   });
 
   return [...taskExtraActionOptions, ...stageExtraActionOptions];
-});
-
-const showIssueReviewActions = computed(() => {
-  return !(
-    pageMode.value === "STANDALONE" && actuatorStore.customTheme === "lixiang"
-  );
 });
 
 const displayMode = computed(() => {

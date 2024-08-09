@@ -5,20 +5,27 @@ package bytebase.v1;
 import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
+import "v1/annotation.proto";
 
 option go_package = "generated-go/v1";
 
 service RoleService {
   rpc ListRoles(ListRolesRequest) returns (ListRolesResponse) {
     option (google.api.http) = {get: "/v1/roles"};
+    option (bytebase.v1.permission) = "bb.roles.list";
+    option (bytebase.v1.auth_method) = IAM;
   }
   rpc CreateRole(CreateRoleRequest) returns (Role) {
     option (google.api.http) = {
       post: "/v1/roles"
       body: "role"
     };
+    option (bytebase.v1.permission) = "bb.roles.create";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
   rpc UpdateRole(UpdateRoleRequest) returns (Role) {
     option (google.api.http) = {
@@ -26,10 +33,16 @@ service RoleService {
       body: "role"
     };
     option (google.api.method_signature) = "role,update_mask";
+    option (bytebase.v1.permission) = "bb.roles.update";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
   rpc DeleteRole(DeleteRoleRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=roles/*}"};
     option (google.api.method_signature) = "name";
+    option (bytebase.v1.permission) = "bb.roles.delete";
+    option (bytebase.v1.auth_method) = IAM;
+    option (bytebase.v1.audit) = true;
   }
 }
 
@@ -74,10 +87,18 @@ message UpdateRoleRequest {
 
 message DeleteRoleRequest {
   // Format: roles/{role}
-  string name = 1;
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "bytebase.com/Role"}
+  ];
 }
 
 message Role {
+  option (google.api.resource) = {
+    type: "bytebase.com/Role"
+    pattern: "roles/{role}"
+  };
+
   // Format: roles/{role}
   string name = 1;
   string title = 2;

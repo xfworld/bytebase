@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
-	"sort"
 	"time"
 
 	"github.com/pkg/errors"
@@ -39,9 +38,11 @@ func (driver *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, e
 	}
 
 	return &db.InstanceMetadata{
-		Version:       version,
-		InstanceRoles: instanceRoles,
-		Databases:     databases,
+		Version:   version,
+		Databases: databases,
+		Metadata: &storepb.InstanceMetadata{
+			Roles: instanceRoles,
+		},
 	}, nil
 }
 
@@ -86,45 +87,15 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get functions from database %q", driver.databaseName)
 	}
-
 	if err := txn.Commit(); err != nil {
 		return nil, err
 	}
-
-	schemaNameMap := make(map[string]bool)
 	for _, schemaName := range schemaList {
-		schemaNameMap[schemaName] = true
-	}
-	for schemaName := range tableMap {
-		schemaNameMap[schemaName] = true
-	}
-	for schemaName := range viewMap {
-		schemaNameMap[schemaName] = true
-	}
-	var schemaNames []string
-	for schemaName := range schemaNameMap {
-		schemaNames = append(schemaNames, schemaName)
-	}
-	sort.Strings(schemaNames)
-	for _, schemaName := range schemaNames {
-		var tables []*storepb.TableMetadata
-		var views []*storepb.ViewMetadata
-		var functions []*storepb.FunctionMetadata
-		var exists bool
-		if tables, exists = tableMap[schemaName]; !exists {
-			tables = []*storepb.TableMetadata{}
-		}
-		if views, exists = viewMap[schemaName]; !exists {
-			views = []*storepb.ViewMetadata{}
-		}
-		if functions, exists = functionMap[schemaName]; !exists {
-			functions = []*storepb.FunctionMetadata{}
-		}
 		databaseMetadata.Schemas = append(databaseMetadata.Schemas, &storepb.SchemaMetadata{
 			Name:      schemaName,
-			Tables:    tables,
-			Views:     views,
-			Functions: functions,
+			Tables:    tableMap[schemaName],
+			Views:     viewMap[schemaName],
+			Functions: functionMap[schemaName],
 		})
 	}
 	// No extensions in RisingWave.
@@ -136,7 +107,7 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 var listSchemaQuery = fmt.Sprintf(`
 SELECT nspname
 FROM pg_catalog.pg_namespace
-WHERE nspname NOT IN (%s);
+WHERE nspname NOT IN (%s) ORDER BY nspname;
 `, systemSchemas)
 
 func getSchemas(txn *sql.Tx) ([]string, error) {
@@ -298,7 +269,8 @@ SELECT
 FROM
   all_views
   JOIN rw_schemas S ON all_views.schema_id = S.id
-  AND S.name NOT IN ` + fmt.Sprintf("(%s)", systemSchemas)
+  AND S.name NOT IN ` + fmt.Sprintf("(%s)", systemSchemas) + `
+ORDER BY schema_name, view_name;`
 
 // getViews gets all views of a database.
 func getViews(txn *sql.Tx) (map[string][]*storepb.ViewMetadata, error) {

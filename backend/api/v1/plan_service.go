@@ -60,9 +60,18 @@ func NewPlanService(store *store.Store, sheetManager *sheet.Manager, licenseServ
 
 // GetPlan gets a plan.
 func (s *PlanService) GetPlan(ctx context.Context, request *v1pb.GetPlanRequest) (*v1pb.Plan, error) {
-	planID, err := common.GetPlanID(request.Name)
+	projectID, planID, err := common.GetProjectIDPlanID(request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &projectID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get project, error: %v", err)
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, "project not found for id: %v", projectID)
 	}
 	plan, err := s.store.GetPlan(ctx, &store.FindPlanMessage{UID: &planID})
 	if err != nil {
@@ -85,16 +94,6 @@ func (s *PlanService) ListPlans(ctx context.Context, request *v1pb.ListPlansRequ
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-
-	projectIDs, err := getProjectIDsWithPermission(ctx, s.store, user, s.iamManager, iam.PermissionPlansList)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get projectIDs, error: %v", err)
-	}
-
 	limit, offset, err := parseLimitAndOffset(request.PageToken, int(request.PageSize))
 	if err != nil {
 		return nil, err
@@ -102,14 +101,10 @@ func (s *PlanService) ListPlans(ctx context.Context, request *v1pb.ListPlansRequ
 	limitPlusOne := limit + 1
 
 	find := &store.FindPlanMessage{
-		Limit:      &limitPlusOne,
-		Offset:     &offset,
-		ProjectIDs: projectIDs,
+		Limit:     &limitPlusOne,
+		Offset:    &offset,
+		ProjectID: &projectID,
 	}
-	if projectID != "-" {
-		find.ProjectID = &projectID
-	}
-
 	plans, err := s.store.ListPlans(ctx, find)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list plans, error: %v", err)
@@ -148,8 +143,7 @@ func (s *PlanService) SearchPlans(ctx context.Context, request *v1pb.SearchPlans
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
-
-	projectIDs, err := getProjectIDsWithPermission(ctx, s.store, user, s.iamManager, iam.PermissionPlansGet)
+	projectIDsFilter, err := getProjectIDsSearchFilter(ctx, user, iam.PermissionPlansGet, s.iamManager, s.store)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get projectIDs, error: %v", err)
 	}
@@ -163,7 +157,7 @@ func (s *PlanService) SearchPlans(ctx context.Context, request *v1pb.SearchPlans
 	find := &store.FindPlanMessage{
 		Limit:      &limitPlusOne,
 		Offset:     &offset,
-		ProjectIDs: projectIDs,
+		ProjectIDs: projectIDsFilter,
 	}
 	if projectID != "-" {
 		find.ProjectID = &projectID
@@ -197,6 +191,32 @@ func (s *PlanService) SearchPlans(ctx context.Context, request *v1pb.SearchPlans
 		Plans:         convertedPlans,
 		NextPageToken: nextPageToken,
 	}, nil
+}
+
+func getProjectIDsSearchFilter(ctx context.Context, user *store.UserMessage, permission iam.Permission, iamManager *iam.Manager, stores *store.Store) (*[]string, error) {
+	ok, err := iamManager.CheckPermission(ctx, permission, user)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check permission %q", permission)
+	}
+	if ok {
+		return nil, nil
+	}
+	projects, err := stores.ListProjectV2(ctx, &store.FindProjectMessage{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list projects")
+	}
+
+	var projectIDs []string
+	for _, project := range projects {
+		ok, err := iamManager.CheckPermission(ctx, permission, user, project.ResourceID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to check permission %q", permission)
+		}
+		if ok {
+			projectIDs = append(projectIDs, project.ResourceID)
+		}
+	}
+	return &projectIDs, nil
 }
 
 // CreatePlan creates a new plan.
@@ -277,23 +297,23 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
-	planID, err := common.GetPlanID(request.Plan.Name)
+	projectID, planID, err := common.GetProjectIDPlanID(request.Plan.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
-	oldPlan, err := s.store.GetPlan(ctx, &store.FindPlanMessage{UID: &planID})
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{ResourceID: &projectID})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get project %q, err: %v", projectID, err)
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, "project %q not found", projectID)
+	}
+	oldPlan, err := s.store.GetPlan(ctx, &store.FindPlanMessage{ProjectID: &projectID, UID: &planID})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get plan %q: %v", request.Plan.Name, err)
 	}
 	if oldPlan == nil {
 		return nil, status.Errorf(codes.NotFound, "plan %q not found", request.Plan.Name)
-	}
-	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{ResourceID: &oldPlan.ProjectID})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get project %q, err: %v", oldPlan.ProjectID, err)
-	}
-	if project == nil {
-		return nil, status.Errorf(codes.NotFound, "project %q not found", oldPlan.ProjectID)
 	}
 
 	ok, err = func() (bool, error) {
@@ -390,8 +410,6 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 						ID:        task.ID,
 						UpdaterID: user.ID,
 					}
-					tasksMap[task.ID] = task
-
 					var taskSpecID struct {
 						SpecID string `json:"specId"`
 					}
@@ -408,8 +426,8 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 						if task.Type != api.TaskDatabaseSchemaUpdateGhostSync {
 							return nil
 						}
-						payload := &api.TaskDatabaseSchemaUpdateGhostSyncPayload{}
-						if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+						payload := &storepb.TaskDatabaseUpdatePayload{}
+						if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 							return status.Errorf(codes.Internal, "failed to unmarshal task payload: %v", err)
 						}
 						newFlags := spec.GetChangeDatabaseConfig().GetGhostFlags()
@@ -459,8 +477,8 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 						if task.Type != api.TaskDatabaseDataUpdate {
 							return nil
 						}
-						payload := &api.TaskDatabaseDataUpdatePayload{}
-						if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+						payload := &storepb.TaskDatabaseUpdatePayload{}
+						if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 							return status.Errorf(codes.Internal, "failed to unmarshal task payload: %v", err)
 						}
 						config, ok := spec.Config.(*v1pb.Plan_Spec_ChangeDatabaseConfig)
@@ -480,7 +498,7 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 							}
 						}
 						if databaseName != nil {
-							taskPatch.PreUpdateBackupDetail = &api.PreUpdateBackupDetail{
+							taskPatch.PreUpdateBackupDetail = &storepb.PreUpdateBackupDetail{
 								Database: *databaseName,
 							}
 							doUpdate = true
@@ -560,8 +578,8 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 						if task.Type != api.TaskDatabaseDataExport {
 							return nil
 						}
-						payload := &api.TaskDatabaseDataExportPayload{}
-						if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+						payload := &storepb.TaskDatabaseDataExportPayload{}
+						if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 							return status.Errorf(codes.Internal, "failed to unmarshal task payload: %v", err)
 						}
 						config, ok := spec.Config.(*v1pb.Plan_Spec_ExportDataConfig)
@@ -643,15 +661,30 @@ func (s *PlanService) UpdatePlan(ctx context.Context, request *v1pb.UpdatePlanRe
 					if !doUpdate {
 						continue
 					}
-
+					tasksMap[task.ID] = task
 					taskPatchList = append(taskPatchList, taskPatch)
+				}
+
+				if len(taskPatchList) != 0 {
+					issue, err := s.store.GetIssueV2(ctx, &store.FindIssueMessage{
+						PipelineID: oldPlan.PipelineUID,
+					})
+					if err != nil {
+						return nil, status.Errorf(codes.Internal, "failed to get issue: %v", err)
+					}
+					if issue != nil {
+						// Do not allow to update task if issue is done or canceled.
+						if issue.Status == api.IssueDone || issue.Status == api.IssueCanceled {
+							return nil, status.Errorf(codes.FailedPrecondition, "cannot update task because issue %q is %s", issue.Title, issue.Status)
+						}
+					}
 				}
 			}
 
 			for _, taskPatch := range taskPatchList {
 				if taskPatch.SheetID != nil || taskPatch.EarliestAllowedTs != nil {
 					task := tasksMap[taskPatch.ID]
-					if task.LatestTaskRunStatus == api.TaskRunPending || task.LatestTaskRunStatus == api.TaskRunRunning {
+					if task.LatestTaskRunStatus == api.TaskRunPending || task.LatestTaskRunStatus == api.TaskRunRunning || task.LatestTaskRunStatus == api.TaskRunSkipped || task.LatestTaskRunStatus == api.TaskRunDone {
 						return nil, status.Errorf(codes.FailedPrecondition, "cannot update plan because task %q is %s", task.Name, task.LatestTaskRunStatus)
 					}
 				}
@@ -761,7 +794,8 @@ func (s *PlanService) ListPlanCheckRuns(ctx context.Context, request *v1pb.ListP
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	planCheckRuns, err := s.store.ListPlanCheckRuns(ctx, &store.FindPlanCheckRunMessage{
-		PlanUID: &planUID,
+		PlanUID:    &planUID,
+		LatestOnly: request.LatestOnly,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list plan check runs, error: %v", err)
@@ -779,11 +813,20 @@ func (s *PlanService) ListPlanCheckRuns(ctx context.Context, request *v1pb.ListP
 
 // RunPlanChecks runs plan checks for a plan.
 func (s *PlanService) RunPlanChecks(ctx context.Context, request *v1pb.RunPlanChecksRequest) (*v1pb.RunPlanChecksResponse, error) {
-	planUID, err := common.GetPlanID(request.Name)
+	projectID, planID, err := common.GetProjectIDPlanID(request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	plan, err := s.store.GetPlan(ctx, &store.FindPlanMessage{UID: &planUID})
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &projectID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get project, error: %v", err)
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, "project not found for id: %v", projectID)
+	}
+	plan, err := s.store.GetPlan(ctx, &store.FindPlanMessage{UID: &planID})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get plan, error: %v", err)
 	}
@@ -803,6 +846,76 @@ func (s *PlanService) RunPlanChecks(ctx context.Context, request *v1pb.RunPlanCh
 	s.stateCfg.PlanCheckTickleChan <- 0
 
 	return &v1pb.RunPlanChecksResponse{}, nil
+}
+
+// BatchCancelPlanCheckRuns cancels a list of plan check runs.
+func (s *PlanService) BatchCancelPlanCheckRuns(ctx context.Context, request *v1pb.BatchCancelPlanCheckRunsRequest) (*v1pb.BatchCancelPlanCheckRunsResponse, error) {
+	if len(request.PlanCheckRuns) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "plan check runs cannot be empty")
+	}
+
+	projectID, _, err := common.GetProjectIDPlanID(request.Parent)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &projectID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find project, error: %v", err)
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, "project %v not found", projectID)
+	}
+
+	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
+	if !ok {
+		return nil, status.Errorf(codes.Internal, "principal ID not found")
+	}
+	user, err := s.store.GetUserByID(ctx, principalID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to find user, error: %v", err)
+	}
+	if user == nil {
+		return nil, status.Errorf(codes.NotFound, "user %v not found", principalID)
+	}
+
+	var planCheckRunIDs []int
+	for _, planCheckRun := range request.PlanCheckRuns {
+		_, _, planCheckRunID, err := common.GetProjectIDPlanIDPlanCheckRunID(planCheckRun)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		planCheckRunIDs = append(planCheckRunIDs, planCheckRunID)
+	}
+
+	planCheckRuns, err := s.store.ListPlanCheckRuns(ctx, &store.FindPlanCheckRunMessage{
+		UIDs: &planCheckRunIDs,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list plan check runs, error: %v", err)
+	}
+
+	// Check if any of the given plan check runs are not running.
+	for _, planCheckRun := range planCheckRuns {
+		switch planCheckRun.Status {
+		case store.PlanCheckRunStatusRunning:
+		default:
+			return nil, status.Errorf(codes.InvalidArgument, "planCheckRun %v(%v) is not running", planCheckRun.UID, planCheckRun.Type)
+		}
+	}
+	// Cancel the plan check runs.
+	for _, planCheckRun := range planCheckRuns {
+		if cancelFunc, ok := s.stateCfg.RunningPlanCheckRunsCancelFunc.Load(planCheckRun.UID); ok {
+			cancelFunc.(context.CancelFunc)()
+		}
+	}
+	// Update the status of the plan check runs to canceled.
+	if err := s.store.BatchCancelPlanCheckRuns(ctx, planCheckRunIDs, principalID); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to batch patch task run status to canceled, error: %v", err)
+	}
+
+	return &v1pb.BatchCancelPlanCheckRunsResponse{}, nil
 }
 
 func (s *PlanService) buildPlanFindWithFilter(ctx context.Context, planFind *store.FindPlanMessage, filter string) error {

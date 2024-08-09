@@ -27,6 +27,7 @@
 <script setup lang="ts">
 import { CheckIcon, XCircleIcon } from "lucide-vue-next";
 import { computed } from "vue";
+import { BBSpin } from "@/bbkit";
 import type { ComposedDatabase, ComposedProject } from "@/types";
 import type { Branch } from "@/types/proto/v1/branch_service";
 import type { RebaseBranchValidationState, RebaseSourceType } from "./types";
@@ -47,7 +48,7 @@ defineEmits<{
   (event: "update:source-type", type: RebaseSourceType): void;
   (event: "update:head-branch-name", branch: string | undefined): void;
   (event: "update:source-branch-name", branch: string | undefined): void;
-  (event: "update:source-database-uid", uid: string | undefined): void;
+  (event: "update:source-database-name", name: string | undefined): void;
 }>();
 
 const sourceBranchOrDatabase = computed(() => {

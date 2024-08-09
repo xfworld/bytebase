@@ -67,6 +67,8 @@ import dayjs from "dayjs";
 import { NButton } from "naive-ui";
 import { computed, shallowRef, watch, reactive } from "vue";
 import { useI18n } from "vue-i18n";
+import { BBSpin } from "@/bbkit";
+import { Drawer, DrawerContent } from "@/components/v2";
 import {
   pushNotification,
   useCurrentUserV1,
@@ -75,7 +77,7 @@ import {
   useSlowQueryPolicyStore,
   useSlowQueryStore,
 } from "@/store";
-import type { ComposedSlowQueryLog } from "@/types";
+import type { ComposedSlowQueryLog, Permission } from "@/types";
 import type { SearchScope, SearchParams, SearchScopeId } from "@/utils";
 import { extractInstanceResourceName, hasWorkspacePermissionV2 } from "@/utils";
 import { SlowQuerySettings } from "../Settings";
@@ -94,12 +96,7 @@ const props = withDefaults(
     showDatabaseColumn?: boolean;
   }>(),
   {
-    supportOptionIdList: () => [
-      "environment",
-      "project",
-      "instance",
-      "database",
-    ],
+    supportOptionIdList: () => ["environment", "project", "database"],
     readonlySearchScopes: () => [],
     showProjectColumn: true,
     showEnvironmentColumn: true,
@@ -178,7 +175,13 @@ const params = computed(() => {
 });
 
 const allowAdmin = computed(() => {
-  return hasWorkspacePermissionV2(currentUser.value, "bb.policies.update");
+  const neededWorkspacePermissions: Permission[] = [
+    "bb.instances.list",
+    "bb.policies.update",
+  ];
+  return neededWorkspacePermissions.every((permission) =>
+    hasWorkspacePermissionV2(currentUser.value, permission)
+  );
 });
 
 const { list: slowQueryPolicyList } = useSlowQueryPolicyList();

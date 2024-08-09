@@ -77,11 +77,6 @@ func (d *Driver) Ping(ctx context.Context) error {
 	return nil
 }
 
-// GetType returns the database type.
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_DYNAMODB
-}
-
 // GetDB gets the database.
 func (*Driver) GetDB() *sql.DB {
 	return nil
@@ -102,7 +97,7 @@ func (*Driver) GetDB() *sql.DB {
 // NOTE: Each api contains some constraints which do not be described in api docs. For example, in ExecuteTransaction, cannot include multiple operations on one item.
 // So we use a simple solution here, use parser to split the statement and execute them one by one, unfortunately, we lose the transaction feature.
 func (d *Driver) Execute(ctx context.Context, statement string, opts db.ExecuteOptions) (int64, error) {
-	statements, err := base.SplitMultiSQL(d.GetType(), statement)
+	statements, err := base.SplitMultiSQL(storepb.Engine_DYNAMODB, statement)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to split multi statement")
 	}
@@ -134,7 +129,7 @@ func (d *Driver) Execute(ctx context.Context, statement string, opts db.ExecuteO
 		})
 		if err != nil {
 			return 0, &db.ErrorWithPosition{
-				Err: errors.Wrapf(err, "failed to execute statement: %s", statement.Text),
+				Err: errors.Wrap(err, "failed to execute statement"),
 				Start: &storepb.TaskRunResult_Position{
 					Line:   int32(statement.FirstStatementLine),
 					Column: int32(statement.FirstStatementColumn),
@@ -158,23 +153,31 @@ func (d *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, q
 		return nil, errors.New("DynamoDB does not support EXPLAIN")
 	}
 
-	statements, err := base.SplitMultiSQL(d.GetType(), statement)
+	singleSQLs, err := base.SplitMultiSQL(storepb.Engine_DYNAMODB, statement)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to split multi statement")
 	}
+	singleSQLs = base.FilterEmptySQL(singleSQLs)
+	if len(singleSQLs) == 0 {
+		return nil, nil
+	}
 
 	var results []*v1pb.QueryResult
-	for _, statement := range statements {
-		if statement.Empty {
-			continue
-		}
-		result, err := d.querySinglePartiQL(ctx, statement, queryContext)
+	for _, singleSQL := range singleSQLs {
+		startTime := time.Now()
+		result, err := d.querySinglePartiQL(ctx, singleSQL.Text, queryContext)
+		stop := false
 		if err != nil {
-			results = append(results, &v1pb.QueryResult{
+			result = &v1pb.QueryResult{
 				Error: err.Error(),
-			})
-		} else {
-			results = append(results, result)
+			}
+			stop = true
+		}
+		result.Latency = durationpb.New(time.Since(startTime))
+		result.Statement = statement
+		results = append(results, result)
+		if stop {
+			break
 		}
 	}
 	return results, nil
@@ -185,12 +188,10 @@ type dynamodbQueryResultMeta struct {
 	value      *v1pb.RowValue
 }
 
-func (d *Driver) querySinglePartiQL(ctx context.Context, statement base.SingleSQL, queryContext *db.QueryContext) (*v1pb.QueryResult, error) {
-	result := &v1pb.QueryResult{
-		Statement: statement.Text,
-	}
+func (d *Driver) querySinglePartiQL(ctx context.Context, statement string, queryContext *db.QueryContext) (*v1pb.QueryResult, error) {
+	result := &v1pb.QueryResult{}
 	input := &dynamodb.ExecuteStatementInput{
-		Statement: &statement.Text,
+		Statement: &statement,
 	}
 	if queryContext != nil && queryContext.Limit > 0 {
 		limit := int32(queryContext.Limit)
@@ -201,15 +202,12 @@ func (d *Driver) querySinglePartiQL(ctx context.Context, statement base.SingleSQ
 	rowMap := make(map[string][]*v1pb.RowValue)
 	// TODO(zp): Our proto is not designed for NoSQL, whose data is not fixed. So we only use the last row to determine the column type.
 	columnTypeMap := make(map[string]string)
-	totalQueryTime := time.Duration(0)
 	totalRowCount := 0
 	for {
 		input.NextToken = nextToken
-		startTime := time.Now()
 		output, err := d.client.ExecuteStatement(ctx, input)
-		totalQueryTime += time.Since(startTime)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to execute statement: %s", statement.Text)
+			return nil, errors.Wrap(err, "failed to execute statement")
 		}
 		for _, item := range output.Items {
 			totalRowCount++
@@ -255,7 +253,7 @@ func (d *Driver) querySinglePartiQL(ctx context.Context, statement base.SingleSQ
 	for key := range rowMap {
 		sortedColumnNames = append(sortedColumnNames, key)
 	}
-	sort.StringSlice(sortedColumnNames).Sort()
+	sort.Strings(sortedColumnNames)
 	columnTypes := make([]string, 0, len(sortedColumnNames))
 	for _, key := range sortedColumnNames {
 		columnTypes = append(columnTypes, columnTypeMap[key])
@@ -272,7 +270,6 @@ func (d *Driver) querySinglePartiQL(ctx context.Context, statement base.SingleSQ
 	}
 	result.ColumnTypeNames = columnTypes
 	result.ColumnNames = sortedColumnNames
-	result.Latency = durationpb.New(totalQueryTime)
 	return result, nil
 }
 
@@ -406,30 +403,6 @@ func convertAttributeValueToRowValue(attributeValue types.AttributeValue) (*v1pb
 		}, nil
 	}
 	return nil, errors.Errorf("unsupported attribute value type: %T", attributeValue)
-}
-
-// RunStatement executes a SQL statement.
-func (d *Driver) RunStatement(ctx context.Context, _ *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	statements, err := base.SplitMultiSQL(d.GetType(), statement)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to split multi statement")
-	}
-
-	var results []*v1pb.QueryResult
-	for _, statement := range statements {
-		if statement.Empty {
-			continue
-		}
-		result, err := d.querySinglePartiQL(ctx, statement, &db.QueryContext{})
-		if err != nil {
-			results = append(results, &v1pb.QueryResult{
-				Error: err.Error(),
-			})
-		} else {
-			results = append(results, result)
-		}
-	}
-	return results, nil
 }
 
 func convertAttributeValueToGoPrimitives(av types.AttributeValue) any {

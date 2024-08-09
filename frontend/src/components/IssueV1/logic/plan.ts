@@ -3,9 +3,8 @@ import {
   composeInstanceResourceForDatabase,
   useDatabaseV1Store,
   useDBGroupStore,
-  useDeploymentConfigV1Store,
   useEnvironmentV1Store,
-  useInstanceV1Store,
+  useInstanceResourceByName,
 } from "@/store";
 import {
   type ComposedProject,
@@ -13,33 +12,35 @@ import {
   type ComposedIssue,
   unknownDatabase,
   unknownEnvironment,
+  type ComposedDatabase,
 } from "@/types";
 import { Engine, State } from "@/types/proto/v1/common";
 import type { Plan_Spec } from "@/types/proto/v1/plan_service";
-import {
-  extractDatabaseResourceName,
-  extractDatabaseGroupName,
-  extractDeploymentConfigName,
-  getPipelineFromDeploymentScheduleV1,
-} from "@/utils";
+import { extractDatabaseResourceName, extractDatabaseGroupName } from "@/utils";
 
-export const databaseForSpec = (issue: ComposedIssue, spec: Plan_Spec) => {
+export const databaseForSpec = (
+  issue: ComposedIssue,
+  spec: Plan_Spec
+): ComposedDatabase => {
+  const environmentStore = useEnvironmentV1Store();
   const { createDatabaseConfig, changeDatabaseConfig, exportDataConfig } = spec;
   if (createDatabaseConfig !== undefined) {
-    const instance = createDatabaseConfig.target;
+    const instanceName = createDatabaseConfig.target;
     const databaseName = createDatabaseConfig.database;
-    const instanceEntity = useInstanceV1Store().getInstanceByName(instance);
+    const instance = useInstanceResourceByName(instanceName);
     return {
       ...unknownDatabase(),
-      name: `${instance}/databases/${databaseName}`,
+      name: `${instanceName}/databases/${databaseName}`,
       uid: String(UNKNOWN_ID),
       databaseName,
-      instance,
-      instanceEntity,
+      instance: instanceName,
       project: issue.project,
       projectEntity: issue.projectEntity,
-      effectiveEnvironment: instanceEntity.environment,
-      effectiveEnvironmentEntity: instanceEntity.environmentEntity,
+      effectiveEnvironment: instance.environment,
+      effectiveEnvironmentEntity: environmentStore.getEnvironmentByName(
+        instance.environment
+      ),
+      instanceResource: instance,
     };
   } else if (
     changeDatabaseConfig !== undefined ||
@@ -118,25 +119,6 @@ export const databaseEngineForSpec = async (
         dbName,
         /* silent */ true
       );
-      if (db && db.uid !== String(UNKNOWN_ID)) {
-        return db.instanceResource.engine;
-      }
-    }
-  }
-  if (extractDeploymentConfigName(target)) {
-    const deploymentConfig =
-      await useDeploymentConfigV1Store().fetchDeploymentConfigByProjectName(
-        project.name
-      );
-    if (deploymentConfig) {
-      const databaseList = useDatabaseV1Store().databaseListByProject(
-        project.name
-      );
-      const pipeline = getPipelineFromDeploymentScheduleV1(
-        databaseList,
-        deploymentConfig.schedule
-      );
-      const db = head(head(pipeline));
       if (db && db.uid !== String(UNKNOWN_ID)) {
         return db.instanceResource.engine;
       }

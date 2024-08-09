@@ -23,7 +23,7 @@ func validateIAMBinding(binding *storepb.Binding) bool {
 }
 
 // GetUsersByRoleInIAMPolicy gets users in the iam policy.
-func GetUsersByRoleInIAMPolicy(ctx context.Context, stores *store.Store, role api.Role, policy *storepb.ProjectIamPolicy) []*store.UserMessage {
+func GetUsersByRoleInIAMPolicy(ctx context.Context, stores *store.Store, role api.Role, policy *storepb.IamPolicy) []*store.UserMessage {
 	roleFullName := common.FormatRole(role.String())
 	var users []*store.UserMessage
 
@@ -65,13 +65,13 @@ func GetUsersByMember(ctx context.Context, stores *store.Store, member string) [
 		if user != nil {
 			users = append(users, user)
 		}
-	} else if strings.HasPrefix(member, common.UserGroupPrefix) {
-		groupEmail, err := common.GetUserGroupEmail(member)
+	} else if strings.HasPrefix(member, common.GroupPrefix) {
+		groupEmail, err := common.GetGroupEmail(member)
 		if err != nil {
 			slog.Error("failed to parse group email", slog.String("group", member), log.BBError(err))
 			return users
 		}
-		group, err := stores.GetUserGroup(ctx, groupEmail)
+		group, err := stores.GetGroup(ctx, groupEmail)
 		if err != nil {
 			slog.Error("failed to get group", slog.String("group", member), log.BBError(err))
 			return users
@@ -107,7 +107,7 @@ func getUserByIdentifier(ctx context.Context, stores *store.Store, identifier st
 }
 
 // GetUserIAMPolicyBindings return the valid bindings for the user.
-func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *store.UserMessage, policy *storepb.ProjectIamPolicy) []*storepb.Binding {
+func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *store.UserMessage, policy *storepb.IamPolicy) []*storepb.Binding {
 	userIDFullName := common.FormatUserUID(user.ID)
 
 	var bindings []*storepb.Binding
@@ -126,13 +126,13 @@ func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *st
 				hasUser = true
 				break
 			}
-			if strings.HasPrefix(member, common.UserGroupPrefix) {
-				groupEmail, err := common.GetUserGroupEmail(member)
+			if strings.HasPrefix(member, common.GroupPrefix) {
+				groupEmail, err := common.GetGroupEmail(member)
 				if err != nil {
 					slog.Error("failed to parse group email", slog.String("group", member), log.BBError(err))
 					continue
 				}
-				group, err := stores.GetUserGroup(ctx, groupEmail)
+				group, err := stores.GetGroup(ctx, groupEmail)
 				if err != nil {
 					slog.Error("failed to get group", slog.String("group", member), log.BBError(err))
 					continue
@@ -156,71 +156,30 @@ func GetUserIAMPolicyBindings(ctx context.Context, stores *store.Store, user *st
 	return bindings
 }
 
-// getUserRoles returns the `uniq`ed roles of a user, including workspace roles and the roles in the projects.
+// GetUserRolesInIamPolicy returns the `uniq`ed roles of a user, including workspace roles and the roles in the projects.
 // the condition of role binding is respected and evaluated with request.time=time.Now().
 // the returned role name should in the roles/{id} format.
-func getUserRoles(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) ([]string, error) {
+func GetUserRolesInIamPolicy(ctx context.Context, stores *store.Store, user *store.UserMessage, policies ...*storepb.IamPolicy) []string {
 	var roles []string
-	for _, userRole := range user.Roles {
-		roles = append(roles, common.FormatRole(userRole.String()))
-	}
 
-	for _, projectPolicy := range projectPolicies {
-		bindings := GetUserIAMPolicyBindings(ctx, stores, user, projectPolicy)
+	for _, policy := range policies {
+		bindings := GetUserIAMPolicyBindings(ctx, stores, user, policy)
 		for _, binding := range bindings {
 			roles = append(roles, binding.Role)
 		}
 	}
-	roles = uniq(roles)
+	roles = Uniq(roles)
 
-	return roles, nil
-}
-
-// See GetUserRoles.
-func GetUserRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) (map[api.Role]bool, error) {
-	roles, err := getUserRoles(ctx, stores, user, projectPolicies...)
-	if err != nil {
-		return nil, err
-	}
-
-	rolesMap := make(map[api.Role]bool)
-	for _, role := range roles {
-		rolesMap[api.Role(strings.TrimPrefix(role, "roles/"))] = true
-	}
-	return rolesMap, nil
+	return roles
 }
 
 // See GetUserRoles. The returned map key format is roles/{role}.
-func GetUserFormattedRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.ProjectIamPolicy) (map[string]bool, error) {
-	roles, err := getUserRoles(ctx, stores, user, projectPolicies...)
-	if err != nil {
-		return nil, err
-	}
+func GetUserFormattedRolesMap(ctx context.Context, stores *store.Store, user *store.UserMessage, projectPolicies ...*storepb.IamPolicy) map[string]bool {
+	roles := GetUserRolesInIamPolicy(ctx, stores, user, projectPolicies...)
 
 	rolesMap := make(map[string]bool)
 	for _, role := range roles {
 		rolesMap[role] = true
 	}
-	return rolesMap, nil
-}
-
-// BackfillRoleFromRoles finds the highest workspace level role from roles.
-func BackfillRoleFromRoles(roles []api.Role) api.Role {
-	admin, dba := false, false
-	for _, r := range roles {
-		if r == api.WorkspaceAdmin {
-			admin = true
-			break
-		}
-		if r == api.WorkspaceDBA {
-			dba = true
-		}
-	}
-	if admin {
-		return api.WorkspaceAdmin
-	}
-	if dba {
-		return api.WorkspaceDBA
-	}
-	return api.WorkspaceMember
+	return rolesMap
 }

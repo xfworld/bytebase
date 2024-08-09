@@ -72,7 +72,7 @@ func (driver *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, e
 		}
 	}
 
-	users, err := driver.getInstanceRoles(ctx)
+	instanceRoles, err := driver.getInstanceRoles(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +109,11 @@ func (driver *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, e
 	}
 
 	return &db.InstanceMetadata{
-		Version:       version,
-		InstanceRoles: users,
-		Databases:     databases,
+		Version:   version,
+		Databases: databases,
 		Metadata: &storepb.InstanceMetadata{
 			MysqlLowerCaseTableNames: int32(lowerCaseTableNames),
+			Roles:                    instanceRoles,
 		},
 	}, nil
 }
@@ -906,13 +906,10 @@ func analyzeSlowLog(engine storepb.Engine, logs []*slowLog) (map[string]*storepb
 		}
 
 		for _, db := range databaseList {
-			var dbLog map[string]*storepb.SlowQueryStatisticsItem
-			var exists bool
-			if dbLog, exists = logMap[db]; !exists {
-				dbLog = make(map[string]*storepb.SlowQueryStatisticsItem)
-				logMap[db] = dbLog
+			if _, ok := logMap[db]; !ok {
+				logMap[db] = make(map[string]*storepb.SlowQueryStatisticsItem)
 			}
-			dbLog[fingerprint] = mergeSlowLog(fingerprint, dbLog[fingerprint], log.details)
+			logMap[db][fingerprint] = mergeSlowLog(fingerprint, logMap[db][fingerprint], log.details)
 		}
 	}
 

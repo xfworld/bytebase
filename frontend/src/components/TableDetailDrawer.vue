@@ -110,7 +110,10 @@
             <div class="max-w-6xl px-6 space-y-6 divide-y divide-block-border">
               <!-- Description list -->
               <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">
-                <div v-if="hasTableEngineProperty" class="col-span-1">
+                <div
+                  v-if="hasTableEngineProperty(instanceEngine)"
+                  class="col-span-1"
+                >
                   <dt class="text-sm font-medium text-control-light">
                     {{ $t("database.engine") }}
                   </dt>
@@ -150,7 +153,10 @@
                   </dd>
                 </div>
 
-                <div v-if="hasIndexSizeProperty" class="col-span-1">
+                <div
+                  v-if="hasIndexSizeProperty(instanceEngine)"
+                  class="col-span-1"
+                >
                   <dt class="text-sm font-medium text-control-light">
                     {{ $t("database.index-size") }}
                   </dt>
@@ -159,7 +165,7 @@
                   </dd>
                 </div>
 
-                <template v-if="hasCollationProperty">
+                <template v-if="hasCollationProperty(instanceEngine)">
                   <div class="col-span-1">
                     <dt class="text-sm font-medium text-control-light">
                       {{ $t("db.collation") }}
@@ -233,6 +239,7 @@ import { computedAsync } from "@vueuse/core";
 import { CodeIcon } from "lucide-vue-next";
 import { NButton, NPopover } from "naive-ui";
 import { computed, reactive, ref } from "vue";
+import { BBBadge } from "@/bbkit";
 import ClassificationLevelBadge from "@/components/SchemaTemplate/ClassificationLevelBadge.vue";
 import TableSchemaViewer from "@/components/TableSchemaViewer.vue";
 import {
@@ -240,6 +247,9 @@ import {
   InstanceV1Name,
   Drawer,
   DrawerContent,
+  EnvironmentV1Name,
+  ProjectV1Name,
+  SearchBox,
 } from "@/components/v2";
 import {
   useCurrentUserV1,
@@ -247,14 +257,18 @@ import {
   useDBSchemaV1Store,
 } from "@/store";
 import { usePolicyByParentAndType } from "@/store/modules/v1/policy";
-import { DEFAULT_PROJECT_V1_NAME, defaultProject } from "@/types";
+import { DEFAULT_PROJECT_NAME, defaultProject } from "@/types";
 import { Engine } from "@/types/proto/v1/common";
 import type { MaskData } from "@/types/proto/v1/org_policy_service";
 import { PolicyType } from "@/types/proto/v1/org_policy_service";
 import type { DataClassificationSetting_DataClassificationConfig } from "@/types/proto/v1/setting_service";
 import {
   bytesToString,
+  hasCollationProperty,
+  hasIndexSizeProperty,
   hasProjectPermissionV2,
+  hasSchemaProperty,
+  hasTableEngineProperty,
   isDatabaseV1Queryable,
   isGhostTable,
 } from "@/utils";
@@ -325,7 +339,7 @@ const instanceEngine = computed(() => {
 });
 
 const allowQuery = computed(() => {
-  if (database.value.project === DEFAULT_PROJECT_V1_NAME) {
+  if (database.value.project === DEFAULT_PROJECT_NAME) {
     return hasProjectPermissionV2(
       defaultProject(),
       currentUserV1.value,
@@ -335,30 +349,12 @@ const allowQuery = computed(() => {
   return isDatabaseV1Queryable(database.value, currentUserV1.value);
 });
 
-const hasSchemaProperty = computed(
-  () =>
-    instanceEngine.value === Engine.POSTGRES ||
-    instanceEngine.value === Engine.RISINGWAVE
-);
-
 const hasPartitionTables = computed(() => {
   return (
     // Only show partition tables for PostgreSQL.
     database.value.instanceResource.engine === Engine.POSTGRES &&
     table.value &&
     table.value.partitions.length > 0
-  );
-});
-
-const hasTableEngineProperty = computed(() => {
-  return ![Engine.POSTGRES, Engine.SNOWFLAKE].includes(instanceEngine.value);
-});
-const hasIndexSizeProperty = computed(() => {
-  return ![Engine.CLICKHOUSE, Engine.SNOWFLAKE].includes(instanceEngine.value);
-});
-const hasCollationProperty = computed(() => {
-  return ![Engine.POSTGRES, Engine.CLICKHOUSE, Engine.SNOWFLAKE].includes(
-    instanceEngine.value
   );
 });
 
@@ -371,7 +367,7 @@ const shouldShowColumnTable = computed(() => {
 });
 
 const getTableName = (tableName: string) => {
-  if (hasSchemaProperty.value) {
+  if (hasSchemaProperty(instanceEngine.value)) {
     return `"${props.schemaName}"."${tableName}"`;
   }
   return tableName;

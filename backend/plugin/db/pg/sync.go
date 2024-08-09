@@ -52,9 +52,11 @@ func (driver *Driver) SyncInstance(ctx context.Context) (*db.InstanceMetadata, e
 	}
 
 	return &db.InstanceMetadata{
-		Version:       version,
-		InstanceRoles: instanceRoles,
-		Databases:     filteredDatabases,
+		Version:   version,
+		Databases: filteredDatabases,
+		Metadata: &storepb.InstanceMetadata{
+			Roles: instanceRoles,
+		},
 	}, nil
 }
 
@@ -126,44 +128,20 @@ func (driver *Driver) SyncDBSchema(ctx context.Context) (*storepb.DatabaseSchema
 	}
 
 	for _, schemaName := range schemas {
-		var tables []*storepb.TableMetadata
-		var externalTables []*storepb.ExternalTableMetadata
-		var views []*storepb.ViewMetadata
-		var materializedViews []*storepb.MaterializedViewMetadata
-		var functions []*storepb.FunctionMetadata
-		var sequences []*storepb.SequenceMetadata
-		var exists bool
-		if tables, exists = tableMap[schemaName]; !exists {
-			tables = []*storepb.TableMetadata{}
-		}
-		if externalTables, exists = externalTableMap[schemaName]; !exists {
-			externalTables = []*storepb.ExternalTableMetadata{}
-		}
+		tables := tableMap[schemaName]
 		for _, table := range tables {
 			if isAtLeastPG10 {
 				table.Partitions = warpTablePartitions(tablePartitionMap, schemaName, table.Name)
 			}
 		}
-		if views, exists = viewMap[schemaName]; !exists {
-			views = []*storepb.ViewMetadata{}
-		}
-		if materializedViews, exists = materializedViewMap[schemaName]; !exists {
-			materializedViews = []*storepb.MaterializedViewMetadata{}
-		}
-		if functions, exists = functionMap[schemaName]; !exists {
-			functions = []*storepb.FunctionMetadata{}
-		}
-		if sequences, exists = sequenceMap[schemaName]; !exists {
-			sequences = []*storepb.SequenceMetadata{}
-		}
 		databaseMetadata.Schemas = append(databaseMetadata.Schemas, &storepb.SchemaMetadata{
 			Name:              schemaName,
 			Tables:            tables,
-			ExternalTables:    externalTables,
-			Views:             views,
-			Functions:         functions,
-			Sequences:         sequences,
-			MaterializedViews: materializedViews,
+			ExternalTables:    externalTableMap[schemaName],
+			Views:             viewMap[schemaName],
+			Functions:         functionMap[schemaName],
+			Sequences:         sequenceMap[schemaName],
+			MaterializedViews: materializedViewMap[schemaName],
 		})
 	}
 	databaseMetadata.Extensions = extensions
@@ -317,7 +295,8 @@ func formatTableNameFromRegclass(name string) string {
 var listSchemaQuery = fmt.Sprintf(`
 SELECT nspname
 FROM pg_catalog.pg_namespace
-WHERE nspname NOT IN (%s);
+WHERE nspname NOT IN (%s)
+ORDER BY nspname;
 `, pgparser.SystemSchemaWhereClause)
 
 func getSchemas(txn *sql.Tx) ([]string, error) {
@@ -327,7 +306,7 @@ func getSchemas(txn *sql.Tx) ([]string, error) {
 	}
 	defer rows.Close()
 
-	var result []string
+	var schemaNames []string
 	for rows.Next() {
 		var schemaName string
 		if err := rows.Scan(&schemaName); err != nil {
@@ -336,13 +315,12 @@ func getSchemas(txn *sql.Tx) ([]string, error) {
 		if pgparser.IsSystemSchema(schemaName) {
 			continue
 		}
-		result = append(result, schemaName)
+		schemaNames = append(schemaNames, schemaName)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	return result, nil
+	return schemaNames, nil
 }
 
 func getListForeignTableQuery() string {
@@ -596,7 +574,8 @@ func getTableColumns(txn *sql.Tx) (map[db.TableKey][]*storepb.ColumnMetadata, er
 
 var listMaterializedViewQuery = `
 SELECT schemaname, matviewname, definition, obj_description(format('%s.%s', quote_ident(schemaname), quote_ident(matviewname))::regclass) FROM pg_catalog.pg_matviews` + fmt.Sprintf(`
-WHERE schemaname NOT IN (%s);`, pgparser.SystemSchemaWhereClause)
+WHERE schemaname NOT IN (%s)
+ORDER BY schemaname, matviewname;`, pgparser.SystemSchemaWhereClause)
 
 func getMaterializedViews(txn *sql.Tx) (map[string][]*storepb.MaterializedViewMetadata, error) {
 	matviewMap := make(map[string][]*storepb.MaterializedViewMetadata)
@@ -648,7 +627,8 @@ func getMaterializedViews(txn *sql.Tx) (map[string][]*storepb.MaterializedViewMe
 
 var listViewQuery = `
 SELECT schemaname, viewname, definition, obj_description(format('%s.%s', quote_ident(schemaname), quote_ident(viewname))::regclass) FROM pg_catalog.pg_views` + fmt.Sprintf(`
-WHERE schemaname NOT IN (%s);`, pgparser.SystemSchemaWhereClause)
+WHERE schemaname NOT IN (%s)
+ORDER BY schemaname, viewname;`, pgparser.SystemSchemaWhereClause)
 
 // getViews gets all views of a database.
 func getViews(txn *sql.Tx) (map[string][]*storepb.ViewMetadata, error) {

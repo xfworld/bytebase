@@ -4,34 +4,28 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
-	api "github.com/bytebase/bytebase/backend/legacyapi"
 	"github.com/bytebase/bytebase/backend/metric"
 	metricplugin "github.com/bytebase/bytebase/backend/plugin/metric"
 	"github.com/bytebase/bytebase/backend/runner/metricreport"
-	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
 
 // DebugInterceptor is the v1 debug interceptor for gRPC server.
 type DebugInterceptor struct {
-	errorRecordRing *api.ErrorRecordRing
-	metricReporter  *metricreport.Reporter
+	metricReporter *metricreport.Reporter
 }
 
 // NewDebugInterceptor returns a new v1 API debug interceptor.
-func NewDebugInterceptor(errorRecordRing *api.ErrorRecordRing, metricReporter *metricreport.Reporter) *DebugInterceptor {
+func NewDebugInterceptor(metricReporter *metricreport.Reporter) *DebugInterceptor {
 	return &DebugInterceptor{
-		errorRecordRing: errorRecordRing,
-		metricReporter:  metricReporter,
+		metricReporter: metricReporter,
 	}
 }
 
@@ -82,23 +76,6 @@ func (in *DebugInterceptor) debugInterceptorDo(ctx context.Context, fullMethod s
 		logMsg = "unknown error"
 	}
 	slog.Log(ctx, logLevel, logMsg, "method", fullMethod, log.BBError(err), "latency", fmt.Sprintf("%vms", time.Since(startTime).Milliseconds()))
-	if st.Code() == codes.Internal && slog.Default().Enabled(ctx, slog.LevelDebug) {
-		var role api.Role
-		if r, ok := ctx.Value(common.RoleContextKey).(api.Role); ok {
-			role = r
-		}
-
-		in.errorRecordRing.RWMutex.Lock()
-		defer in.errorRecordRing.RWMutex.Unlock()
-		in.errorRecordRing.Ring.Value = &v1pb.DebugLog{
-			RecordTime:  timestamppb.New(time.Now()),
-			RequestPath: fullMethod,
-			Role:        string(role),
-			Error:       err.Error(),
-			StackTrace:  string(debug.Stack()),
-		}
-		in.errorRecordRing.Ring = in.errorRecordRing.Ring.Next()
-	}
 	in.metricReporter.Report(ctx, &metricplugin.Metric{
 		Name:  metric.APIRequestMetricName,
 		Value: 1,

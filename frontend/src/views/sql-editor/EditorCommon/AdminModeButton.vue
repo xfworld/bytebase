@@ -3,6 +3,7 @@
     v-if="showButton"
     :size="props.size"
     type="warning"
+    :dashed="true"
     :disabled="isDisconnected"
     @click="enterAdminMode"
   >
@@ -14,8 +15,10 @@
 <script lang="ts" setup>
 import { last } from "lodash-es";
 import { WrenchIcon } from "lucide-vue-next";
+import { NButton, type ButtonProps } from "naive-ui";
 import { storeToRefs } from "pinia";
 import { computed, nextTick, unref } from "vue";
+import type { PropType } from "vue";
 import {
   useCurrentUserV1,
   useSQLEditorTabStore,
@@ -33,7 +36,7 @@ const emit = defineEmits<{
 
 const props = defineProps({
   size: {
-    type: String,
+    type: String as PropType<ButtonProps["size"]>,
     default: "medium",
   },
 });

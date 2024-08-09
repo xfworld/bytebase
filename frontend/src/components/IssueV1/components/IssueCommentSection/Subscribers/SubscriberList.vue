@@ -7,16 +7,11 @@
     :scrollable="true"
     trigger="click"
     placement="left"
+    :disabled="readonly"
     @update:show="onUpdateShow"
     @update:value="onUpdateSubscribers"
   >
-    <NButton
-      quaternary
-      :style="{
-        '--n-padding':
-          subscriberList.length === 0 ? '0 8px 0 8px' : '0 8px 0 12px',
-      }"
-    >
+    <NButton quaternary>
       <div class="flex items-center gap-x-1">
         <UserAvatar
           v-for="user in subscriberList"
@@ -25,7 +20,7 @@
           size="SMALL"
           class="ml-[-18px] first:ml-0"
         />
-        <heroicons:ellipsis-horizontal class="w-5 h-5" />
+        <heroicons:ellipsis-horizontal v-if="!readonly" class="w-5 h-5" />
       </div>
     </NButton>
 
@@ -47,14 +42,18 @@ import { updateIssueSubscribers, useIssueContext } from "@/components/IssueV1";
 import UserAvatar from "@/components/User/UserAvatar.vue";
 import { useUserStore } from "@/store";
 import { unknownUser } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
+import type { ComposedUser } from "@/types";
 import { UserType } from "@/types/proto/v1/auth_service";
 import { State } from "@/types/proto/v1/common";
 import { extractUserResourceName } from "@/utils";
 import SubscriberListItem from "./SubscriberListItem.vue";
 
+defineProps<{
+  readonly?: boolean;
+}>();
+
 type UserSelectOption = SelectOption & {
-  user: User;
+  user: ComposedUser;
   value: string;
 };
 

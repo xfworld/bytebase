@@ -36,9 +36,10 @@ func init() {
 
 // Driver is the redis driver.
 type Driver struct {
-	rdb          redis.UniversalClient
-	sshClient    *ssh.Client
-	databaseName string
+	rdb                  redis.UniversalClient
+	sshClient            *ssh.Client
+	databaseName         string
+	maximumSQLResultSize int64
 }
 
 func newDriver(_ db.DriverConfig) db.Driver {
@@ -63,12 +64,11 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 	switch config.RedisType {
 	case storepb.DataSourceOptions_REDIS_TYPE_UNSPECIFIED, storepb.DataSourceOptions_STANDALONE:
 		options := &redis.Options{
-			Addr:       fmt.Sprintf("%s:%s", config.Host, config.Port),
-			ClientName: "bytebase",
-			Username:   config.Username,
-			Password:   config.Password,
-			TLSConfig:  tlsConfig,
-			DB:         db,
+			Addr:      fmt.Sprintf("%s:%s", config.Host, config.Port),
+			Username:  config.Username,
+			Password:  config.Password,
+			TLSConfig: tlsConfig,
+			DB:        db,
 		}
 		if config.SSHConfig.Host != "" {
 			sshClient, err := util.GetSSHClient(config.SSHConfig)
@@ -88,7 +88,6 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 		client := redis.NewClient(options)
 		d.databaseName = fmt.Sprintf("%d", db)
 		d.rdb = client
-		return d, nil
 	case storepb.DataSourceOptions_SENTINEL:
 		sentinelAddrs := make([]string, 0, 1+len(config.AdditionalAddresses))
 		sentinelAddrs = append(sentinelAddrs, fmt.Sprintf("%s:%s", config.Host, config.Port))
@@ -99,7 +98,6 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 			MasterName:       config.MasterName,
 			Username:         config.MasterUsername,
 			Password:         config.MasterPassword,
-			ClientName:       "bytebase",
 			SentinelUsername: config.Username,
 			SentinelPassword: config.Password,
 			SentinelAddrs:    sentinelAddrs,
@@ -124,7 +122,6 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 		d.databaseName = fmt.Sprintf("%d", db)
 		client := redis.NewFailoverClient(options)
 		d.rdb = client
-		return d, nil
 	case storepb.DataSourceOptions_CLUSTER:
 		addrs := make([]string, 0, 1+len(config.AdditionalAddresses))
 		addrs = append(addrs, fmt.Sprintf("%s:%s", config.Host, config.Port))
@@ -132,11 +129,10 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 			addrs = append(addrs, fmt.Sprintf("%s:%s", addr.Host, addr.Port))
 		}
 		options := &redis.ClusterOptions{
-			Addrs:      addrs,
-			ClientName: "bytebase",
-			Username:   config.Username,
-			Password:   config.Password,
-			TLSConfig:  tlsConfig,
+			Addrs:     addrs,
+			Username:  config.Username,
+			Password:  config.Password,
+			TLSConfig: tlsConfig,
 		}
 		if config.SSHConfig.Host != "" {
 			sshClient, err := util.GetSSHClient(config.SSHConfig)
@@ -155,10 +151,13 @@ func (d *Driver) Open(_ context.Context, _ storepb.Engine, config db.ConnectionC
 		}
 		client := redis.NewClusterClient(options)
 		d.rdb = client
-		return d, nil
 	default:
 		return nil, errors.Errorf("unsupported redis type %s", config.RedisType.String())
 	}
+
+	d.maximumSQLResultSize = config.MaximumSQLResultSize
+
+	return d, nil
 }
 
 type noDeadlineConn struct{ net.Conn }
@@ -180,11 +179,6 @@ func (d *Driver) Close(context.Context) error {
 // Ping pings the redis server.
 func (d *Driver) Ping(ctx context.Context) error {
 	return d.rdb.Ping(ctx).Err()
-}
-
-// GetType returns redis.
-func (*Driver) GetType() storepb.Engine {
-	return storepb.Engine_REDIS
 }
 
 // GetDB gets the database.
@@ -233,7 +227,7 @@ func (*Driver) Dump(_ context.Context, _ io.Writer) (string, error) {
 // QueryConn queries a SQL statement in a given connection.
 func (d *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, queryContext *db.QueryContext) ([]*v1pb.QueryResult, error) {
 	if queryContext != nil && queryContext.Explain {
-		return nil, errors.New("MongoDB does not support EXPLAIN")
+		return nil, errors.New("Redis does not support EXPLAIN")
 	}
 
 	startTime := time.Now()
@@ -286,7 +280,7 @@ func (d *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, q
 			ColumnTypeNames: []string{"INT", "TEXT"},
 			Statement:       lines[i],
 		}
-		setQueryResultRows(result, cmd)
+		setQueryResultRows(result, cmd, d.maximumSQLResultSize)
 		result.Latency = durationpb.New(time.Since(startTime))
 
 		queryResult = append(queryResult, result)
@@ -295,15 +289,15 @@ func (d *Driver) QueryConn(ctx context.Context, _ *sql.Conn, statement string, q
 	return queryResult, nil
 }
 
-func setQueryResultRows(result *v1pb.QueryResult, cmd *redis.Cmd) {
+func setQueryResultRows(result *v1pb.QueryResult, cmd *redis.Cmd, limit int64) {
 	val := cmd.Val()
 	l, ok := val.([]any)
 	if ok {
 		for i, v := range l {
 			result.Rows = append(result.Rows, getResultRow(i+1, v))
 			n := len(result.Rows)
-			if (n&(n-1) == 0) && proto.Size(result) > common.MaximumSQLResultSize {
-				result.Error = common.MaximumSQLResultSizeExceeded
+			if (n&(n-1) == 0) && int64(proto.Size(result)) > limit {
+				result.Error = common.FormatMaximumSQLResultSizeMessage(limit)
 				return
 			}
 		}
@@ -318,9 +312,4 @@ func getResultRow(i int, v any) *v1pb.QueryRow {
 		{Kind: &v1pb.RowValue_Int32Value{Int32Value: int32(i)}},
 		{Kind: &v1pb.RowValue_StringValue{StringValue: s}}},
 	}
-}
-
-// RunStatement runs a SQL statement in a given connection.
-func (d *Driver) RunStatement(ctx context.Context, _ *sql.Conn, statement string) ([]*v1pb.QueryResult, error) {
-	return d.QueryConn(ctx, nil, statement, nil)
 }

@@ -1,8 +1,9 @@
 import { keyBy, orderBy } from "lodash-es";
+import { computed, unref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useSubscriptionV1Store } from "@/store";
-import type { ComposedInstance } from "@/types";
-import { UNKNOWN_ID } from "@/types";
+import { useEnvironmentV1Store, useSubscriptionV1Store } from "@/store";
+import type { ComposedInstance, MaybeRef } from "@/types";
+import { isValidProjectName, languageOfEngineV1 } from "@/types";
 import { Engine, State } from "@/types/proto/v1/common";
 import type { Environment } from "@/types/proto/v1/environment_service";
 import type {
@@ -20,7 +21,7 @@ export function instanceV1Name(instance: Instance | InstanceResource) {
   if ((instance as Instance).state === State.DELETED) {
     name += ` (${t("common.archived")})`;
   } else if (
-    (instance as Instance).uid !== `${UNKNOWN_ID}` &&
+    isValidProjectName(instance.name) &&
     !instance.activation &&
     store.currentPlan !== PlanType.FREE
   ) {
@@ -35,12 +36,16 @@ export const extractInstanceResourceName = (name: string) => {
   return matches?.[1] ?? "";
 };
 
-export const sortInstanceV1List = (instanceList: ComposedInstance[]) => {
+export const sortInstanceV1List = (
+  instanceList: (ComposedInstance | InstanceResource)[]
+) => {
   return orderBy(
     instanceList,
     [
-      (instance) => instance.environmentEntity.order,
-      (instance) => Number(instance.uid),
+      (instance) =>
+        useEnvironmentV1Store().getEnvironmentByName(instance.environment)
+          .order,
+      (instance) => instance.name,
       (instance) => instance.title,
     ],
     ["desc", "asc", "asc"]
@@ -108,20 +113,6 @@ export const supportedEngineV1List = () => {
   return engines;
 };
 
-// export const useInstanceEditorLanguage = (
-//   instance: MaybeRef<Instance | undefined>
-// ) => {
-//   return computed((): Language => {
-//     return languageOfEngine(unref(instance)?.engine);
-//   });
-// };
-
-// export const isValidSpannerHost = (host: string) => {
-//   const RE =
-//     /^projects\/(?<PROJECT_ID>(?:[a-z]|[-.:]|[0-9])+)\/instances\/(?<INSTANCE_ID>(?:[a-z]|[-]|[0-9])+)$/;
-//   return RE.test(host);
-// };
-
 export const instanceV1HasAlterSchema = (
   instanceOrEngine: Instance | InstanceResource | Engine
 ): boolean => {
@@ -138,7 +129,7 @@ export const instanceV1HasReadonlyMode = (
 };
 
 export const instanceV1HasCreateDatabase = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ): boolean => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   if (engine === Engine.REDIS) return false;
@@ -153,7 +144,7 @@ export const instanceV1HasCreateDatabase = (
 };
 
 export const instanceV1HasStructuredQueryResult = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ): boolean => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   if (engine === Engine.REDIS) return false;
@@ -161,7 +152,7 @@ export const instanceV1HasStructuredQueryResult = (
 };
 
 export const instanceV1HasSSL = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ): boolean => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   return [
@@ -183,7 +174,7 @@ export const instanceV1HasSSL = (
 };
 
 export const instanceV1HasSSH = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ): boolean => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   return [
@@ -197,7 +188,7 @@ export const instanceV1HasSSH = (
 };
 
 export const instanceV1HasCollationAndCharacterSet = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ) => {
   const engine = engineOfInstanceV1(instanceOrEngine);
 
@@ -214,7 +205,7 @@ export const instanceV1HasCollationAndCharacterSet = (
 };
 
 export const instanceV1AllowsCrossDatabaseQuery = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ) => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   return [
@@ -229,7 +220,7 @@ export const instanceV1AllowsCrossDatabaseQuery = (
 };
 
 export const instanceV1AllowsReorderColumns = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ) => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   return [Engine.MYSQL, Engine.TIDB].includes(engine);
@@ -243,7 +234,7 @@ export const instanceV1SupportsConciseSchema = (
 };
 
 export const instanceV1SupportsTablePartition = (
-  instanceOrEngine: Instance | Engine
+  instanceOrEngine: Instance | InstanceResource | Engine
 ) => {
   const engine = engineOfInstanceV1(instanceOrEngine);
   return [Engine.MYSQL, Engine.TIDB].includes(engine);
@@ -310,12 +301,48 @@ export const engineNameV1 = (type: Engine): string => {
   return "";
 };
 
-export const formatEngineV1 = (instance: Instance): string => {
-  switch (instance.engine) {
-    case Engine.POSTGRES:
-      return "PostgreSQL";
-    // Use MySQL as default engine.
-    default:
-      return "MySQL";
-  }
+export const hasSchemaProperty = (databaseEngine: Engine) => {
+  return (
+    databaseEngine === Engine.POSTGRES ||
+    databaseEngine === Engine.SNOWFLAKE ||
+    databaseEngine === Engine.ORACLE ||
+    databaseEngine === Engine.MSSQL ||
+    databaseEngine === Engine.REDSHIFT ||
+    databaseEngine === Engine.RISINGWAVE
+  );
+};
+
+export const hasTableEngineProperty = (
+  instanceOrEngine: Instance | InstanceResource | Engine
+) => {
+  const engine = engineOfInstanceV1(instanceOrEngine);
+  return ![Engine.POSTGRES, Engine.SNOWFLAKE].includes(engine);
+};
+export const hasIndexSizeProperty = (
+  instanceOrEngine: Instance | InstanceResource | Engine
+) => {
+  const engine = engineOfInstanceV1(instanceOrEngine);
+  return ![Engine.CLICKHOUSE, Engine.SNOWFLAKE].includes(engine);
+};
+export const hasCollationProperty = (
+  instanceOrEngine: Instance | InstanceResource | Engine
+) => {
+  const engine = engineOfInstanceV1(instanceOrEngine);
+  return ![Engine.POSTGRES, Engine.CLICKHOUSE, Engine.SNOWFLAKE].includes(
+    engine
+  );
+};
+
+export const useInstanceV1EditorLanguage = (
+  instance: MaybeRef<Instance | InstanceResource | undefined>
+) => {
+  return computed(() => {
+    return languageOfEngineV1(unref(instance)?.engine);
+  });
+};
+
+export const isValidSpannerHost = (host: string) => {
+  const RE =
+    /^projects\/(?<PROJECT_ID>(?:[a-z]|[-.:]|[0-9])+)\/instances\/(?<INSTANCE_ID>(?:[a-z]|[-]|[0-9])+)$/;
+  return RE.test(host);
 };

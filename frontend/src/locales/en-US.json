@@ -97,6 +97,7 @@
     "stage": "Stage",
     "task": "Task",
     "tasks": "Tasks",
+    "blocking-task": "Blocking task",
     "sql": "SQL",
     "unassigned": "Unassigned",
     "new": "New",
@@ -277,7 +278,13 @@
     "resource": "Resource",
     "closed": "Closed",
     "options": "Options",
-    "reset": "Reset"
+    "reset": "Reset",
+    "refresh": "Refresh",
+    "rollback": "Rollback",
+    "rows": {
+      "self": "rows",
+      "n-rows": "{n} rows"
+    }
   },
   "error-page": {
     "go-back-home": "Go back home"
@@ -393,9 +400,11 @@
       },
       "show-default-parameters": "Show default parameters",
       "hide-default-parameters": "Hide default parameters",
-      "enable": "Enable online migration"
+      "enable": "Enable online migration",
+      "disable": "Disable online migration",
+      "advice-split-statement-to-single-online-migration-issue": "Advice splitting this statement to single online migration issue."
     },
-    "prior-backup-tips": "Back up affected data ahead of time"
+    "prior-backup-tips": "Backup affected data ahead of time"
   },
   "task-run": {
     "status": {
@@ -407,7 +416,9 @@
       "executing-sql": "Executing SQL.",
       "executing-sql-detail": "Executing SQL {current} of {total}, from ({startLine}, {startColumn}) to ({endLine}, {endColumn}).",
       "dumping-schema-after-executing-sql": "SQL execution completed, dumping schema.",
-      "failed-sql-detail": "Execution failed from ({startLine}, {startColumn}) to ({endLine}, {endColumn}): {message}."
+      "failed-sql-detail": "Execution failed from ({startLine}, {startColumn}) to ({endLine}, {endColumn}): {message}.",
+      "waiting-connection": "Waiting for available instance connections. The instance connection count has reached the limit.",
+      "waiting-task": "Waiting for another task to finish."
     }
   },
   "banner": {
@@ -458,7 +469,6 @@
       "gitops": "GitOps",
       "subscription": "Subscription",
       "labels": "Labels",
-      "debug-log": "Debug Log",
       "sensitive-data": "Data Masking",
       "access-control": "Data Access Control",
       "audit-log": "Audit Log",
@@ -658,6 +668,10 @@
           "days": "Day(s)",
           "never-expires": "Never expires"
         },
+        "maximum-sql-result": {
+          "self": "Maximum SQL result size",
+          "description": "Limit the output SQL query result size."
+        },
         "domain-restriction": {
           "self": "Workspace Domain",
           "description": "Specify the domain that could be used as the email domain for workspace members.",
@@ -808,7 +822,8 @@
         "override-desc": "Existed algorithms will be overridden, you have to re-configure the algorithm for semantic types.",
         "override-confirm": "Still upload",
         "default": "Default",
-        "default-desc": "Use *** as data mask",
+        "default-with-semantic-type": "Default (Follow semantic type)",
+        "default-desc": "Use * to cover full or partial text depending on the masking level",
         "table": {
           "title": "Title",
           "description": "Description",
@@ -938,6 +953,7 @@
       "created-issue": "created issue",
       "commented": "commented",
       "changed-description": "changed description",
+      "changed-labels": "changed labels",
       "changed-from-to": "changed {name} from \"{oldValue}\" to \"{newValue}\"",
       "unset-from": "unset {name} from \"{oldValue}\"",
       "set-to": "set {name} to \"{newValue}\"",
@@ -1219,7 +1235,8 @@
     "error": {
       "issue-is-not-open": "The issue is not open",
       "you-don-have-privilege-to-edit-this-issue": "You don't have privilege to edit this issue",
-      "you-are-not-allowed-to-perform-this-action": "You are not allowed to perform this action"
+      "you-are-not-allowed-to-perform-this-action": "You are not allowed to perform this action",
+      "cannot-close-issue-with-running-tasks": "Cannot close issue with running tasks"
     },
     "approval-requested": "Approval Requested",
     "unfinished-resolved-issue-tips": "This issue is marked as \"Done\" but some of its tasks are not executed successfully.",
@@ -1237,6 +1254,8 @@
       "self": "Update rollout time"
     },
     "task-run": {
+      "logs": "Logs",
+      "session": "Session",
       "task-run-log": {
         "batch": "Batch",
         "affected-rows": "Affected rows",
@@ -1252,6 +1271,17 @@
           "waiting": "Ready to be executed",
           "running": "Being executed"
         }
+      },
+      "task-run-session": {
+        "blocking-sessions": {
+          "self": "Blocking sessions",
+          "description": "The sessions that are blocking the current session"
+        },
+        "blocked-sessions": {
+          "self": "Blocked sessions",
+          "description": "The sessions that are blocked by the current session"
+        },
+        "no-session-found": "No session found."
       }
     },
     "sql-review": {
@@ -1532,7 +1562,12 @@
     "production-environment": "Production environment",
     "access-control": {
       "title": "Access control",
-      "disable-copy-data-from-sql-editor": "Restrict data copying in SQL Editor (Admins/DBAs allowed)"
+      "disable-copy-data-from-sql-editor": "Restrict data copying in SQL Editor (Admins/DBAs allowed)",
+      "restrict-admin-data-sources": {
+        "self": "Admin Data Source Query Restrictions",
+        "disallow": "Disallow querying data from the admin data source",
+        "fallback": "Fallback to the admin data source if no read-only data source is available"
+      }
     }
   },
   "quick-start": {
@@ -1590,6 +1625,10 @@
     },
     "activate": {
       "title": "Activate your {type} account"
+    },
+    "login-as-another": {
+      "title": "You have logged in as another user",
+      "content": "We will refirect you to the home page."
     }
   },
   "policy": {
@@ -1815,6 +1854,7 @@
     "transfer-database-from-to": "Transfer database from source project to target project",
     "classification": {
       "self": "Classification",
+      "description": "Use data classification to manage masking policy for many columns by controlling only a small number of classifications.",
       "sync-from-comment": "Sync classification from comment",
       "sync-from-comment-tip": "Once enabled, the classification will sync from the table/column comment. The comment should follow \"{format}\" format.",
       "sync-from-comment-enable-warning": "Classification will change with the DDL and sync from the original comment.",
@@ -2390,7 +2430,19 @@
       "self": "Standard mode"
     },
     "to-enable-standard-mode": "to enable the standard mode",
-    "add-a-new-instance": "Add a new instance"
+    "add-a-new-instance": "Add a new instance",
+    "web-socket": {
+      "errors": {
+        "title": "WebSocket connection failed",
+        "description": "Auto Completion might be limited or disabled.",
+        "disconnected": "WebSocket disconnected"
+      }
+    },
+    "query-context": {
+      "admin-data-source-is-disallowed-to-query": "Admin data source is disallowed to query.",
+      "admin-data-source-is-disallowed-to-query-when-read-only-data-source-is-available": "Admin data source is disallowed to query when read-only data source is available."
+    },
+    "manage-connections": "Manage connections"
   },
   "schema-editor": {
     "self": "Schema Editor",
@@ -2807,6 +2859,8 @@
     "policy-updated": "Successfully updated the review policy.",
     "policy-duplicated": "Successfully duplicated the review policy.",
     "rules": "Rules",
+    "add-rules": "Add rules",
+    "add-or-remove-rules": "Add or remove rules",
     "filter": "Filter",
     "no-permission": "Only DBA or Admin has permission to create or update review policy.",
     "disable": "Disable",
@@ -2820,9 +2874,10 @@
       "no-linked-resources": "No attached resources",
       "change-resources": "Change attached resources",
       "self": "Attach to resources",
-      "label": "Apply the review policy to the selected resource. One resource can only link one policy. The database will use the SQL review policy attached to the project, otherwise fallback to the environment policy.",
+      "label": "You can apply the review policy to environments or projects, this will affect all databases belong to the resource. The database will use the SQL review policy attached to the project, otherwise fallback to the environment policy.",
       "label-environment": "The SQL review policy will effect all databases belongs to the selected environment.",
-      "label-project": "The SQL review policy will effect all databases belongs to the selected project. The SQL review policy for environment will be ignored."
+      "label-project": "The SQL review policy will effect all databases belongs to the selected project. The SQL review policy for environment will be ignored.",
+      "override-warning": "Following resources already bound with other SQL review policies. Click \"{button}\" will override the config."
     },
     "create": {
       "breadcrumb": "Create SQL review policy",
@@ -2856,31 +2911,6 @@
     "view-definition": "View definition",
     "other-engines": "Other engines"
   },
-  "debug-log": {
-    "title": "Debug Log",
-    "no-logs": "No debug logs",
-    "count-of-logs": "Fetched latest {count} log(s) from server.",
-    "debug-log-detail": "Debug Log Details",
-    "enabled": "Debug mode is enabled.",
-    "open-debug-mode": "Enable debug",
-    "table": {
-      "record-ts": "Time",
-      "method": "Method",
-      "request-path": "Request path",
-      "role": "Role",
-      "error": "Error",
-      "stack-trace": "Stack trace",
-      "empty": "<Empty>",
-      "operation": {
-        "operation": "Operation",
-        "view-details": "View Details",
-        "copy": "Copy",
-        "copy-all": "Copy All",
-        "copied": "Copied!",
-        "export": "Export"
-      }
-    }
-  },
   "audit-log": {
     "no-logs": "No audit logs",
     "audit-log-detail": "Audit Log Details",
@@ -2899,7 +2929,8 @@
       "method": "Method",
       "request": "Request",
       "response": "Response",
-      "status": "Status"
+      "status": "Status",
+      "service-data": "Service Data"
     },
     "type": {
       "workspace": {
@@ -3333,7 +3364,8 @@
       },
       "delete": "Delete role",
       "delete-warning": "The role \"{name}\" will be deleted. This action cannot be undone.",
-      "delete-warning-with-resources": "The role \"{name}\" is assigned to following users:"
+      "delete-warning-with-resources": "The role \"{name}\" is assigned to following users:",
+      "delete-warning-retry": "Please remove the role from these users then retry again."
     },
     "select": "Select role",
     "select-roles": "Select roles",
@@ -3478,6 +3510,7 @@
       "description-tips": "A condition is a rule that can be configured via an expression. For example, the condition \"Environment is prod\" will match issues executed in the \"prod\" environment.",
       "add": "Add condition",
       "add-group": "Add condition group",
+      "add-raw-expression": "Add raw expression",
       "group": {
         "or": {
           "description": "Any of the following are true..."
@@ -3615,6 +3648,9 @@
     },
     "last-update": {
       "self": "Last update"
+    },
+    "source-branch": {
+      "self": "Source branch"
     }
   }
 }

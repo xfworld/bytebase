@@ -2,7 +2,12 @@ import { uniq } from "lodash-es";
 import { defineStore } from "pinia";
 import { computed, reactive, ref, unref, watch, markRaw } from "vue";
 import { databaseServiceClient } from "@/grpcweb";
-import type { ComposedInstance, ComposedDatabase, MaybeRef } from "@/types";
+import type {
+  ComposedInstance,
+  ComposedDatabase,
+  MaybeRef,
+  ComposedUser,
+} from "@/types";
 import {
   emptyDatabase,
   EMPTY_ID,
@@ -11,8 +16,7 @@ import {
   UNKNOWN_ID,
   unknownInstanceResource,
 } from "@/types";
-import { DEFAULT_PROJECT_V1_NAME } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import type {
   Database,
   UpdateDatabaseRequest,
@@ -79,6 +83,15 @@ export const useDatabaseV1Store = defineStore("database_v1", () => {
       }
     }
   };
+  const listDatabases = async (parent : string) => {
+    const { databases } = await databaseServiceClient.listDatabases({
+      parent: parent,
+      pageSize: DEFAULT_DATABASE_PAGE_SIZE,
+    });
+    const composedDatabaseList = await upsertDatabaseMap(databases);
+    return composedDatabaseList;
+  };
+  // Deprecated.
   const searchDatabases = async (args: Partial<SearchDatabasesRequest>) => {
     const { databases } = await databaseServiceClient.searchDatabases({
       pageSize: DEFAULT_DATABASE_PAGE_SIZE,
@@ -95,7 +108,7 @@ export const useDatabaseV1Store = defineStore("database_v1", () => {
       await fetchDatabaseByName(database);
     }
   };
-  const databaseListByUser = (user: User) => {
+  const databaseListByUser = (user: ComposedUser) => {
     return databaseList.value.filter((db) => {
       if (hasProjectPermissionV2(db.projectEntity, user, "bb.databases.get"))
         return true;
@@ -222,6 +235,7 @@ export const useDatabaseV1Store = defineStore("database_v1", () => {
     reset,
     removeCacheByInstance,
     databaseList,
+    listDatabases,
     searchDatabases,
     syncDatabase,
     databaseListByUser,
@@ -310,7 +324,7 @@ export const batchComposeDatabase = async (databaseList: Database[]) => {
 
   await Promise.all(
     distinctProjectList.map((project) => {
-      if (project === DEFAULT_PROJECT_V1_NAME) {
+      if (project === DEFAULT_PROJECT_NAME) {
         return;
       }
       return projectV1Store.getOrFetchProjectByName(project);

@@ -10,11 +10,13 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import RepositorySetupWizard from "@/components/RepositorySetupWizard.vue";
 import { PROJECT_V1_ROUTE_GITOPS } from "@/router/dashboard/projectV1";
 import {
   pushNotification,
   useVCSConnectorStore,
   useProjectV1Store,
+  useProjectByName,
 } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import { Workflow } from "@/types/proto/v1/project_service";
@@ -23,16 +25,12 @@ const props = defineProps<{
   projectId: string;
 }>();
 
-const router = useRouter();
-const projectV1Store = useProjectV1Store();
-const vcsConnectorStore = useVCSConnectorStore();
 const { t } = useI18n();
-
-const project = computed(() => {
-  return projectV1Store.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
+const router = useRouter();
+const vcsConnectorStore = useVCSConnectorStore();
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 
 const vcsConnectorList = computed(() =>
   vcsConnectorStore.getConnectorList(project.value.name)
@@ -47,7 +45,7 @@ const onCancel = () => {
 const onFinish = () => {
   if (vcsConnectorList.value.length >= 1) {
     // Update workflow type in local cache.
-    projectV1Store.updateProjectCache({
+    useProjectV1Store().updateProjectCache({
       ...project.value,
       workflow: Workflow.VCS,
     });

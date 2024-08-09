@@ -36,7 +36,7 @@
         </NRadioGroup>
         <ProjectSelect
           v-if="transfer === 'project'"
-          v-model:project="targetProjectId"
+          v-model:project-name="targetProjectName"
           :allowed-project-role-list="[PresetRoleType.PROJECT_OWNER]"
         />
       </div>
@@ -72,6 +72,7 @@ import { NButton, NTooltip, NDivider, NRadioGroup, NRadio } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBSpin } from "@/bbkit";
 import { ProjectSelect, DrawerContent } from "@/components/v2";
 import { PROJECT_V1_ROUTE_DATABASES } from "@/router/dashboard/projectV1";
 import {
@@ -80,8 +81,13 @@ import {
   useProjectV1Store,
 } from "@/store";
 import type { ComposedDatabase } from "@/types";
-import { UNKNOWN_ID, PresetRoleType, DEFAULT_PROJECT_ID } from "@/types";
+import {
+  PresetRoleType,
+  DEFAULT_PROJECT_NAME,
+  isValidProjectName,
+} from "@/types";
 import { extractProjectResourceName } from "@/utils";
+import { MultipleDatabaseSelector } from "../TransferDatabaseForm";
 
 const props = defineProps<{
   databaseList: ComposedDatabase[];
@@ -115,27 +121,27 @@ const selectedDatabaseList = computed(() => {
 
 const allUnassigned = computed(() => {
   return selectedDatabaseList.value.every(
-    (db) => db.projectEntity.uid === `${DEFAULT_PROJECT_ID}`
+    (db) => db.project === DEFAULT_PROJECT_NAME
   );
 });
 
-const targetProjectId = ref<string>();
+const targetProjectName = ref<string>();
 
 watch(
   () => transfer.value,
   (transfer) => {
     if (transfer === "unassign") {
-      targetProjectId.value = `${DEFAULT_PROJECT_ID}`;
+      targetProjectName.value = DEFAULT_PROJECT_NAME;
     } else {
-      targetProjectId.value = undefined;
+      targetProjectName.value = undefined;
     }
   }
 );
 
 const targetProject = computed(() => {
-  const id = targetProjectId.value;
-  if (!id || id === String(UNKNOWN_ID)) return undefined;
-  return projectStore.getProjectByUID(id);
+  const name = targetProjectName.value;
+  if (!name || !isValidProjectName(name)) return undefined;
+  return projectStore.getProjectByName(name);
 });
 
 const validationErrors = computed(() => {

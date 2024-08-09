@@ -30,7 +30,7 @@
 
     <Drawer v-model:show="showTransfer">
       <TransferDatabaseForm
-        :project-id="project.uid"
+        :project-name="project.name"
         :on-success="handleTransferSuccess"
         @dismiss="showTransfer = false"
       />
@@ -66,8 +66,7 @@ const fetchDatabaseList = async (force: boolean) => {
     ready.value = false;
   }
   const response = await databaseServiceClient.listDatabases({
-    parent: "instances/-",
-    filter: `project == "${props.project.name}"`,
+    parent: props.project.name,
     pageSize: DEFAULT_DATABASE_PAGE_SIZE,
   });
 

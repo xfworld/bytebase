@@ -80,17 +80,16 @@ type Server struct {
 
 	licenseService enterprise.LicenseService
 
-	profile         *config.Profile
-	echoServer      *echo.Echo
-	grpcServer      *grpc.Server
-	muxServer       cmux.CMux
-	lspServer       *lsp.Server
-	store           *store.Store
-	sheetManager    *sheet.Manager
-	dbFactory       *dbfactory.DBFactory
-	startedTs       int64
-	secret          string
-	errorRecordRing api.ErrorRecordRing
+	profile      *config.Profile
+	echoServer   *echo.Echo
+	grpcServer   *grpc.Server
+	muxServer    cmux.CMux
+	lspServer    *lsp.Server
+	store        *store.Store
+	sheetManager *sheet.Manager
+	dbFactory    *dbfactory.DBFactory
+	startedTs    int64
+	secret       string
 
 	// Stubs.
 	planService    *apiv1.PlanService
@@ -116,9 +115,8 @@ type Server struct {
 // NewServer creates a server.
 func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s := &Server{
-		profile:         profile,
-		startedTs:       time.Now().Unix(),
-		errorRecordRing: api.NewErrorRecordRing(),
+		profile:   profile,
+		startedTs: time.Now().Unix(),
 	}
 
 	// Display config
@@ -128,6 +126,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	slog.Info(fmt.Sprintf("resourceDir=%s", profile.ResourceDir))
 	slog.Info(fmt.Sprintf("readonly=%t", profile.Readonly))
 	slog.Info(fmt.Sprintf("demoName=%s", profile.DemoName))
+	slog.Info(fmt.Sprintf("instanceRunUUID=%s", profile.DeployID))
 	slog.Info("-----Config END-------")
 
 	serverStarted := false
@@ -226,17 +225,27 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Cache the license.
 	s.licenseService.LoadSubscription(ctx)
 
-	secret, tokenDuration, err := s.getInitSetting(ctx, storeInstance)
+	secret, tokenDuration, err := s.getInitSetting(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
 	}
 	s.secret = secret
-	s.webhookManager = webhook.NewManager(storeInstance)
-	s.iamManager, err = iam.NewManager(storeInstance)
+	s.iamManager, err = iam.NewManager(storeInstance, s.licenseService)
+	if err := s.iamManager.ReloadCache(ctx); err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create iam manager")
 	}
-	s.dbFactory = dbfactory.New(s.mysqlBinDir, s.mongoBinDir, s.pgBinDir, profile.DataDir, s.secret)
+	s.webhookManager = webhook.NewManager(storeInstance, s.iamManager)
+	s.dbFactory = dbfactory.New(
+		s.store,
+		s.mysqlBinDir,
+		s.mongoBinDir,
+		s.pgBinDir,
+		profile.DataDir,
+		s.secret,
+	)
 
 	// Configure echo server.
 	s.echoServer = echo.New()
@@ -250,11 +259,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.schemaSyncer = schemasync.NewSyncer(storeInstance, s.dbFactory, s.stateCfg, profile, s.licenseService)
 	if !profile.Readonly {
 		s.slowQuerySyncer = slowquerysync.NewSyncer(storeInstance, s.dbFactory, s.stateCfg, profile)
-		s.mailSender = mail.NewSender(s.store, s.stateCfg)
+		s.mailSender = mail.NewSender(s.store, s.stateCfg, s.iamManager)
 		s.relayRunner = relay.NewRunner(storeInstance, s.webhookManager, s.stateCfg)
 		s.approvalRunner = approval.NewRunner(storeInstance, s.sheetManager, s.dbFactory, s.stateCfg, s.webhookManager, s.relayRunner, s.licenseService)
 
-		s.taskSchedulerV2 = taskrun.NewSchedulerV2(storeInstance, s.stateCfg, s.webhookManager)
+		s.taskSchedulerV2 = taskrun.NewSchedulerV2(storeInstance, s.stateCfg, s.webhookManager, profile)
 		s.taskSchedulerV2.Register(api.TaskGeneral, taskrun.NewDefaultExecutor())
 		s.taskSchedulerV2.Register(api.TaskDatabaseCreate, taskrun.NewDatabaseCreateExecutor(storeInstance, s.dbFactory, s.schemaSyncer, s.stateCfg, profile))
 		s.taskSchedulerV2.Register(api.TaskDatabaseSchemaBaseline, taskrun.NewSchemaBaselineExecutor(storeInstance, s.dbFactory, s.licenseService, s.stateCfg, s.schemaSyncer, profile))
@@ -281,10 +290,9 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 
 	// Setup the gRPC and grpc-gateway.
 	authProvider := auth.New(s.store, s.secret, tokenDuration, s.licenseService, s.stateCfg, s.profile)
-	contextProvider := apiv1.NewContextProvider(s.store)
 	auditProvider := apiv1.NewAuditInterceptor(s.store)
-	aclProvider := apiv1.NewACLInterceptor(s.store, s.secret, s.licenseService, s.iamManager, s.profile)
-	debugProvider := apiv1.NewDebugInterceptor(&s.errorRecordRing, s.metricReporter)
+	aclProvider := apiv1.NewACLInterceptor(s.store, s.secret, s.iamManager, s.profile)
+	debugProvider := apiv1.NewDebugInterceptor(s.metricReporter)
 	onPanic := func(p any) error {
 		stack := stacktrace.TakeStacktrace(20 /* n */, 5 /* skip */)
 		// keep a multiline stack
@@ -302,7 +310,6 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		grpc.ChainUnaryInterceptor(
 			debugProvider.DebugInterceptor,
 			authProvider.AuthenticationInterceptor,
-			contextProvider.UnaryInterceptor,
 			aclProvider.ACLInterceptor,
 			auditProvider.AuditInterceptor,
 			recoveryUnaryInterceptor,
@@ -310,7 +317,6 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		grpc.ChainStreamInterceptor(
 			debugProvider.DebugStreamInterceptor,
 			authProvider.AuthenticationStreamInterceptor,
-			contextProvider.StreamInterceptor,
 			aclProvider.ACLStreamInterceptor,
 			auditProvider.AuditStreamInterceptor,
 			recoveryStreamInterceptor,
@@ -338,13 +344,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		}
 		return nil
 	}
-	planService, rolloutService, issueService, err := configureGrpcRouters(ctx, mux, s.grpcServer, s.store, s.sheetManager, s.dbFactory, s.licenseService, s.profile, s.metricReporter, s.stateCfg, s.schemaSyncer, s.webhookManager, s.iamManager, s.relayRunner, s.planCheckScheduler, postCreateUser, s.secret, &s.errorRecordRing, tokenDuration)
+	planService, rolloutService, issueService, sqlService, err := configureGrpcRouters(ctx, mux, s.grpcServer, s.store, s.sheetManager, s.dbFactory, s.licenseService, s.profile, s.metricReporter, s.stateCfg, s.schemaSyncer, s.webhookManager, s.iamManager, s.relayRunner, s.planCheckScheduler, postCreateUser, s.secret, tokenDuration)
 	if err != nil {
 		return nil, err
 	}
 	s.planService, s.rolloutService, s.issueService = planService, rolloutService, issueService
 	// GitOps webhook server.
-	gitOpsServer := gitops.NewService(s.store, s.dbFactory, s.stateCfg, s.licenseService, planService, rolloutService, issueService, s.sheetManager)
+	gitOpsServer := gitops.NewService(s.store, s.stateCfg, s.licenseService, planService, rolloutService, issueService, sqlService, s.sheetManager)
 
 	// Configure echo server routes.
 	configureEchoRouters(s.echoServer, s.grpcServer, s.lspServer, gitOpsServer, mux, profile)

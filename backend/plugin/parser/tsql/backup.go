@@ -46,9 +46,8 @@ type TableReference struct {
 type statementInfo struct {
 	offset    int
 	statement string
-	tree      antlr.Tree
+	tree      antlr.ParserRuleContext
 	table     *TableReference
-	line      int
 }
 
 func TransformDMLToSelect(_ base.TransformContext, statement string, sourceDatabase string, targetDatabase string, tablePrefix string) ([]base.BackupStatement, error) {
@@ -104,9 +103,18 @@ func generateSQL(statementInfoList []statementInfo, targetDatabase string, table
 			return nil, errors.Wrap(err, "failed to write buffer")
 		}
 		result = append(result, base.BackupStatement{
-			Statement:    buf.String(),
-			TableName:    targetTable,
-			OriginalLine: statementInfo.line,
+			Statement:       buf.String(),
+			SourceSchema:    table.Schema,
+			SourceTableName: table.Table,
+			TargetTableName: targetTable,
+			StartPosition: &storepb.Position{
+				Line:   int32(statementInfo.tree.GetStart().GetLine()),
+				Column: int32(statementInfo.tree.GetStart().GetColumn()),
+			},
+			EndPosition: &storepb.Position{
+				Line:   int32(statementInfo.tree.GetStop().GetLine()),
+				Column: int32(statementInfo.tree.GetStop().GetColumn()),
+			},
 		})
 	}
 	return result, nil
@@ -131,7 +139,7 @@ func (e *suffixSelectStatementExtractor) EnterUpdate_statement(ctx *parser.Updat
 		return
 	}
 
-	if isTopLevel(ctx.GetParent()) && ctx.Ddl_object() != nil {
+	if IsTopLevel(ctx.GetParent()) && ctx.Ddl_object() != nil {
 		if ctx.CURRENT() != nil {
 			e.err = errors.New("UPDATE statement with CURSOR clause is not supported")
 			return
@@ -196,7 +204,7 @@ func (e *suffixSelectStatementExtractor) EnterDelete_statement(ctx *parser.Delet
 		return
 	}
 
-	if isTopLevel(ctx.GetParent()) {
+	if IsTopLevel(ctx.GetParent()) {
 		if ctx.CURRENT() != nil {
 			e.err = errors.New("DELETE statement with CURSOR clause is not supported")
 			return
@@ -282,7 +290,7 @@ type dmlExtractor struct {
 	offset       int
 }
 
-func isTopLevel(ctx antlr.Tree) bool {
+func IsTopLevel(ctx antlr.Tree) bool {
 	if ctx == nil {
 		return true
 	}
@@ -290,7 +298,7 @@ func isTopLevel(ctx antlr.Tree) bool {
 	case *parser.Dml_clauseContext,
 		*parser.Sql_clausesContext,
 		*parser.Batch_without_goContext:
-		return isTopLevel(ctx.GetParent())
+		return IsTopLevel(ctx.GetParent())
 	case *parser.Tsql_fileContext:
 		return true
 	default:
@@ -305,13 +313,13 @@ func (e *dmlExtractor) ExitBatch(ctx *parser.Batch_without_goContext) {
 }
 
 func (e *dmlExtractor) ExitSql_clauses(ctx *parser.Sql_clausesContext) {
-	if isTopLevel(ctx.GetParent()) {
+	if IsTopLevel(ctx.GetParent()) {
 		e.offset++
 	}
 }
 
 func (e *dmlExtractor) EnterUpdate_statement(ctx *parser.Update_statementContext) {
-	if isTopLevel(ctx.GetParent()) && ctx.Ddl_object() != nil {
+	if IsTopLevel(ctx.GetParent()) && ctx.Ddl_object() != nil {
 		extractor := &tableExtractor{
 			databaseName: e.databaseName,
 		}
@@ -326,13 +334,12 @@ func (e *dmlExtractor) EnterUpdate_statement(ctx *parser.Update_statementContext
 			statement: ctx.GetParser().GetTokenStream().GetTextFromRuleContext(ctx),
 			tree:      ctx,
 			table:     table,
-			line:      ctx.GetStart().GetLine(),
 		})
 	}
 }
 
 func (e *dmlExtractor) EnterDelete_statement(ctx *parser.Delete_statementContext) {
-	if isTopLevel(ctx.GetParent()) {
+	if IsTopLevel(ctx.GetParent()) {
 		extractor := &tableExtractor{
 			databaseName: e.databaseName,
 		}
@@ -348,7 +355,6 @@ func (e *dmlExtractor) EnterDelete_statement(ctx *parser.Delete_statementContext
 			statement: ctx.GetParser().GetTokenStream().GetTextFromRuleContext(ctx),
 			tree:      ctx,
 			table:     table,
-			line:      ctx.GetStart().GetLine(),
 		})
 	}
 }

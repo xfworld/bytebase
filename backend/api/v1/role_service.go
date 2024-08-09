@@ -2,19 +2,17 @@ package v1
 
 import (
 	"context"
+	"slices"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	"github.com/pkg/errors"
 
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/component/iam"
 	enterprise "github.com/bytebase/bytebase/backend/enterprise/api"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
 	"github.com/bytebase/bytebase/backend/store"
-	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 	v1pb "github.com/bytebase/bytebase/proto/generated-go/v1"
 )
 
@@ -41,10 +39,8 @@ func (s *RoleService) ListRoles(ctx context.Context, _ *v1pb.ListRolesRequest) (
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list roles: %v", err)
 	}
-	roles, err := convertToRoles(ctx, s.iamManager, roleMessages)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to convert roles: %v", err)
-	}
+	roleMessages = append(roleMessages, s.iamManager.PredefinedRoles...)
+	roles := convertToRoles(roleMessages)
 
 	return &v1pb.ListRolesResponse{
 		Roles: roles,
@@ -65,26 +61,27 @@ func (s *RoleService) CreateRole(ctx context.Context, request *v1pb.CreateRoleRe
 		return nil, err
 	}
 
+	permissions := make(map[string]bool)
+	for _, v := range request.GetRole().GetPermissions() {
+		permissions[v] = true
+	}
 	create := &store.RoleMessage{
 		ResourceID:  request.RoleId,
 		Name:        request.Role.Title,
 		Description: request.Role.Description,
-		Permissions: &storepb.RolePermissions{
-			Permissions: request.Role.Permissions,
-		},
+		Permissions: permissions,
 	}
-	if valid := validatePermissions(request.Role.Permissions); !valid {
+	if ok := iam.PermissionsExist(request.Role.Permissions...); !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid permissions")
 	}
 	roleMessage, err := s.store.CreateRole(ctx, create, principalID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create role: %v", err)
 	}
-	role, err := convertToRole(ctx, s.iamManager, roleMessage)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to convert to role: %v", err)
+	if err := s.iamManager.ReloadCache(ctx); err != nil {
+		return nil, err
 	}
-	return role, nil
+	return convertToRole(roleMessage), nil
 }
 
 // UpdateRole updates an existing role.
@@ -121,10 +118,12 @@ func (s *RoleService) UpdateRole(ctx context.Context, request *v1pb.UpdateRoleRe
 		case "description":
 			patch.Description = &request.Role.Description
 		case "permissions":
-			patch.Permissions = &storepb.RolePermissions{
-				Permissions: request.Role.Permissions,
+			permissions := make(map[string]bool)
+			for _, v := range request.GetRole().GetPermissions() {
+				permissions[v] = true
 			}
-			if valid := validatePermissions(request.Role.Permissions); !valid {
+			patch.Permissions = &permissions
+			if ok := iam.PermissionsExist(request.Role.Permissions...); !ok {
 				return nil, status.Errorf(codes.InvalidArgument, "invalid permissions")
 			}
 		default:
@@ -136,11 +135,10 @@ func (s *RoleService) UpdateRole(ctx context.Context, request *v1pb.UpdateRoleRe
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update role: %v", err)
 	}
-	convertedRole, err := convertToRole(ctx, s.iamManager, roleMessage)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to convert to role: %v", err)
+	if err := s.iamManager.ReloadCache(ctx); err != nil {
+		return nil, err
 	}
-	return convertedRole, nil
+	return convertToRole(roleMessage), nil
 }
 
 // DeleteRole deletes an existing role.
@@ -157,84 +155,41 @@ func (s *RoleService) DeleteRole(ctx context.Context, request *v1pb.DeleteRoleRe
 		return nil, status.Errorf(codes.NotFound, "role not found: %s", roleID)
 	}
 
-	has, projectUID, err := s.getProjectUsingRole(ctx, request.Name)
+	roleInUse, err := s.store.CheckRoleInUse(ctx, request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to check if the role is used: %v", err)
 	}
-	if has {
-		return nil, status.Errorf(codes.FailedPrecondition, "cannot delete because role %s is used in project %v", common.FormatRole(roleID), projectUID)
+	if roleInUse {
+		return nil, status.Errorf(codes.FailedPrecondition, "cannot delete because role %s is used by workspace or project", common.FormatRole(roleID))
 	}
+
 	if err := s.store.DeleteRole(ctx, roleID); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete role: %v", err)
+	}
+	if err := s.iamManager.ReloadCache(ctx); err != nil {
+		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
 
-// TODO(p0ny): consider using sql for better performance?
-func (s *RoleService) getProjectUsingRole(ctx context.Context, role string) (bool, int, error) {
-	resourceType := api.PolicyResourceTypeProject
-	policyType := api.PolicyTypeProjectIAM
-
-	policies, err := s.store.ListPoliciesV2(ctx, &store.FindPolicyMessage{
-		ResourceType: &resourceType,
-		Type:         &policyType,
-	})
-	if err != nil {
-		return false, 0, err
-	}
-
-	for _, policy := range policies {
-		iamPolicy := &storepb.ProjectIamPolicy{}
-		if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(policy.Payload), iamPolicy); err != nil {
-			return false, 0, errors.Wrapf(err, "failed to unmarshal iam policy")
-		}
-
-		for _, binding := range iamPolicy.Bindings {
-			if binding.Role == role {
-				return true, policy.ResourceUID, nil
-			}
-		}
-	}
-
-	return false, 0, nil
-}
-
-func convertToRoles(ctx context.Context, iamManager *iam.Manager, roleMessages []*store.RoleMessage) ([]*v1pb.Role, error) {
+func convertToRoles(roleMessages []*store.RoleMessage) []*v1pb.Role {
 	var roles []*v1pb.Role
 	for _, roleMessage := range roleMessages {
-		role, err := convertToRole(ctx, iamManager, roleMessage)
-		if err != nil {
-			return nil, err
-		}
-		roles = append(roles, role)
+		roles = append(roles, convertToRole(roleMessage))
 	}
-	return roles, nil
+	return roles
 }
 
-func convertToRole(ctx context.Context, iamManager *iam.Manager, role *store.RoleMessage) (*v1pb.Role, error) {
-	name := common.FormatRole(role.ResourceID)
-	permissions, err := iamManager.GetPermissions(ctx, name)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get permissions")
+func convertToRole(role *store.RoleMessage) *v1pb.Role {
+	var permissions []string
+	for p := range role.Permissions {
+		permissions = append(permissions, p)
 	}
-	convertedPermissions := []string{}
-	for _, permission := range permissions {
-		convertedPermissions = append(convertedPermissions, string(permission))
-	}
+	slices.Sort(permissions)
 	return &v1pb.Role{
-		Name:        name,
+		Name:        common.FormatRole(role.ResourceID),
 		Title:       role.Name,
 		Description: role.Description,
-		Permissions: convertedPermissions,
-	}, nil
-}
-
-func validatePermissions(permissions []string) bool {
-	// Check if all permissions exist.
-	for _, permission := range permissions {
-		if !iam.PermissionExist(iam.Permission(permission)) {
-			return false
-		}
+		Permissions: permissions,
 	}
-	return true
 }

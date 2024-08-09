@@ -22,6 +22,7 @@ import (
 	"github.com/bytebase/bytebase/backend/api/auth"
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/component/config"
+	"github.com/bytebase/bytebase/backend/component/iam"
 	"github.com/bytebase/bytebase/backend/component/state"
 	enterprise "github.com/bytebase/bytebase/backend/enterprise/api"
 	api "github.com/bytebase/bytebase/backend/legacyapi"
@@ -52,11 +53,12 @@ type AuthService struct {
 	metricReporter *metricreport.Reporter
 	profile        *config.Profile
 	stateCfg       *state.State
+	iamManager     *iam.Manager
 	postCreateUser func(ctx context.Context, user *store.UserMessage, firstEndUser bool) error
 }
 
 // NewAuthService creates a new AuthService.
-func NewAuthService(store *store.Store, secret string, tokenDuration time.Duration, licenseService enterprise.LicenseService, metricReporter *metricreport.Reporter, profile *config.Profile, stateCfg *state.State, postCreateUser func(ctx context.Context, user *store.UserMessage, firstEndUser bool) error) (*AuthService, error) {
+func NewAuthService(store *store.Store, secret string, tokenDuration time.Duration, licenseService enterprise.LicenseService, metricReporter *metricreport.Reporter, profile *config.Profile, stateCfg *state.State, iamManager *iam.Manager, postCreateUser func(ctx context.Context, user *store.UserMessage, firstEndUser bool) error) (*AuthService, error) {
 	return &AuthService{
 		store:          store,
 		secret:         secret,
@@ -65,6 +67,7 @@ func NewAuthService(store *store.Store, secret string, tokenDuration time.Durati
 		metricReporter: metricReporter,
 		profile:        profile,
 		stateCfg:       stateCfg,
+		iamManager:     iamManager,
 		postCreateUser: postCreateUser,
 	}, nil
 }
@@ -121,9 +124,16 @@ func (s *AuthService) CreateUser(ctx context.Context, request *v1pb.CreateUserRe
 	}
 
 	if setting.DisallowSignup {
-		rolePtr := ctx.Value(common.RoleContextKey)
-		if rolePtr == nil || rolePtr.(api.Role) != api.WorkspaceAdmin {
+		callerUser, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
+		if !ok {
 			return nil, status.Errorf(codes.PermissionDenied, "sign up is disallowed")
+		}
+		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionUsersCreate, callerUser)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, status.Errorf(codes.PermissionDenied, "user does not have permission %q", iam.PermissionUsersCreate)
 		}
 	}
 	if request.User == nil {
@@ -194,43 +204,27 @@ func (s *AuthService) CreateUser(ctx context.Context, request *v1pb.CreateUserRe
 		PasswordHash: string(passwordHash),
 	}
 
-	users, err := s.store.ListUsers(ctx, &store.FindUserMessage{})
-	if err != nil {
-		return nil, err
-	}
-	firstUser := true
-	for _, user := range users {
-		if user.ID >= 100 {
-			firstUser = false
-			break
-		}
-	}
-	if !firstUser {
-		rolePtr := ctx.Value(common.RoleContextKey)
-		if rolePtr != nil && rolePtr.(api.Role) == api.WorkspaceAdmin {
-			for _, role := range request.User.Roles {
-				roleID, err := common.GetRoleID(role)
-				if err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, err.Error())
-				}
-				userMessage.Roles = append(userMessage.Roles, api.Role(roleID))
-			}
-		}
-	}
-	// If multiple roles are specified, checks if the current user is workspace admin.
-	if len(userMessage.Roles) > 1 {
-		user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-		if !ok {
-			return nil, status.Error(codes.PermissionDenied, "user not found in context")
-		}
-		if !slices.Contains(user.Roles, api.WorkspaceAdmin) {
-			return nil, status.Errorf(codes.PermissionDenied, "only workspace owner can create user with multiple roles")
-		}
+	creatorUID := api.SystemBotID
+	u, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
+	if ok && u != nil {
+		creatorUID = u.ID
 	}
 
-	user, err := s.store.CreateUser(ctx, userMessage, api.SystemBotID)
+	user, err := s.store.CreateUser(ctx, userMessage, creatorUID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create user, error: %v", err)
+	}
+
+	if firstEndUser {
+		// The first end user should be workspace admin.
+		updateRole := &store.PatchIamPolicyMessage{
+			Member:     common.FormatUserUID(user.ID),
+			UpdaterUID: creatorUID,
+			Roles:      []string{common.FormatRole(api.WorkspaceAdmin.String())},
+		}
+		if _, err := s.store.PatchWorkspaceIamPolicy(ctx, updateRole); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.postCreateUser(ctx, user, firstEndUser); err != nil {
@@ -250,6 +244,7 @@ func (s *AuthService) CreateUser(ctx context.Context, request *v1pb.CreateUserRe
 			"lark_notified": !isFirstUser,
 		},
 	})
+
 	userResponse := convertToUser(user)
 	if request.User.UserType == v1pb.UserType_SERVICE_ACCOUNT {
 		userResponse.ServiceKey = password
@@ -259,9 +254,9 @@ func (s *AuthService) CreateUser(ctx context.Context, request *v1pb.CreateUserRe
 
 // UpdateUser updates a user.
 func (s *AuthService) UpdateUser(ctx context.Context, request *v1pb.UpdateUserRequest) (*v1pb.User, error) {
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
+	callerUser, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
+		return nil, status.Errorf(codes.PermissionDenied, "failed to get caller user")
 	}
 	if request.User == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "user must be set")
@@ -285,12 +280,14 @@ func (s *AuthService) UpdateUser(ctx context.Context, request *v1pb.UpdateUserRe
 		return nil, status.Errorf(codes.NotFound, "user %q has been deleted", userID)
 	}
 
-	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "role not found")
-	}
-	if principalID != userID && role != api.WorkspaceAdmin {
-		return nil, status.Errorf(codes.PermissionDenied, "only workspace owner or user itself can update the user %d", userID)
+	if callerUser.ID != userID {
+		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionUsersUpdate, callerUser)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, status.Errorf(codes.PermissionDenied, "user does not have permission %q", iam.PermissionUsersUpdate)
+		}
 	}
 
 	setting, err := s.store.GetWorkspaceGeneralSetting(ctx)
@@ -335,33 +332,6 @@ func (s *AuthService) UpdateUser(ctx context.Context, request *v1pb.UpdateUserRe
 			}
 			password := fmt.Sprintf("%s%s", api.ServiceAccountAccessKeyPrefix, val)
 			passwordPatch = &password
-		case "roles":
-			if role != api.WorkspaceAdmin {
-				return nil, status.Errorf(codes.PermissionDenied, "only workspace admin can update roles")
-			}
-			// Check if the user is the only workspace admin.
-			if slices.Contains(user.Roles, api.WorkspaceAdmin) && !slices.Contains(request.User.Roles, common.FormatRole(api.WorkspaceAdmin.String())) {
-				workspaceAdmin, userType := api.WorkspaceAdmin, api.EndUser
-				adminUser, err := s.store.ListUsers(ctx, &store.FindUserMessage{
-					Role: &workspaceAdmin,
-					Type: &userType,
-				})
-				if err != nil {
-					return nil, status.Errorf(codes.Internal, "failed to find workspace admin, error: %v", err)
-				}
-				if len(adminUser) == 1 && adminUser[0].ID == userID {
-					return nil, status.Errorf(codes.InvalidArgument, "workspace must have at least one admin")
-				}
-			}
-			var roles []api.Role
-			for _, r := range request.User.Roles {
-				roleID, err := common.GetRoleID(r)
-				if err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, err.Error())
-				}
-				roles = append(roles, api.Role(roleID))
-			}
-			patch.Roles = &roles
 		case "mfa_enabled":
 			if request.User.MfaEnabled {
 				if user.MFAConfig.TempOtpSecret == "" || len(user.MFAConfig.TempRecoveryCodes) == 0 {
@@ -441,7 +411,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, request *v1pb.UpdateUserRe
 		}
 	}
 
-	user, err = s.store.UpdateUser(ctx, user, patch, principalID)
+	user, err = s.store.UpdateUser(ctx, user, patch, callerUser.ID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update user, error: %v", err)
 	}
@@ -455,10 +425,18 @@ func (s *AuthService) UpdateUser(ctx context.Context, request *v1pb.UpdateUserRe
 
 // DeleteUser deletes a user.
 func (s *AuthService) DeleteUser(ctx context.Context, request *v1pb.DeleteUserRequest) (*emptypb.Empty, error) {
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
+	callerUser, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
+		return nil, status.Errorf(codes.PermissionDenied, "failed to get caller user")
 	}
+	ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionUsersDelete, callerUser)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, status.Errorf(codes.PermissionDenied, "user does not have permission %q", iam.PermissionUsersDelete)
+	}
+
 	userID, err := common.GetUserID(request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
@@ -474,32 +452,37 @@ func (s *AuthService) DeleteUser(ctx context.Context, request *v1pb.DeleteUserRe
 		return nil, status.Errorf(codes.NotFound, "user %q has been deleted", userID)
 	}
 
-	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
+	// Check if there is still workspace admin if the current user is deleted.
+	policy, err := s.store.GetWorkspaceIamPolicy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ok = hasExtraWorkspaceAdmin(policy.Policy, user.ID)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "role not found")
-	}
-	if role != api.WorkspaceAdmin {
-		return nil, status.Errorf(codes.PermissionDenied, "only workspace owner can delete the user %d", userID)
-	}
-	// Check if the user is the only workspace admin.
-	if slices.Contains(user.Roles, api.WorkspaceAdmin) {
-		workspaceAdmin, userType := api.WorkspaceAdmin, api.EndUser
-		adminUser, err := s.store.ListUsers(ctx, &store.FindUserMessage{
-			Role: &workspaceAdmin,
-			Type: &userType,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to find workspace admin, error: %v", err)
-		}
-		if len(adminUser) == 1 && adminUser[0].ID == userID {
-			return nil, status.Errorf(codes.InvalidArgument, "workspace must have at least one admin")
-		}
+		return nil, status.Errorf(codes.InvalidArgument, "workspace must have at least one admin")
 	}
 
-	if _, err := s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &deletePatch}, principalID); err != nil {
+	if _, err := s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &deletePatch}, callerUser.ID); err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func hasExtraWorkspaceAdmin(policy *storepb.IamPolicy, userID int) bool {
+	workspaceAdminRole := common.FormatRole(api.WorkspaceAdmin.String())
+	userMember := common.FormatUserUID(userID)
+	systemBotMember := common.FormatUserUID(api.SystemBotID)
+	for _, binding := range policy.GetBindings() {
+		if binding.GetRole() != workspaceAdminRole {
+			continue
+		}
+		for _, member := range binding.GetMembers() {
+			if member != userMember && member != systemBotMember {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // UndeleteUser undeletes a user.
@@ -508,10 +491,18 @@ func (s *AuthService) UndeleteUser(ctx context.Context, request *v1pb.UndeleteUs
 		return nil, err
 	}
 
-	principalID, ok := ctx.Value(common.PrincipalIDContextKey).(int)
+	callerUser, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
 	if !ok {
-		return nil, status.Errorf(codes.Internal, "principal ID not found")
+		return nil, status.Errorf(codes.PermissionDenied, "failed to get caller user")
 	}
+	ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionUsersUndelete, callerUser)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, status.Errorf(codes.PermissionDenied, "user does not have permission %q", iam.PermissionUsersUndelete)
+	}
+
 	userID, err := common.GetUserID(request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
@@ -527,15 +518,7 @@ func (s *AuthService) UndeleteUser(ctx context.Context, request *v1pb.UndeleteUs
 		return nil, status.Errorf(codes.InvalidArgument, "user %q is already active", userID)
 	}
 
-	role, ok := ctx.Value(common.RoleContextKey).(api.Role)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "role not found")
-	}
-	if role != api.WorkspaceAdmin {
-		return nil, status.Errorf(codes.PermissionDenied, "only workspace owner can undelete the user %d", userID)
-	}
-
-	user, err = s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &undeletePatch}, principalID)
+	user, err = s.store.UpdateUser(ctx, user, &store.UpdateUserMessage{Delete: &undeletePatch}, callerUser.ID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
@@ -561,9 +544,7 @@ func convertToUser(user *store.UserMessage) *v1pb.User {
 		Title:    user.Name,
 		UserType: userType,
 	}
-	for _, r := range user.Roles {
-		convertedUser.Roles = append(convertedUser.Roles, common.FormatRole(r.String()))
-	}
+
 	if user.MFAConfig != nil {
 		convertedUser.MfaEnabled = user.MFAConfig.OtpSecret != ""
 		convertedUser.MfaSecret = user.MFAConfig.TempOtpSecret

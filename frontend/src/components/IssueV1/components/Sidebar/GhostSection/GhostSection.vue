@@ -15,12 +15,11 @@
               class="whitespace-pre-line max-w-[20rem]"
             >
               <template #link>
-                <HideInStandaloneMode>
-                  <LearnMoreLink
-                    url="https://www.bytebase.com/docs/change-database/online-schema-migration-for-mysql"
-                    color="light"
-                  />
-                </HideInStandaloneMode>
+                <LearnMoreLink
+                  url="https://www.bytebase.com/docs/change-database/online-schema-migration-for-mysql"
+                  color="light"
+                  hide-when-embedded
+                />
               </template>
             </i18n-t>
           </template>
@@ -51,9 +50,12 @@
 
 <script lang="ts" setup>
 import { LockIcon } from "lucide-vue-next";
+import { NTooltip } from "naive-ui";
 import { computed } from "vue";
+import { FeatureBadge, FeatureModal } from "@/components/FeatureGuard";
 import FeatureBadgeForInstanceLicense from "@/components/FeatureGuard/FeatureBadgeForInstanceLicense.vue";
 import { databaseForTask, useIssueContext } from "@/components/IssueV1/logic";
+import LearnMoreLink from "@/components/LearnMoreLink.vue";
 import { featureToRef } from "@/store";
 import { Engine } from "@/types/proto/v1/common";
 import { flattenTaskV1List, isDatabaseChangeRelatedIssue } from "@/utils";

@@ -61,6 +61,14 @@ type DataSourceMessage struct {
 	MasterObfuscatedPassword string
 }
 
+// FindDataSourceMessage is the message for finding a database.
+type FindDataSourceMessage struct {
+	ID         *string
+	Name       *string
+	InstanceID *string
+	Type       *api.DataSourceType
+}
+
 // Copy returns a copy of the data source message.
 func (m *DataSourceMessage) Copy() *DataSourceMessage {
 	deepCopyAdditionalAddresses := slices.Clone[[]*storepb.DataSourceOptions_Address](m.AdditionalAddresses)
@@ -150,10 +158,25 @@ type UpdateDataSourceMessage struct {
 	MasterObfuscatedPassword *string
 }
 
-func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) ([]*DataSourceMessage, error) {
-	var dataSourceMessages []*DataSourceMessage
+func (*Store) listInstanceDataSourceMap(ctx context.Context, tx *Tx, find *FindDataSourceMessage) (map[string][]*DataSourceMessage, error) {
+	where, args := []string{"TRUE"}, []any{}
+	if find.ID != nil {
+		where, args = append(where, fmt.Sprintf("data_source.id = $%d", len(args)+1)), append(args, *find.ID)
+	}
+	if find.Name != nil {
+		where, args = append(where, fmt.Sprintf("data_source.name = $%d", len(args)+1)), append(args, *find.Name)
+	}
+	if find.InstanceID != nil {
+		where, args = append(where, fmt.Sprintf("instance.resource_id = $%d", len(args)+1)), append(args, *find.InstanceID)
+	}
+	if find.Type != nil {
+		where, args = append(where, fmt.Sprintf("data_source.type = $%d", len(args)+1)), append(args, *find.Type)
+	}
+
+	instanceDataSourcesMap := make(map[string][]*DataSourceMessage)
 	rows, err := tx.QueryContext(ctx, `
 		SELECT
+			instance.resource_id,
 			data_source.id,
 			data_source.name,
 			data_source.type,
@@ -168,8 +191,8 @@ func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) (
 			data_source.options
 		FROM data_source
 		LEFT JOIN instance ON instance.id = data_source.instance_id
-		WHERE instance.resource_id = $1`,
-		instanceID,
+		WHERE `+strings.Join(where, " AND "),
+		args...,
 	)
 	if err != nil {
 		return nil, err
@@ -177,8 +200,10 @@ func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) (
 	defer rows.Close()
 	for rows.Next() {
 		var protoBytes []byte
+		var instanceID string
 		var dataSourceMessage DataSourceMessage
 		if err := rows.Scan(
+			&instanceID,
 			&dataSourceMessage.UID,
 			&dataSourceMessage.ID,
 			&dataSourceMessage.Type,
@@ -222,13 +247,45 @@ func (*Store) listDataSourceV2(ctx context.Context, tx *Tx, instanceID string) (
 		dataSourceMessage.MasterName = dataSourceOptions.MasterName
 		dataSourceMessage.MasterObfuscatedPassword = dataSourceOptions.MasterObfuscatedPassword
 		dataSourceMessage.MasterUsername = dataSourceOptions.MasterUsername
-		dataSourceMessages = append(dataSourceMessages, &dataSourceMessage)
+		instanceDataSourcesMap[instanceID] = append(instanceDataSourcesMap[instanceID], &dataSourceMessage)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return dataSourceMessages, nil
+	return instanceDataSourcesMap, nil
+}
+
+func (s *Store) ListDataSourcesV2(ctx context.Context, find *FindDataSourceMessage) ([]*DataSourceMessage, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.New("Failed to begin transaction")
+	}
+	defer tx.Rollback()
+
+	dataSourceMap, err := s.listInstanceDataSourceMap(ctx, tx, find)
+	if err != nil {
+		return nil, err
+	}
+	dataSources := []*DataSourceMessage{}
+	for _, list := range dataSourceMap {
+		dataSources = append(dataSources, list...)
+	}
+	return dataSources, nil
+}
+
+func (s *Store) GetDataSource(ctx context.Context, find *FindDataSourceMessage) (*DataSourceMessage, error) {
+	dataSources, err := s.ListDataSourcesV2(ctx, find)
+	if err != nil {
+		return nil, err
+	}
+	if len(dataSources) == 0 {
+		return nil, nil
+	}
+	if len(dataSources) > 1 {
+		return nil, errors.Errorf("found %d data sources, but expected 1", len(dataSources))
+	}
+	return dataSources[0], nil
 }
 
 // AddDataSourceToInstanceV2 adds a RO data source to an instance and return the instance where the data source is added.

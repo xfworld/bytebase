@@ -4,9 +4,10 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useProjectV1Store, useCurrentUserV1 } from "@/store";
+import ProjectMemberPanel from "@/components/ProjectMember/ProjectMemberPanel.vue";
+import { useCurrentUserV1, useProjectByName } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
-import { DEFAULT_PROJECT_V1_NAME } from "@/types";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import { State } from "@/types/proto/v1/common";
 import { hasProjectPermissionV2 } from "@/utils";
 
@@ -14,16 +15,12 @@ const props = defineProps<{
   projectId: string;
 }>();
 
-const projectV1Store = useProjectV1Store();
-
-const project = computed(() => {
-  return projectV1Store.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 
 const allowEdit = computed(() => {
-  if (project.value.name === DEFAULT_PROJECT_V1_NAME) {
+  if (project.value.name === DEFAULT_PROJECT_NAME) {
     return false;
   }
 

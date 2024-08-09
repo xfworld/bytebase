@@ -6,7 +6,7 @@
 import { watchEffect, computed } from "vue";
 import { useInstanceV1Store } from "@/store";
 import { instanceNamePrefix } from "@/store/modules/v1/common";
-import { UNKNOWN_INSTANCE_NAME } from "@/types";
+import { isValidInstanceName } from "@/types";
 
 const props = defineProps<{
   instanceId: string;
@@ -20,13 +20,11 @@ const instance = computed(() =>
 );
 
 const prepareInstanceContext = async function () {
-  const ins = await prepareInstance();
-
-  await instanceStore.fetchInstanceRoleListByName(ins.name);
+  await prepareInstance();
 };
 
 const prepareInstance = async () => {
-  if (instance.value.name !== UNKNOWN_INSTANCE_NAME) {
+  if (isValidInstanceName(instance.value.name)) {
     return instance.value;
   }
 

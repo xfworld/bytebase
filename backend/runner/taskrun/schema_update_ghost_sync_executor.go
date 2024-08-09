@@ -2,7 +2,6 @@ package taskrun
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strings"
 	"sync/atomic"
@@ -11,6 +10,8 @@ import (
 	"github.com/github/gh-ost/go/base"
 	"github.com/github/gh-ost/go/logic"
 	"github.com/pkg/errors"
+
+	gomysql "github.com/go-sql-driver/mysql"
 
 	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/common/log"
@@ -48,11 +49,11 @@ func (exec *SchemaUpdateGhostSyncExecutor) RunOnce(ctx context.Context, taskCont
 			UpdateTime:      time.Now(),
 		})
 
-	payload := &api.TaskDatabaseSchemaUpdateGhostSyncPayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return true, nil, errors.Wrap(err, "invalid database schema update gh-ost sync payload")
 	}
-	statement, err := exec.store.GetSheetStatementByID(ctx, payload.SheetID)
+	statement, err := exec.store.GetSheetStatementByID(ctx, int(payload.SheetId))
 	if err != nil {
 		return true, nil, err
 	}
@@ -106,6 +107,12 @@ func (exec *SchemaUpdateGhostSyncExecutor) runGhostMigration(ctx context.Context
 	if err != nil {
 		return true, nil, errors.Wrap(err, "failed to init migrationContext for gh-ost")
 	}
+	defer func() {
+		// Use migrationContext.Uuid as the tls_config_key by convention.
+		// We need to deregister it when gh-ost exits.
+		// https://github.com/bytebase/gh-ost2/pull/4
+		gomysql.DeregisterTLSConfig(migrationContext.Uuid)
+	}()
 
 	migrator := logic.NewMigrator(migrationContext, "bb")
 

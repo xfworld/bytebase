@@ -1,18 +1,16 @@
 <template>
   <ArchiveBanner v-if="project.state === State.DELETED" class="py-2" />
   <div class="px-4 h-full overflow-auto">
-    <HideInStandaloneMode>
-      <template v-if="isDefaultProject">
-        <h1 class="mb-4 text-xl font-bold leading-6 text-main truncate">
-          {{ $t("database.unassigned-databases") }}
-        </h1>
-      </template>
-      <BBAttention v-if="isDefaultProject" class="mb-4" type="info">
+    <template v-if="!hideDefaultProject && isDefaultProject">
+      <h1 class="mb-4 text-xl font-bold leading-6 text-main truncate">
+        {{ $t("database.unassigned-databases") }}
+      </h1>
+      <BBAttention class="mb-4" type="info">
         {{ $t("project.overview.info-slot-content") }}
       </BBAttention>
-    </HideInStandaloneMode>
+    </template>
     <QuickActionPanel
-      v-if="showQuickActionPanel"
+      v-if="!hideQuickActionPanel"
       :quick-action-list="quickActionList"
       class="mb-4"
     />
@@ -27,23 +25,21 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, watchEffect } from "vue";
+import { computed, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { BBAttention } from "@/bbkit";
 import ArchiveBanner from "@/components/ArchiveBanner.vue";
 import { useRecentProjects } from "@/components/Project/useRecentProjects";
-import HideInStandaloneMode from "@/components/misc/HideInStandaloneMode.vue";
+import QuickActionPanel from "@/components/QuickActionPanel.vue";
 import NoPermissionPlaceholder from "@/components/misc/NoPermissionPlaceholder.vue";
 import {
   PROJECT_V1_ROUTE_DATABASES,
   PROJECT_V1_ROUTE_DATABASE_GROUPS,
 } from "@/router/dashboard/projectV1";
-import { useProjectV1Store, useCurrentUserV1, usePageMode } from "@/store";
+import { useCurrentUserV1, useAppFeature, useProjectByName } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import type { QuickActionType } from "@/types";
-import {
-  DEFAULT_PROJECT_V1_NAME,
-  QuickActionProjectPermissionMap,
-} from "@/types";
+import { DEFAULT_PROJECT_NAME, QuickActionProjectPermissionMap } from "@/types";
 import { State } from "@/types/proto/v1/common";
 import { hasProjectPermissionV2 } from "@/utils";
 
@@ -54,22 +50,19 @@ const props = defineProps<{
 const route = useRoute();
 const router = useRouter();
 const currentUserV1 = useCurrentUserV1();
-const projectV1Store = useProjectV1Store();
-const pageMode = usePageMode();
 const recentProjects = useRecentProjects();
-
-const project = computed(() => {
-  return projectV1Store.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
+const hideQuickAction = useAppFeature("bb.feature.console.hide-quick-action");
+const hideDefaultProject = useAppFeature("bb.feature.project.hide-default");
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 
 watchEffect(() => {
   recentProjects.setRecentProject(project.value.name);
 });
 
 const isDefaultProject = computed((): boolean => {
-  return project.value.name === DEFAULT_PROJECT_V1_NAME;
+  return project.value.name === DEFAULT_PROJECT_NAME;
 });
 
 const currentUser = useCurrentUserV1();
@@ -98,12 +91,6 @@ const allowEdit = computed(() => {
   );
 });
 
-onMounted(async () => {
-  await projectV1Store.getOrFetchProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
-
 const getQuickActionList = (list: QuickActionType[]): QuickActionType[] => {
   return list.filter((action) => {
     if (!QuickActionProjectPermissionMap.has(action)) {
@@ -122,11 +109,7 @@ const quickActionListForDatabaseGroup = computed((): QuickActionType[] => {
     return [];
   }
 
-  return [
-    "quickaction.bb.database.schema.update",
-    "quickaction.bb.database.data.update",
-    "quickaction.bb.group.database-group.create",
-  ];
+  return ["quickaction.bb.group.database-group.create"];
 });
 
 const quickActionListForDatabase = computed((): QuickActionType[] => {
@@ -152,7 +135,7 @@ const quickActionList = computed(() => {
   return [];
 });
 
-const showQuickActionPanel = computed(() => {
-  return pageMode.value === "BUNDLED" && quickActionList.value.length > 0;
+const hideQuickActionPanel = computed(() => {
+  return hideQuickAction.value || quickActionList.value.length === 0;
 });
 </script>

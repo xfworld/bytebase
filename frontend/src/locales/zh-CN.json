@@ -97,6 +97,7 @@
     "stage": "阶段",
     "task": "任务",
     "tasks": "任务",
+    "blocking-task": "阻塞任务",
     "sql": "SQL",
     "unassigned": "未指派",
     "new": "创建",
@@ -277,7 +278,13 @@
     "resource": "资源",
     "closed": "已关闭",
     "options": "配置项",
-    "reset": "重置"
+    "reset": "重置",
+    "refresh": "刷新",
+    "rollback": "回滚",
+    "rows": {
+      "self": "行",
+      "n-rows": "{n} 行"
+    }
   },
   "error-page": {
     "go-back-home": "回到主页"
@@ -393,7 +400,9 @@
       },
       "show-default-parameters": "显示默认参数",
       "hide-default-parameters": "隐藏默认参数",
-      "enable": "启用在线大表变更"
+      "enable": "启用在线大表变更",
+      "disable": "关闭在线大表变更",
+      "advice-split-statement-to-single-online-migration-issue": "建议将该语句拆分成单独的在线大表变更工单。"
     },
     "prior-backup-tips": "提前备份受影响的数据"
   },
@@ -407,7 +416,9 @@
       "executing-sql": "正在执行 SQL。",
       "executing-sql-detail": "正在执行 SQL {current} of {total}，从 ({startLine}, {startColumn}) 到 ({endLine}, {endColumn})。",
       "dumping-schema-after-executing-sql": "SQL 执行完毕，正在导出 schema。",
-      "failed-sql-detail": "从 ({startLine}, {startColumn}) 到 ({endLine}, {endColumn}) 的执行失败：{message}。"
+      "failed-sql-detail": "从 ({startLine}, {startColumn}) 到 ({endLine}, {endColumn}) 的执行失败：{message}。",
+      "waiting-connection": "等待可用的实例连接。实例连接数已达到限制。",
+      "waiting-task": "等待另一个任务完成。"
     }
   },
   "banner": {
@@ -458,7 +469,6 @@
       "gitops": "GitOps",
       "subscription": "订阅",
       "labels": "标签",
-      "debug-log": "Debug 日志",
       "sensitive-data": "数据脱敏",
       "access-control": "数据访问控制",
       "audit-log": "审计日志",
@@ -658,6 +668,10 @@
           "days": "天数",
           "never-expires": "永不过期"
         },
+        "maximum-sql-result": {
+          "self": "SQL 输出大小限制",
+          "description": "限制输出 SQL 查询结果的大小。"
+        },
         "domain-restriction": {
           "self": "工作空间域名",
           "description": "用于指定成员电子邮箱的域名。",
@@ -808,7 +822,8 @@
         "override-desc": "现有的算法将被覆盖，您必须重新配置语义类型的算法。",
         "override-confirm": "继续导入",
         "default": "默认",
-        "default-desc": "使用 *** 为数据遮挡",
+        "default-with-semantic-type": "默认（遵循语义类型）",
+        "default-desc": "根据脱敏程度使用 * 遮挡所有或者部分数据",
         "table": {
           "title": "名称",
           "description": "描述",
@@ -938,6 +953,7 @@
       "created-issue": "创建工单",
       "commented": "评论",
       "changed-description": "修改描述",
+      "changed-labels": "改变标签",
       "changed-from-to": "将 {name} 从 \"{oldValue}\" 修改为 \"{newValue}\"",
       "unset-from": "撤销 {name} 的值 (从 \"{oldValue}\")",
       "set-to": "将 {name} 设置为 \"{newValue}\"",
@@ -1219,7 +1235,8 @@
     "error": {
       "issue-is-not-open": "工单不是开启状态",
       "you-don-have-privilege-to-edit-this-issue": "您没有权限编辑此工单",
-      "you-are-not-allowed-to-perform-this-action": "您无权执行此操作"
+      "you-are-not-allowed-to-perform-this-action": "您无权执行此操作",
+      "cannot-close-issue-with-running-tasks": "无法关闭还存在运行中任务的工单"
     },
     "approval-requested": "审批请求",
     "unfinished-resolved-issue-tips": "该工单被标记为「已完成」，但其中某些任务并未成功执行。",
@@ -1237,6 +1254,8 @@
       "self": "修改指定发布时间"
     },
     "task-run": {
+      "logs": "日志",
+      "session": "会话",
       "task-run-log": {
         "batch": "批次",
         "affected-rows": "影响行数",
@@ -1252,6 +1271,17 @@
           "waiting": "准备就绪，等待执行",
           "running": "开始执行"
         }
+      },
+      "task-run-session": {
+        "blocking-sessions": {
+          "self": "阻塞会话",
+          "description": "当前会话被以下会话阻塞"
+        },
+        "blocked-sessions": {
+          "self": "被阻塞会话",
+          "description": "当前会话阻塞了以下会话"
+        },
+        "no-session-found": "未找到会话。"
       }
     },
     "sql-review": {
@@ -1532,7 +1562,12 @@
     "production-environment": "生产环境",
     "access-control": {
       "title": "访问控制",
-      "disable-copy-data-from-sql-editor": "限制 SQL 编辑器中的数据复制 (管理员/DBA 可以复制)"
+      "disable-copy-data-from-sql-editor": "限制 SQL 编辑器中的数据复制 (管理员/DBA 可以复制)",
+      "restrict-admin-data-sources": {
+        "self": "管理员数据源查询限制",
+        "disallow": "禁止从管理员数据源查询数据",
+        "fallback": "如果没有只读数据源，则可以对管理员数据源进行查询"
+      }
     }
   },
   "quick-start": {
@@ -1590,6 +1625,10 @@
     },
     "activate": {
       "title": "激活您的 {type} 账号"
+    },
+    "login-as-another": {
+      "title": "您已以其他用户身份登录",
+      "content": "我们将把您重定向到主页。"
     }
   },
   "policy": {
@@ -1815,6 +1854,7 @@
     "transfer-database-from-to": "将数据库从源项目转移到目标项目",
     "classification": {
       "self": "分类分级",
+      "description": "通过分类分级，来批量管理列的脱敏规则。",
       "sync-from-comment": "从注释中同步分类分级",
       "sync-from-comment-tip": "启用后，分类分级将从表或列的注释同步。注释应遵循“{format}”格式。",
       "sync-from-comment-enable-warning": "分类分级将随着 DDL 而改变，并与原始注释同步。",
@@ -2026,8 +2066,8 @@
           "description": "允许用户在创建工单后修改该变更语句。"
         },
         "auto-resolve-issue": {
-          "self": "自动解决工单",
-          "description": "所有任务完成后自动解决工单。"
+          "self": "自动完成工单",
+          "description": "所有任务执行成功后自动完成工单。"
         }
       }
     },
@@ -2233,8 +2273,8 @@
     "connection-type": "连接类型",
     "additional-node-addresses": "附加节点地址",
     "replica-set": "副本集",
-    "admin": "主库",
-    "read-only": "从库",
+    "admin": "管理员",
+    "read-only": "只读",
     "direct-connection": "Direct Connection"
   },
   "setting": {
@@ -2390,7 +2430,19 @@
       "self": "标准模式"
     },
     "to-enable-standard-mode": "来开启标准模式",
-    "add-a-new-instance": "添加实例"
+    "add-a-new-instance": "添加实例",
+    "web-socket": {
+      "errors": {
+        "title": "WebSocket 连接失败",
+        "description": "自动补全功能可能会受到限制或无效。",
+        "disconnected": "WebSocket 已断开连接"
+      }
+    },
+    "query-context": {
+      "admin-data-source-is-disallowed-to-query": "禁止查询管理员数据源。",
+      "admin-data-source-is-disallowed-to-query-when-read-only-data-source-is-available": "当只读数据源可用时，不允许查询管理员数据源。"
+    },
+    "manage-connections": "管理连接"
   },
   "schema-editor": {
     "self": "Schema 编辑器",
@@ -2807,6 +2859,8 @@
     "policy-updated": "审核策略已更新",
     "policy-duplicated": "审核策略已复制",
     "rules": "规则",
+    "add-rules": "添加规则",
+    "add-or-remove-rules": "添加或删除规则",
     "filter": "筛选",
     "no-permission": "仅管理员或 DBA 有权限创建或更新审核策略。",
     "disable": "停用审核策略",
@@ -2820,9 +2874,10 @@
       "no-linked-resources": "没有绑定的资源",
       "change-resources": "更改绑定的资源",
       "self": "绑定到资源",
-      "label": "将审核策略应用于所选资源。一个资源只能关联一个策略。数据库将使用附加到项目的 SQL 审核策略，否则将回退到环境策略。",
+      "label": "审核策略需要绑定到环境资源或项目资源上，并影响对应资源下所有数据库。若一个数据库同时受到项目级别与环境级别策略影响，则只有项目级别策略生效。",
       "label-environment": "SQL 审查策略将影响属于所选环境的所有数据库。",
-      "label-project": "SQL 审核策略将影响所选项目下的所有数据库。环境的 SQL 审核策略将被忽略。"
+      "label-project": "SQL 审核策略将影响所选项目下的所有数据库。环境的 SQL 审核策略将被忽略。",
+      "override-warning": "以下资源已与其他 SQL 审核策略绑定。点击“{button}”将覆盖配置。"
     },
     "create": {
       "breadcrumb": "创建审核策略",
@@ -2856,31 +2911,6 @@
     "view-definition": "查看定义",
     "other-engines": "其他数据库类型"
   },
-  "debug-log": {
-    "title": "Debug 日志",
-    "no-logs": "暂无 Debug 日志",
-    "count-of-logs": "从服务端获取的最新 {count} 条日志。",
-    "debug-log-detail": "日志详情",
-    "enabled": "Debug 模式已开启",
-    "open-debug-mode": "开启 Debug 模式",
-    "table": {
-      "record-ts": "时间",
-      "method": "方法",
-      "request-path": "请求路径",
-      "role": "角色",
-      "error": "错误消息",
-      "stack-trace": "调用栈",
-      "empty": "<无>",
-      "operation": {
-        "operation": "操作",
-        "view-details": "查看详情",
-        "copy": "拷贝",
-        "copy-all": "拷贝全部",
-        "copied": "已拷贝",
-        "export": "导出"
-      }
-    }
-  },
   "audit-log": {
     "no-logs": "暂无审计日志",
     "audit-log-detail": "审计详情",
@@ -2899,7 +2929,8 @@
       "method": "操作",
       "request": "请求信息",
       "response": "响应信息",
-      "status": "状态"
+      "status": "状态",
+      "service-data": "服务数据"
     },
     "type": {
       "workspace": {
@@ -3333,7 +3364,8 @@
       },
       "delete": "删除角色",
       "delete-warning": "角色“{name}”将被删除。此操作无法撤消。",
-      "delete-warning-with-resources": "角色“{name}”已分配给以下用户："
+      "delete-warning-with-resources": "角色“{name}”已分配给以下用户：",
+      "delete-warning-retry": "请从这些用户中删除角色然后重试。"
     },
     "select": "选择角色",
     "select-roles": "选择角色",
@@ -3478,6 +3510,7 @@
       "description-tips": "条件是通过表达式配置的规则。例如：条件「环境 为 prod」将会匹配在「prod」环境中执行的工单。",
       "add": "添加条件",
       "add-group": "添加条件组",
+      "add-raw-expression": "添加 Raw 表达式",
       "group": {
         "or": {
           "description": "以下任一为真…"
@@ -3615,6 +3648,9 @@
     },
     "last-update": {
       "self": "最后更新"
+    },
+    "source-branch": {
+      "self": "源分支"
     }
   }
 }

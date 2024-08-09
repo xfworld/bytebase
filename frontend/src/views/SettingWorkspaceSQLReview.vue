@@ -48,8 +48,12 @@
 </template>
 
 <script lang="ts" setup>
+import { NButton } from "naive-ui";
 import { watchEffect, ref, computed } from "vue";
 import { useRouter } from "vue-router";
+import SQLReviewPolicyTable from "@/components/SQLReview/components/SQLReviewPolicyTable.vue";
+import NoDataPlaceholder from "@/components/misc/NoDataPlaceholder.vue";
+import { SearchBox } from "@/components/v2";
 import { WORKSPACE_ROUTE_SQL_REVIEW_CREATE } from "@/router/dashboard/workspaceRoutes";
 import { useSQLReviewStore, useCurrentUserV1 } from "@/store";
 import { hasWorkspacePermissionV2 } from "@/utils";

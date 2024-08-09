@@ -122,6 +122,7 @@
 </template>
 
 <script lang="ts" setup>
+import { NTooltip } from "naive-ui";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import type { BBTableSectionDataSource } from "@/bbkit/types";
@@ -131,12 +132,18 @@ import {
   useCurrentUserV1,
   useDatabaseV1Store,
   useEnvironmentV1List,
-  useInstanceV1List,
+  useEnvironmentV1Store,
+  useInstanceResourceList,
 } from "@/store";
 import type { ComposedProject } from "@/types";
 import type { Anomaly } from "@/types/proto/v1/anomaly_service";
 import { Anomaly_AnomalySeverity } from "@/types/proto/v1/anomaly_service";
 import { databaseV1Url, sortDatabaseV1List, sortInstanceV1List } from "@/utils";
+import {
+  FeatureAttention,
+  FeatureAttentionForInstanceLicense,
+} from "../FeatureGuard";
+import { SearchBox, TabFilter } from "../v2";
 import AnomalyTable from "./AnomalyTable.vue";
 
 type Summary = {
@@ -158,25 +165,22 @@ const props = defineProps<{
   selectedTab?: AnomalyTabId;
 }>();
 
-const databaseStore = useDatabaseV1Store();
 const { t } = useI18n();
-
+const databaseStore = useDatabaseV1Store();
+const environmentStore = useEnvironmentV1Store();
 const currentUserV1 = useCurrentUserV1();
+const allAnomalyList = useAnomalyV1List();
+const instanceList = useInstanceResourceList();
+const environmentList = useEnvironmentV1List(false /* !showDeleted */);
 
 const state = reactive<LocalState>({
   selectedTab: props.selectedTab ?? "database",
   searchText: "",
 });
 
-const environmentList = useEnvironmentV1List(false /* !showDeleted */);
-
 const databaseList = computed(() => {
   return databaseStore.databaseListByUser(currentUserV1.value);
 });
-
-const { instanceList } = useInstanceV1List();
-
-const allAnomalyList = useAnomalyV1List();
 
 const databaseListByProject = computed(() => {
   return databaseList.value.filter((db) => {
@@ -241,8 +245,9 @@ const instanceAnomalySectionList = computed(
           instance.title
             .toLowerCase()
             .includes(state.searchText.toLowerCase()) ||
-          instance.environmentEntity.title
-            .toLowerCase()
+          environmentStore
+            .getEnvironmentByName(instance.environment)
+            .title.toLowerCase()
             .includes(state.searchText.toLowerCase())
         ) {
           return true;
@@ -257,7 +262,9 @@ const instanceAnomalySectionList = computed(
       );
       if (anomalyListOfInstance.length > 0) {
         sectionList.push({
-          title: `${instance.title} (${instance.environmentEntity.title})`,
+          title: `${instance.title} (${
+            environmentStore.getEnvironmentByName(instance.environment).title
+          })`,
           link: `/${instance.name}`,
           list: anomalyListOfInstance,
         });
@@ -290,13 +297,13 @@ const databaseAnomalySummaryList = computed((): Summary[] => {
           break;
       }
     }
-    const summary = envMap.get(database.effectiveEnvironmentEntity.uid);
+    const summary = envMap.get(database.effectiveEnvironment);
     if (summary) {
       summary.criticalCount += criticalCount;
       summary.highCount += highCount;
       summary.mediumCount += mediumCount;
     } else {
-      envMap.set(String(database.effectiveEnvironmentEntity.uid), {
+      envMap.set(database.effectiveEnvironment, {
         environmentName: database.effectiveEnvironmentEntity.title,
         criticalCount,
         highCount,
@@ -307,7 +314,7 @@ const databaseAnomalySummaryList = computed((): Summary[] => {
 
   const list: Summary[] = [];
   for (const environment of environmentList.value) {
-    const summary = envMap.get(environment.uid);
+    const summary = envMap.get(environment.name);
     if (summary) {
       list.push(summary);
     }
@@ -338,14 +345,16 @@ const instanceAnomalySummaryList = computed((): Summary[] => {
           break;
       }
     }
-    const summary = envMap.get(instance.environmentEntity.uid);
+    const summary = envMap.get(instance.environment);
     if (summary) {
       summary.criticalCount += criticalCount;
       summary.highCount += highCount;
       summary.mediumCount += mediumCount;
     } else {
-      envMap.set(instance.environmentEntity.uid, {
-        environmentName: instance.environmentEntity.title,
+      envMap.set(instance.environment, {
+        environmentName: environmentStore.getEnvironmentByName(
+          instance.environment
+        ).title,
         criticalCount,
         highCount,
         mediumCount,
@@ -355,7 +364,7 @@ const instanceAnomalySummaryList = computed((): Summary[] => {
 
   const list: Summary[] = [];
   for (const environment of environmentList.value) {
-    const summary = envMap.get(environment.uid);
+    const summary = envMap.get(environment.name);
     if (summary) {
       list.push(summary);
     }

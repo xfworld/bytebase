@@ -10,9 +10,9 @@
             $t("common.project")
           }}</span>
           <ProjectSelect
-            :project="state.projectId"
+            :project-name="state.projectName"
             :disabled="viewMode"
-            @update:project="handleProjectSelect"
+            @update:project-name="handleProjectSelect"
           />
         </div>
         <div class="flex flex-row justify-start items-center">
@@ -42,7 +42,7 @@
     </div>
     <BBAttention
       v-if="isSheetOversized && !viewMode"
-      :class="'my-2'"
+      class="my-2"
       type="warning"
       :title="$t('issue.statement-from-sheet-warning')"
     >
@@ -67,15 +67,17 @@
 import { useDebounceFn } from "@vueuse/core";
 import { NSelect } from "naive-ui";
 import { computed, onMounted, nextTick, reactive } from "vue";
+import { BBAttention } from "@/bbkit";
 import { MonacoEditor } from "@/components/MonacoEditor";
 import DownloadSheetButton from "@/components/Sheet/DownloadSheetButton.vue";
 import SQLUploadButton from "@/components/misc/SQLUploadButton.vue";
 import { ProjectSelect } from "@/components/v2";
 import { useSheetV1Store } from "@/store";
 import {
-  DEFAULT_PROJECT_V1_NAME,
+  DEFAULT_PROJECT_NAME,
   UNKNOWN_ID,
   dialectOfEngineV1,
+  isValidProjectName,
 } from "@/types";
 import { Engine } from "@/types/proto/v1/common";
 import {
@@ -87,14 +89,14 @@ import {
 import type { RawSQLState } from "./types";
 
 interface LocalState {
-  projectId?: string;
+  projectName?: string;
   engine: Engine;
   editStatement: string;
   isUploadingFile: boolean;
 }
 
 const props = defineProps<{
-  projectId?: string;
+  projectName?: string;
   engine: Engine;
   statement?: string;
   sheetId?: number;
@@ -108,7 +110,7 @@ const emit = defineEmits<{
 
 const sheetStore = useSheetV1Store();
 const state = reactive<LocalState>({
-  projectId: props.projectId,
+  projectName: props.projectName,
   engine: props.engine || Engine.MYSQL,
   editStatement: props.statement || "",
   isUploadingFile: false,
@@ -153,9 +155,9 @@ onMounted(async () => {
   }
 });
 
-const handleProjectSelect = (uid: string | undefined) => {
-  if (!uid || uid === String(UNKNOWN_ID)) return;
-  state.projectId = uid;
+const handleProjectSelect = (name: string | undefined) => {
+  if (!isValidProjectName(name)) return;
+  state.projectName = name;
   update();
 };
 
@@ -172,7 +174,7 @@ const handleSQLUpload = async (statement: string, filename: string) => {
 
   state.isUploadingFile = true;
   try {
-    const sheet = await sheetStore.createSheet(DEFAULT_PROJECT_V1_NAME, {
+    const sheet = await sheetStore.createSheet(DEFAULT_PROJECT_NAME, {
       title: filename,
       engine: state.engine,
       content: new TextEncoder().encode(statement),
@@ -207,7 +209,7 @@ const update = (sheetId?: number) => {
     sheetId = Number(extractSheetUID(sheet.value.name));
   }
   emit("update", {
-    projectId: state.projectId,
+    projectName: state.projectName,
     engine: state.engine,
     statement: state.editStatement,
     sheetId: sheetId,

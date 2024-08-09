@@ -2,7 +2,6 @@ package taskrun
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -58,54 +57,26 @@ func (exec *DataUpdateExecutor) RunOnce(ctx context.Context, driverCtx context.C
 			UpdateTime:      time.Now(),
 		})
 
-	payload := &api.TaskDatabaseDataUpdatePayload{}
-	if err := json.Unmarshal([]byte(task.Payload), payload); err != nil {
+	payload := &storepb.TaskDatabaseUpdatePayload{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(task.Payload), payload); err != nil {
 		return true, nil, errors.Wrap(err, "invalid database data update payload")
 	}
 
-	instance, err := exec.store.GetInstanceV2(ctx, &store.FindInstanceMessage{UID: &task.InstanceID})
+	sheetID := int(payload.SheetId)
+	statement, err := exec.store.GetSheetStatementByID(ctx, sheetID)
 	if err != nil {
 		return true, nil, err
 	}
-	database, err := exec.store.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID})
+	priorBackupDetail, err := exec.backupData(ctx, driverCtx, statement, payload, task)
 	if err != nil {
-		return true, nil, err
-	}
-
-	statement, err := exec.store.GetSheetStatementByID(ctx, payload.SheetID)
-	if err != nil {
-		return true, nil, err
-	}
-	if err := exec.backupData(ctx, driverCtx, statement, payload, task); err != nil {
 		return true, nil, err
 	}
 	version := model.Version{Version: payload.SchemaVersion}
-	terminated, result, err := runMigration(ctx, driverCtx, exec.store, exec.dbFactory, exec.stateCfg, exec.profile, task, taskRunUID, db.Data, statement, version, &payload.SheetID)
-	// sync database schema anyways
-	exec.store.CreateTaskRunLogS(ctx, taskRunUID, time.Now(), &storepb.TaskRunLog{
-		Type:              storepb.TaskRunLog_DATABASE_SYNC_START,
-		DatabaseSyncStart: &storepb.TaskRunLog_DatabaseSyncStart{},
-	})
-	if err := exec.schemaSyncer.SyncDatabaseSchema(ctx, database, false /* force */); err != nil {
-		exec.store.CreateTaskRunLogS(ctx, taskRunUID, time.Now(), &storepb.TaskRunLog{
-			Type: storepb.TaskRunLog_DATABASE_SYNC_END,
-			DatabaseSyncEnd: &storepb.TaskRunLog_DatabaseSyncEnd{
-				Error: err.Error(),
-			},
-		})
-		slog.Error("failed to sync database schema",
-			slog.String("instanceName", instance.ResourceID),
-			slog.String("databaseName", database.DatabaseName),
-			log.BBError(err),
-		)
+	terminated, result, err := runMigration(ctx, driverCtx, exec.store, exec.dbFactory, exec.stateCfg, exec.profile, task, taskRunUID, db.Data, statement, version, &sheetID)
+	if result != nil {
+		// Save prior backup detail to task run result.
+		result.PriorBackupDetail = priorBackupDetail
 	}
-	exec.store.CreateTaskRunLogS(ctx, taskRunUID, time.Now(), &storepb.TaskRunLog{
-		Type: storepb.TaskRunLog_DATABASE_SYNC_END,
-		DatabaseSyncEnd: &storepb.TaskRunLog_DatabaseSyncEnd{
-			Error: "",
-		},
-	})
-
 	return terminated, result, err
 }
 
@@ -113,55 +84,58 @@ func (exec *DataUpdateExecutor) backupData(
 	ctx context.Context,
 	driverCtx context.Context,
 	statement string,
-	payload *api.TaskDatabaseDataUpdatePayload,
+	payload *storepb.TaskDatabaseUpdatePayload,
 	task *store.TaskMessage,
-) error {
-	if payload.PreUpdateBackupDetail.Database == "" {
-		return nil
+) (*storepb.PriorBackupDetail, error) {
+	if payload.PreUpdateBackupDetail == nil || payload.PreUpdateBackupDetail.Database == "" {
+		return nil, nil
 	}
 
 	instance, err := exec.store.GetInstanceV2(ctx, &store.FindInstanceMessage{UID: &task.InstanceID})
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "failed to get instance")
 	}
 	database, err := exec.store.GetDatabaseV2(ctx, &store.FindDatabaseMessage{UID: task.DatabaseID})
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "failed to get database")
 	}
 	issue, err := exec.store.GetIssueV2(ctx, &store.FindIssueMessage{PipelineID: &task.PipelineID})
 	if err != nil {
-		return errors.Wrapf(err, "failed to find issue for pipeline %v", task.PipelineID)
+		return nil, errors.Wrapf(err, "failed to find issue for pipeline %v", task.PipelineID)
 	}
 	if issue == nil {
-		return errors.Errorf("issue not found for pipeline %v", task.PipelineID)
+		return nil, errors.Errorf("issue not found for pipeline %v", task.PipelineID)
 	}
 
+	sourceDatabaseName := common.FormatDatabase(database.InstanceID, database.DatabaseName)
+	// Format: instances/{instance}/databases/{database}
+	targetDatabaseName := payload.PreUpdateBackupDetail.Database
 	var backupDatabase *store.DatabaseMessage
 	var backupDriver db.Driver
 
-	backupInstanceID, backupDatabaseName, err := common.GetInstanceDatabaseID(payload.PreUpdateBackupDetail.Database)
+	backupInstanceID, backupDatabaseName, err := common.GetInstanceDatabaseID(targetDatabaseName)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "failed to parse backup database")
 	}
 
 	if instance.Engine != storepb.Engine_POSTGRES {
 		backupDatabase, err = exec.store.GetDatabaseV2(ctx, &store.FindDatabaseMessage{InstanceID: &backupInstanceID, DatabaseName: &backupDatabaseName})
 		if err != nil {
-			return err
+			return nil, errors.Wrap(err, "failed to get backup database")
 		}
 		if backupDatabase == nil {
-			return errors.Errorf("backup database %q not found", payload.PreUpdateBackupDetail.Database)
+			return nil, errors.Errorf("backup database %q not found", targetDatabaseName)
 		}
 		backupDriver, err = exec.dbFactory.GetAdminDatabaseDriver(driverCtx, instance, backupDatabase, db.ConnectionContext{})
 		if err != nil {
-			return err
+			return nil, errors.Wrap(err, "failed to get backup database driver")
 		}
 		defer backupDriver.Close(driverCtx)
 	}
 
 	driver, err := exec.dbFactory.GetAdminDatabaseDriver(driverCtx, instance, database, db.ConnectionContext{})
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "failed to get database driver")
 	}
 	defer driver.Close(driverCtx)
 
@@ -178,44 +152,50 @@ func (exec *DataUpdateExecutor) backupData(
 	prefix := "_" + time.Now().Format("20060102150405")
 	statements, err := base.TransformDMLToSelect(instance.Engine, tc, statement, database.DatabaseName, backupDatabaseName, prefix)
 	if err != nil {
-		return errors.Wrap(err, "failed to transform DML to select")
+		return nil, errors.Wrap(err, "failed to transform DML to select")
 	}
 
+	priorBackupDetail := &storepb.PriorBackupDetail{}
 	for _, statement := range statements {
 		if _, err := driver.Execute(driverCtx, statement.Statement, db.ExecuteOptions{}); err != nil {
-			return err
+			return nil, errors.Wrapf(err, "failed to execute backup statement %q", statement.Statement)
 		}
-		var originalLine *int32
 		switch instance.Engine {
 		case storepb.Engine_TIDB:
-			if _, err := driver.Execute(driverCtx, fmt.Sprintf("ALTER TABLE `%s`.`%s` COMMENT = 'issue %d'", backupDatabaseName, statement.TableName, issue.UID), db.ExecuteOptions{}); err != nil {
-				return err
+			if _, err := driver.Execute(driverCtx, fmt.Sprintf("ALTER TABLE `%s`.`%s` COMMENT = 'issue %d'", backupDatabaseName, statement.TargetTableName, issue.UID), db.ExecuteOptions{}); err != nil {
+				return nil, errors.Wrap(err, "failed to set table comment")
 			}
 		case storepb.Engine_MYSQL:
-			if _, err := driver.Execute(driverCtx, fmt.Sprintf("ALTER TABLE `%s`.`%s` COMMENT = 'issue %d'", backupDatabaseName, statement.TableName, issue.UID), db.ExecuteOptions{}); err != nil {
-				return err
+			if _, err := driver.Execute(driverCtx, fmt.Sprintf("ALTER TABLE `%s`.`%s` COMMENT = 'issue %d'", backupDatabaseName, statement.TargetTableName, issue.UID), db.ExecuteOptions{}); err != nil {
+				return nil, errors.Wrap(err, "failed to set table comment")
 			}
-			num := int32(statement.OriginalLine)
-			originalLine = &num
 		case storepb.Engine_MSSQL:
-			if _, err := backupDriver.Execute(driverCtx, fmt.Sprintf("EXEC sp_addextendedproperty 'MS_Description', 'issue %d', 'SCHEMA', 'dbo', 'TABLE', '%s'", issue.UID, statement.TableName), db.ExecuteOptions{}); err != nil {
-				return err
+			if _, err := backupDriver.Execute(driverCtx, fmt.Sprintf("EXEC sp_addextendedproperty 'MS_Description', 'issue %d', 'SCHEMA', 'dbo', 'TABLE', '%s'", issue.UID, statement.TargetTableName), db.ExecuteOptions{}); err != nil {
+				return nil, errors.Wrap(err, "failed to set table comment")
 			}
-			num := int32(statement.OriginalLine)
-			originalLine = &num
 		case storepb.Engine_POSTGRES:
-			if _, err := driver.Execute(driverCtx, fmt.Sprintf(`COMMENT ON TABLE "%s"."%s" IS 'issue %d'`, backupDatabaseName, statement.TableName, issue.UID), db.ExecuteOptions{}); err != nil {
-				return err
+			if _, err := driver.Execute(driverCtx, fmt.Sprintf(`COMMENT ON TABLE "%s"."%s" IS 'issue %d'`, backupDatabaseName, statement.TargetTableName, issue.UID), db.ExecuteOptions{}); err != nil {
+				return nil, errors.Wrap(err, "failed to set table comment")
 			}
-			num := int32(statement.OriginalLine)
-			originalLine = &num
 		case storepb.Engine_ORACLE:
-			if _, err := driver.Execute(driverCtx, fmt.Sprintf("COMMENT ON TABLE %s.%s IS 'issue %d'", backupDatabaseName, statement.TableName, issue.UID), db.ExecuteOptions{}); err != nil {
-				return err
+			if _, err := driver.Execute(driverCtx, fmt.Sprintf(`COMMENT ON TABLE "%s"."%s" IS 'issue %d'`, backupDatabaseName, statement.TargetTableName, issue.UID), db.ExecuteOptions{}); err != nil {
+				return nil, errors.Wrap(err, "failed to set table comment")
 			}
-			num := int32(statement.OriginalLine)
-			originalLine = &num
 		}
+
+		priorBackupDetail.Items = append(priorBackupDetail.Items, &storepb.PriorBackupDetail_Item{
+			SourceTable: &storepb.PriorBackupDetail_Item_Table{
+				Database: sourceDatabaseName,
+				Table:    statement.SourceTableName,
+			},
+			TargetTable: &storepb.PriorBackupDetail_Item_Table{
+				Database: targetDatabaseName,
+				Schema:   "",
+				Table:    statement.TargetTableName,
+			},
+			StartPosition: statement.StartPosition,
+			EndPosition:   statement.EndPosition,
+		})
 
 		if _, err := exec.store.CreateIssueComment(ctx, &store.IssueCommentMessage{
 			IssueUID: issue.UID,
@@ -227,10 +207,9 @@ func (exec *DataUpdateExecutor) backupData(
 						Tables: []*storepb.IssueCommentPayload_TaskPriorBackup_Table{
 							{
 								Schema: "",
-								Table:  statement.TableName,
+								Table:  statement.TargetTableName,
 							},
 						},
-						OriginalLine: originalLine,
 					},
 				},
 			},
@@ -254,5 +233,6 @@ func (exec *DataUpdateExecutor) backupData(
 			)
 		}
 	}
-	return nil
+
+	return priorBackupDetail, nil
 }

@@ -48,10 +48,7 @@
           <template #default>
             {{ $t("change-history.establish-baseline") }}
           </template>
-          <template
-            v-if="database.project === DEFAULT_PROJECT_V1_NAME"
-            #tooltip
-          >
+          <template v-if="database.project === DEFAULT_PROJECT_NAME" #tooltip>
             <div class="whitespace-pre-line">
               {{
                 $t("issue.not-allowed-to-operate-unassigned-database", {
@@ -78,6 +75,7 @@
     >
       <template #table="{ list }">
         <ChangeHistoryDataTable
+          :key="`change-history-table.${database.name}`"
           v-model:selected-change-history-names="
             state.selectedChangeHistoryNameList
           "
@@ -130,6 +128,7 @@ import JSZip from "jszip";
 import { computed, onBeforeMount, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBAlert, BBSpin } from "@/bbkit";
 import {
   ChangeHistoryDataTable,
   ChangeHistoryDetail,
@@ -143,7 +142,7 @@ import { Drawer, DrawerContent } from "@/components/v2";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import { useChangeHistoryStore, useDBSchemaV1Store } from "@/store";
 import type { ComposedDatabase } from "@/types";
-import { DEFAULT_PROJECT_V1_NAME } from "@/types";
+import { DEFAULT_PROJECT_NAME } from "@/types";
 import type { Table } from "@/types/changeHistory";
 import {
   ChangeHistory_Status,

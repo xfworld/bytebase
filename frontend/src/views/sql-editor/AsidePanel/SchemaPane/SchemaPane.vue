@@ -66,7 +66,7 @@
 
 <script setup lang="tsx">
 import { computedAsync, useElementSize, useMounted } from "@vueuse/core";
-import { NDropdown, useDialog, type TreeOption } from "naive-ui";
+import { NDropdown, NTree, useDialog, type TreeOption } from "naive-ui";
 import { storeToRefs } from "pinia";
 import { computed, nextTick, ref, watch } from "vue";
 import { BBModal } from "@/bbkit";
@@ -139,7 +139,7 @@ const metadata = computedAsync(
 const tree = computed(() => {
   if (isFetchingMetadata.value) return null;
   if (!metadata.value) return null;
-  return [buildDatabaseSchemaTree(database.value, metadata.value)];
+  return buildDatabaseSchemaTree(database.value, metadata.value);
 });
 const defaultExpandedKeys = computed(() => {
   if (!tree.value) return [];
@@ -282,6 +282,7 @@ watch(tree, () => {
 }
 .schema-tree :deep(.n-tree-node-indent) {
   width: 20px;
+  height: 20px;
 }
 .schema-tree :deep(.n-tree-node-switcher) {
   width: 20px !important;

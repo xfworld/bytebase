@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { defineStore } from "pinia";
 import { planServiceClient } from "@/grpcweb";
 import { useUserStore } from "@/store";
-import { EMPTY_ID, UNKNOWN_ID, UNKNOWN_PROJECT_NAME } from "@/types";
+import { EMPTY_ID, isValidProjectName, UNKNOWN_ID } from "@/types";
 import { unknownUser } from "@/types";
 import type { Plan } from "@/types/proto/v1/plan_service";
 import {
@@ -95,8 +95,11 @@ export const composePlan = async (rawPlan: Plan): Promise<ComposedPlan> => {
   if (
     hasProjectPermissionV2(projectEntity, me.value, "bb.planCheckRuns.list")
   ) {
+    // Only show the latest plan check runs.
+    // TODO(steven): maybe we need to show all plan check runs on a separate page later.
     const { planCheckRuns } = await planServiceClient.listPlanCheckRuns({
       parent: rawPlan.name,
+      latestOnly: true,
     });
     plan.planCheckRunList = planCheckRuns;
   }
@@ -122,9 +125,8 @@ export const usePlanStore = defineStore("plan", () => {
     const projectStore = useProjectV1Store();
     const plans = resp.plans.filter((plan) => {
       const proj = extractProjectResourceName(plan.name);
-      return (
-        projectStore.getProjectByName(`projects/${proj}`).name !==
-        UNKNOWN_PROJECT_NAME
+      return isValidProjectName(
+        projectStore.getProjectByName(`projects/${proj}`).name
       );
     });
 

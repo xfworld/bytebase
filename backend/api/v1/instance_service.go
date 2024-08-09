@@ -69,79 +69,14 @@ func (s *InstanceService) GetInstance(ctx context.Context, request *v1pb.GetInst
 
 // ListInstances lists all instances.
 func (s *InstanceService) ListInstances(ctx context.Context, request *v1pb.ListInstancesRequest) (*v1pb.ListInstancesResponse, error) {
-	var project *store.ProjectMessage
-	if request.Parent != "" {
-		p, err := s.getProjectMessage(ctx, request.Parent)
-		if err != nil {
-			return nil, err
-		}
-		if p.Deleted {
-			return nil, status.Errorf(codes.NotFound, "project %q has been deleted", request.Parent)
-		}
-		project = p
-	}
 	find := &store.FindInstanceMessage{
 		ShowDeleted: request.ShowDeleted,
-	}
-	if project != nil {
-		find.ProjectUID = &project.UID
 	}
 	instances, err := s.store.ListInstancesV2(ctx, find)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 	response := &v1pb.ListInstancesResponse{}
-	for _, instance := range instances {
-		ins, err := convertToInstance(instance)
-		if err != nil {
-			return nil, err
-		}
-		response.Instances = append(response.Instances, ins)
-	}
-	return response, nil
-}
-
-// SearchInstance searches for instances.
-func (s *InstanceService) SearchInstances(ctx context.Context, request *v1pb.SearchInstancesRequest) (*v1pb.SearchInstancesResponse, error) {
-	var project *store.ProjectMessage
-	if request.Parent != "" {
-		p, err := s.getProjectMessage(ctx, request.Parent)
-		if err != nil {
-			return nil, err
-		}
-		if p.Deleted {
-			return nil, status.Errorf(codes.NotFound, "project %q has been deleted", request.Parent)
-		}
-		project = p
-	}
-
-	databaseFind := &store.FindDatabaseMessage{}
-	if project != nil {
-		databaseFind.ProjectID = &project.ResourceID
-	}
-
-	databases, err := searchDatabases(ctx, s.store, s.iamManager, databaseFind)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get databases, error: %v", err)
-	}
-
-	instanceResourceIDsSet := make(map[string]struct{})
-	for _, db := range databases {
-		instanceResourceIDsSet[db.InstanceID] = struct{}{}
-	}
-	var instanceResourceIDs []string
-	for id := range instanceResourceIDsSet {
-		instanceResourceIDs = append(instanceResourceIDs, id)
-	}
-
-	instances, err := s.store.ListInstancesV2(ctx, &store.FindInstanceMessage{
-		ResourceIDs: &instanceResourceIDs,
-		ShowDeleted: request.ShowDeleted,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-	response := &v1pb.SearchInstancesResponse{}
 	for _, instance := range instances {
 		ins, err := convertToInstance(instance)
 		if err != nil {
@@ -429,15 +364,12 @@ func (s *InstanceService) syncSlowQueriesImpl(ctx context.Context, project *stor
 		findDatabase := &store.FindDatabaseMessage{
 			InstanceID: &instance.ResourceID,
 		}
-		if project != nil {
-			findDatabase.ProjectID = &project.ResourceID
-		}
 		databases, err := s.store.ListDatabases(ctx, findDatabase)
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to list databases: %s", err.Error())
 		}
 
-		var enabledDatabases []*store.DatabaseMessage
+		enabled := false
 		for _, database := range databases {
 			if database.SyncState != api.OK {
 				continue
@@ -457,10 +389,11 @@ func (s *InstanceService) syncSlowQueriesImpl(ctx context.Context, project *stor
 				continue
 			}
 
-			enabledDatabases = append(enabledDatabases, database)
+			enabled = true
+			break
 		}
 
-		if len(enabledDatabases) == 0 {
+		if !enabled {
 			return nil
 		}
 
@@ -638,7 +571,7 @@ func (s *InstanceService) SyncInstance(ctx context.Context, request *v1pb.SyncIn
 }
 
 // SyncInstance syncs the instance.
-func (s *InstanceService) BatchSyncInstance(ctx context.Context, request *v1pb.BatchSyncInstanceRequest) (*v1pb.BatchSyncInstanceResponse, error) {
+func (s *InstanceService) BatchSyncInstances(ctx context.Context, request *v1pb.BatchSyncInstancesRequest) (*v1pb.BatchSyncInstancesResponse, error) {
 	for _, r := range request.Requests {
 		instance, err := getInstanceMessage(ctx, s.store, r.Name)
 		if err != nil {
@@ -656,7 +589,7 @@ func (s *InstanceService) BatchSyncInstance(ctx context.Context, request *v1pb.B
 		s.schemaSyncer.SyncAllDatabases(ctx, updatedInstance)
 	}
 
-	return &v1pb.BatchSyncInstanceResponse{}, nil
+	return &v1pb.BatchSyncInstancesResponse{}, nil
 }
 
 // AddDataSource adds a data source to an instance.
@@ -674,12 +607,12 @@ func (s *InstanceService) AddDataSource(ctx context.Context, request *v1pb.AddDa
 		return nil, status.Errorf(codes.InvalidArgument, "failed to convert data source")
 	}
 
-	instance, err := getInstanceMessage(ctx, s.store, request.Instance)
+	instance, err := getInstanceMessage(ctx, s.store, request.Name)
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Instance)
+		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Name)
 	}
 	for _, ds := range instance.DataSources {
 		if ds.ID == request.DataSource.Id {
@@ -740,12 +673,12 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, request *v1pb.Up
 		return nil, status.Errorf(codes.InvalidArgument, "update_mask must be set")
 	}
 
-	instance, err := getInstanceMessage(ctx, s.store, request.Instance)
+	instance, err := getInstanceMessage(ctx, s.store, request.Name)
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Instance)
+		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Name)
 	}
 	// We create a new variable dataSource to not modify existing data source in the memory.
 	var dataSource store.DataSourceMessage
@@ -758,7 +691,7 @@ func (s *InstanceService) UpdateDataSource(ctx context.Context, request *v1pb.Up
 		}
 	}
 	if !found {
-		return nil, status.Errorf(codes.NotFound, "data source not found")
+		return nil, status.Errorf(codes.NotFound, `cannot found data source "%s"`, request.DataSource.Id)
 	}
 
 	if dataSource.Type == api.RO {
@@ -944,12 +877,12 @@ func (s *InstanceService) RemoveDataSource(ctx context.Context, request *v1pb.Re
 		return nil, status.Errorf(codes.InvalidArgument, "data sources is required")
 	}
 
-	instance, err := getInstanceMessage(ctx, s.store, request.Instance)
+	instance, err := getInstanceMessage(ctx, s.store, request.Name)
 	if err != nil {
 		return nil, err
 	}
 	if instance.Deleted {
-		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Instance)
+		return nil, status.Errorf(codes.NotFound, "instance %q has been deleted", request.Name)
 	}
 
 	// We create a new variable dataSource to not modify existing data source in the memory.
@@ -997,19 +930,10 @@ func (s *InstanceService) getProjectMessage(ctx context.Context, name string) (*
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	var project *store.ProjectMessage
-	projectUID, isNumber := isNumber(projectID)
-	if isNumber {
-		project, err = s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			UID:         &projectUID,
-			ShowDeleted: true,
-		})
-	} else {
-		project, err = s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			ResourceID:  &projectID,
-			ShowDeleted: true,
-		})
-	}
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID:  &projectID,
+		ShowDeleted: true,
+	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
@@ -1026,14 +950,9 @@ func getInstanceMessage(ctx context.Context, stores *store.Store, name string) (
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	find := &store.FindInstanceMessage{}
-	instanceUID, isNumber := isNumber(instanceID)
-	if isNumber {
-		find.UID = &instanceUID
-	} else {
-		find.ResourceID = &instanceID
+	find := &store.FindInstanceMessage{
+		ResourceID: &instanceID,
 	}
-
 	instance, err := stores.GetInstanceV2(ctx, find)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, err.Error())
@@ -1064,7 +983,19 @@ func convertToInstance(instance *store.InstanceMessage) (*v1pb.Instance, error) 
 		Environment:   fmt.Sprintf("environments/%s", instance.EnvironmentID),
 		Activation:    instance.Activation,
 		Options:       convertToInstanceOptions(instance.Options),
+		Roles:         convertToInstanceRoles(instance.Metadata.GetRoles()),
 	}, nil
+}
+
+func convertToInstanceRoles(roles []*storepb.InstanceRole) []*v1pb.InstanceRole {
+	var v1Roles []*v1pb.InstanceRole
+	for _, role := range roles {
+		v1Roles = append(v1Roles, &v1pb.InstanceRole{
+			RoleName:  role.Name,
+			Attribute: role.Attribute,
+		})
+	}
+	return v1Roles
 }
 
 func (s *InstanceService) convertToInstanceMessage(instanceID string, instance *v1pb.Instance) (*store.InstanceMessage, error) {
@@ -1095,13 +1026,14 @@ func convertToInstanceResource(instanceMessage *store.InstanceMessage) (*v1pb.In
 		return nil, err
 	}
 	return &v1pb.InstanceResource{
+		Name:          instance.Name,
 		Title:         instance.Title,
 		Engine:        instance.Engine,
 		EngineVersion: instance.EngineVersion,
 		DataSources:   instance.DataSources,
 		Activation:    instance.Activation,
-		Name:          instance.Name,
 		Environment:   instance.Environment,
+		Roles:         instance.Roles,
 	}, nil
 }
 

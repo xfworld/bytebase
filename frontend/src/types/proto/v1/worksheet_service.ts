@@ -1021,6 +1021,7 @@ export const WorksheetServiceDefinition = {
   name: "WorksheetService",
   fullName: "bytebase.v1.WorksheetService",
   methods: {
+    /** Create a personal worksheet used in SQL Editor. */
     createWorksheet: {
       name: "CreateWorksheet",
       requestType: CreateWorksheetRequest,
@@ -1030,6 +1031,7 @@ export const WorksheetServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([16, 112, 97, 114, 101, 110, 116, 44, 119, 111, 114, 107, 115, 104, 101, 101, 116])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               27,
@@ -1065,6 +1067,13 @@ export const WorksheetServiceDefinition = {
         },
       },
     },
+    /**
+     * Get a worksheet by name.
+     * The users can access this method if,
+     * - they are the creator of the worksheet;
+     * - they have bb.worksheets.get permission on the workspace;
+     * - the sheet is shared with them with PROJECT_READ and PROJECT_WRITE visibility, and they have bb.projects.get permission on the project.
+     */
     getWorksheet: {
       name: "GetWorksheet",
       requestType: GetWorksheetRequest,
@@ -1074,6 +1083,7 @@ export const WorksheetServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               25,
@@ -1107,6 +1117,11 @@ export const WorksheetServiceDefinition = {
         },
       },
     },
+    /**
+     * Search for worksheets.
+     * This is used for finding my worksheets or worksheets shared by other people.
+     * The sheet accessibility is the same as GetWorksheet().
+     */
     searchWorksheets: {
       name: "SearchWorksheets",
       requestType: SearchWorksheetsRequest,
@@ -1115,6 +1130,7 @@ export const WorksheetServiceDefinition = {
       responseStream: false,
       options: {
         _unknownFields: {
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               23,
@@ -1146,6 +1162,13 @@ export const WorksheetServiceDefinition = {
         },
       },
     },
+    /**
+     * Update a worksheet.
+     * The users can access this method if,
+     * - they are the creator of the worksheet;
+     * - they have bb.worksheets.manage permission on the workspace;
+     * - the sheet is shared with them with PROJECT_WRITE visibility, and they have bb.projects.get permission on the project.
+     */
     updateWorksheet: {
       name: "UpdateWorksheet",
       requestType: UpdateWorksheetRequest,
@@ -1180,6 +1203,7 @@ export const WorksheetServiceDefinition = {
               107,
             ]),
           ],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               46,
@@ -1234,6 +1258,10 @@ export const WorksheetServiceDefinition = {
         },
       },
     },
+    /**
+     * Update the organizer of a worksheet.
+     * The access is the same as UpdateWorksheet method.
+     */
     updateWorksheetOrganizer: {
       name: "UpdateWorksheetOrganizer",
       requestType: UpdateWorksheetOrganizerRequest,
@@ -1268,6 +1296,7 @@ export const WorksheetServiceDefinition = {
               107,
             ]),
           ],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               61,
@@ -1337,6 +1366,10 @@ export const WorksheetServiceDefinition = {
         },
       },
     },
+    /**
+     * Delete a worksheet.
+     * The access is the same as UpdateWorksheet method.
+     */
     deleteWorksheet: {
       name: "DeleteWorksheet",
       requestType: DeleteWorksheetRequest,
@@ -1346,6 +1379,7 @@ export const WorksheetServiceDefinition = {
       options: {
         _unknownFields: {
           8410: [new Uint8Array([4, 110, 97, 109, 101])],
+          800016: [new Uint8Array([2])],
           578365826: [
             new Uint8Array([
               25,

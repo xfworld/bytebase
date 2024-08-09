@@ -6,10 +6,7 @@
     />
 
     <EnvironmentV1Name
-      v-if="
-        !hasEnvironmentContext ||
-        database.effectiveEnvironment !== database.instanceResource.environment
-      "
+      v-if="showEnvironment"
       :environment="database.effectiveEnvironmentEntity"
       :link="false"
       class="text-control-light"
@@ -27,14 +24,12 @@
         ({{ database.instanceResource.title }})
       </span>
     </span>
-    <HideInStandaloneMode>
-      <RequestQueryButton
-        v-if="!canQuery"
-        :database="database"
-        :size="'tiny'"
-        :panel-placement="'left'"
-      />
-    </HideInStandaloneMode>
+    <RequestQueryButton
+      v-if="!disallowRequestQuery && !canQuery"
+      :database="database"
+      :size="'tiny'"
+      :panel-placement="'left'"
+    />
   </div>
 </template>
 
@@ -42,7 +37,7 @@
 import { computed } from "vue";
 import DatabaseIcon from "~icons/heroicons-outline/circle-stack";
 import { EnvironmentV1Name, InstanceV1EngineIcon } from "@/components/v2";
-import { useCurrentUserV1 } from "@/store";
+import { useAppFeature, useCurrentUserV1 } from "@/store";
 import type {
   SQLEditorTreeNode as TreeNode,
   SQLEditorTreeFactor as Factor,
@@ -58,6 +53,12 @@ const props = defineProps<{
 }>();
 
 const me = useCurrentUserV1();
+const disallowRequestQuery = useAppFeature(
+  "bb.feature.sql-editor.disallow-request-query"
+);
+const hideEnvironments = useAppFeature(
+  "bb.feature.sql-editor.hide-environments"
+);
 
 const database = computed(
   () => (props.node as TreeNode<"database">).meta.target
@@ -73,5 +74,24 @@ const hasInstanceContext = computed(() => {
 
 const hasEnvironmentContext = computed(() => {
   return props.factors.includes("environment");
+});
+
+const showEnvironment = computed(() => {
+  // Don't show environment tag anyway if disabled via appFeature
+  if (hideEnvironments.value) {
+    return false;
+  }
+  // If we don't have "environment" factor in the custom tree structure
+  // we should indicate the database's environment
+  if (!hasEnvironmentContext.value) {
+    return true;
+  }
+  // If we have "environment" factor in the custom tree structure
+  // only show the environment tag when a database's effectiveEnvironment is
+  // not equal to it's physical instance's environment
+  return (
+    database.value.effectiveEnvironment !==
+    database.value.instanceResource.environment
+  );
 });
 </script>

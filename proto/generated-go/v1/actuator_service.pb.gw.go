@@ -133,42 +133,6 @@ func local_request_ActuatorService_DeleteCache_0(ctx context.Context, marshaler 
 
 }
 
-var (
-	filter_ActuatorService_ListDebugLog_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
-)
-
-func request_ActuatorService_ListDebugLog_0(ctx context.Context, marshaler runtime.Marshaler, client ActuatorServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListDebugLogRequest
-	var metadata runtime.ServerMetadata
-
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ActuatorService_ListDebugLog_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
-	msg, err := client.ListDebugLog(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-
-}
-
-func local_request_ActuatorService_ListDebugLog_0(ctx context.Context, marshaler runtime.Marshaler, server ActuatorServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq ListDebugLogRequest
-	var metadata runtime.ServerMetadata
-
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ActuatorService_ListDebugLog_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-
-	msg, err := server.ListDebugLog(ctx, &protoReq)
-	return msg, metadata, err
-
-}
-
 func request_ActuatorService_GetResourcePackage_0(ctx context.Context, marshaler runtime.Marshaler, client ActuatorServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq GetResourcePackageRequest
 	var metadata runtime.ServerMetadata
@@ -191,6 +155,7 @@ func local_request_ActuatorService_GetResourcePackage_0(ctx context.Context, mar
 // UnaryRPC     :call ActuatorServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
 // Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterActuatorServiceHandlerFromEndpoint instead.
+// GRPC interceptors will not work for this type of registration. To use interceptors, you must use the "runtime.WithMiddlewares" option in the "runtime.NewServeMux" call.
 func RegisterActuatorServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server ActuatorServiceServer) error {
 
 	mux.Handle("GET", pattern_ActuatorService_GetActuatorInfo_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -268,31 +233,6 @@ func RegisterActuatorServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 
 	})
 
-	mux.Handle("GET", pattern_ActuatorService_ListDebugLog_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/bytebase.v1.ActuatorService/ListDebugLog", runtime.WithHTTPPathPattern("/v1/actuator/debug"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_ActuatorService_ListDebugLog_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-
-		forward_ActuatorService_ListDebugLog_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
-	})
-
 	mux.Handle("GET", pattern_ActuatorService_GetResourcePackage_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -356,7 +296,7 @@ func RegisterActuatorServiceHandler(ctx context.Context, mux *runtime.ServeMux, 
 // to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "ActuatorServiceClient".
 // Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "ActuatorServiceClient"
 // doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
-// "ActuatorServiceClient" to call the correct interceptors.
+// "ActuatorServiceClient" to call the correct interceptors. This client ignores the HTTP middlewares.
 func RegisterActuatorServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client ActuatorServiceClient) error {
 
 	mux.Handle("GET", pattern_ActuatorService_GetActuatorInfo_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
@@ -425,28 +365,6 @@ func RegisterActuatorServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 
 	})
 
-	mux.Handle("GET", pattern_ActuatorService_ListDebugLog_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/bytebase.v1.ActuatorService/ListDebugLog", runtime.WithHTTPPathPattern("/v1/actuator/debug"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_ActuatorService_ListDebugLog_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-
-		forward_ActuatorService_ListDebugLog_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
-	})
-
 	mux.Handle("GET", pattern_ActuatorService_GetResourcePackage_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -479,8 +397,6 @@ var (
 
 	pattern_ActuatorService_DeleteCache_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "actuator", "cache"}, ""))
 
-	pattern_ActuatorService_ListDebugLog_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "actuator", "debug"}, ""))
-
 	pattern_ActuatorService_GetResourcePackage_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "actuator", "resources"}, ""))
 )
 
@@ -490,8 +406,6 @@ var (
 	forward_ActuatorService_UpdateActuatorInfo_0 = runtime.ForwardResponseMessage
 
 	forward_ActuatorService_DeleteCache_0 = runtime.ForwardResponseMessage
-
-	forward_ActuatorService_ListDebugLog_0 = runtime.ForwardResponseMessage
 
 	forward_ActuatorService_GetResourcePackage_0 = runtime.ForwardResponseMessage
 )

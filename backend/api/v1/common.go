@@ -1,11 +1,8 @@
 package v1
 
 import (
-	"crypto/sha1"
 	"encoding/base64"
-	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/google/cel-go/cel"
@@ -39,14 +36,6 @@ var (
 	deletePatch   = true
 	undeletePatch = false
 )
-
-func isNumber(v string) (int, bool) {
-	n, err := strconv.Atoi(v)
-	if err == nil {
-		return int(n), true
-	}
-	return 0, false
-}
 
 func convertDeletedToState(deleted bool) v1pb.State {
 	if deleted {
@@ -464,13 +453,6 @@ func parseLimitAndOffset(pageToken string, pageSize int) (int, int, error) {
 // https://datatracker.ietf.org/doc/html/rfc4122#section-4.1
 func isValidUUID(id string) bool {
 	return uuidMatcher.MatchString(id)
-}
-
-// generateEtag generates etag for the given body.
-func generateEtag(body []byte) string {
-	hash := sha1.Sum(body)
-	etag := fmt.Sprintf("%x", hash)
-	return etag
 }
 
 func convertExportFormat(format storepb.ExportFormat) v1pb.ExportFormat {

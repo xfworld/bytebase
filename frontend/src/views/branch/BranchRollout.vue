@@ -1,7 +1,7 @@
 <template>
   <div class="w-full h-full relative">
     <BranchRolloutView
-      v-if="project && ready && branch"
+      v-if="ready && branch"
       :project="project"
       :branch="branch"
       v-bind="$attrs"
@@ -16,7 +16,8 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import BranchRolloutView from "@/components/Branch/BranchRolloutView";
-import { useProjectV1Store } from "@/store";
+import MaskSpinner from "@/components/misc/MaskSpinner.vue";
+import { useProjectByName } from "@/store";
 import { useBranchStore } from "@/store/modules/branch";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import type { Branch } from "@/types/proto/v1/branch_service";
@@ -28,19 +29,12 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const router = useRouter();
-const projectStore = useProjectV1Store();
 const branchStore = useBranchStore();
 const branchFullName = ref<string>("");
+const { project } = useProjectByName(
+  computed(() => `${projectNamePrefix}${props.projectId}`)
+);
 const ready = ref<boolean>(false);
-
-const project = computed(() => {
-  if (props.projectId === "-") {
-    return;
-  }
-  return projectStore.getProjectByName(
-    `${projectNamePrefix}${props.projectId}`
-  );
-});
 const branch = ref<Branch>();
 
 watch(

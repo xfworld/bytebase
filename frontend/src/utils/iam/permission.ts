@@ -1,14 +1,9 @@
 import { usePermissionStore, useProjectV1List } from "@/store";
-import type {
-  ComposedProject,
-  ProjectPermission,
-  WorkspacePermission,
-} from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
+import type { ComposedProject, ComposedUser, Permission } from "@/types";
 
 export const hasWorkspacePermissionV2 = (
-  user: User,
-  permission: WorkspacePermission
+  user: ComposedUser,
+  permission: Permission
 ): boolean => {
   const permissions =
     usePermissionStore().workspaceLevelPermissionsByUser(user);
@@ -18,8 +13,8 @@ export const hasWorkspacePermissionV2 = (
 // hasProjectPermissionV2 checks if the user has the given permission on the project.
 export const hasProjectPermissionV2 = (
   project: ComposedProject | undefined,
-  user: User,
-  permission: ProjectPermission
+  user: ComposedUser,
+  permission: Permission
 ): boolean => {
   const permissionStore = usePermissionStore();
 
@@ -46,8 +41,8 @@ export const hasProjectPermissionV2 = (
 
 // hasWorkspaceLevelProjectPermission checks if the user has the given permission on workspace-level-assigned project roles
 export const hasWorkspaceLevelProjectPermission = (
-  user: User,
-  permission: ProjectPermission
+  user: ComposedUser,
+  permission: Permission
 ): boolean => {
   const permissions =
     usePermissionStore().workspaceLevelPermissionsByUser(user);
@@ -56,8 +51,8 @@ export const hasWorkspaceLevelProjectPermission = (
 
 // hasWorkspaceLevelProjectPermission checks if the user has the given permission on ANY project in the workspace.
 export const hasWorkspaceLevelProjectPermissionInAnyProject = (
-  user: User,
-  permission: ProjectPermission
+  user: ComposedUser,
+  permission: Permission
 ): boolean => {
   const { projectList } = useProjectV1List();
   return projectList.value.some((project) =>

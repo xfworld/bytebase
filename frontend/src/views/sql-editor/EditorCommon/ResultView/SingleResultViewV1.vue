@@ -87,7 +87,7 @@
             {{ $t("plugin.ai.chat-sql") }}
           </template>
         </NTooltip>
-        <template v-if="showExportButton">
+        <template v-if="!disallowExportQueryData">
           <DataExportButton
             v-if="allowToExportData"
             size="small"
@@ -185,16 +185,18 @@ import type { BinaryLike } from "node:crypto";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBAttention } from "@/bbkit";
 import type { ExportOption } from "@/components/DataExportButton.vue";
+import DataExportButton from "@/components/DataExportButton.vue";
 import { DISMISS_PLACEHOLDER } from "@/plugins/ai/components/state";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import {
   useSQLEditorTabStore,
   featureToRef,
   useCurrentUserV1,
-  useActuatorV1Store,
   useConnectionOfCurrentSQLEditorTab,
   useSQLEditorStore,
+  useAppFeature,
 } from "@/store";
 import { useExportData } from "@/store/modules/export";
 import type {
@@ -202,7 +204,7 @@ import type {
   SQLEditorQueryParams,
   SQLResultSetV1,
 } from "@/types";
-import { UNKNOWN_ID } from "@/types";
+import { UNKNOWN_ID, isValidInstanceName } from "@/types";
 import { ExportFormat } from "@/types/proto/v1/common";
 import { Engine } from "@/types/proto/v1/common";
 import type {
@@ -255,13 +257,15 @@ const state = reactive<LocalState>({
 const { t } = useI18n();
 const router = useRouter();
 const { dark, keyword } = useSQLResultViewContext();
-const actuatorStore = useActuatorV1Store();
 const tabStore = useSQLEditorTabStore();
 const editorStore = useSQLEditorStore();
 const currentUserV1 = useCurrentUserV1();
 const { exportData } = useExportData();
 const currentTab = computed(() => tabStore.currentTab);
 const { instance: connectedInstance } = useConnectionOfCurrentSQLEditorTab();
+const disallowExportQueryData = useAppFeature(
+  "bb.feature.sql-editor.disallow-export-query-data"
+);
 
 const viewMode = computed((): ViewMode => {
   const { result } = props;
@@ -279,14 +283,10 @@ const viewMode = computed((): ViewMode => {
 });
 
 const showSearchFeature = computed(() => {
-  if (connectedInstance.value.uid === String(UNKNOWN_ID)) {
+  if (!isValidInstanceName(connectedInstance.value.name)) {
     return false;
   }
   return instanceV1HasStructuredQueryResult(connectedInstance.value);
-});
-
-const showExportButton = computed(() => {
-  return actuatorStore.customTheme !== "lixiang";
 });
 
 const allowToExportData = computed(() => {

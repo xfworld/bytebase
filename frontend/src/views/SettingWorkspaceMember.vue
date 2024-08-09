@@ -164,6 +164,9 @@ import { NButton, NCheckbox, NTabs, NTabPane, NPopover } from "naive-ui";
 import { computed, onMounted, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter, RouterLink } from "vue-router";
+import { FeatureAttention } from "@/components/FeatureGuard";
+import CreateGroupDrawer from "@/components/User/Settings/CreateGroupDrawer.vue";
+import CreateUserDrawer from "@/components/User/Settings/CreateUserDrawer.vue";
 import UserDataTable from "@/components/User/Settings/UserDataTable/index.vue";
 import UserDataTableByGroup from "@/components/User/Settings/UserDataTableByGroup/index.vue";
 import UserDataTableByRole from "@/components/User/Settings/UserDataTableByRole/index.vue";
@@ -174,20 +177,20 @@ import {
   useCurrentUserV1,
   useUserStore,
   useUIStateStore,
-  useUserGroupStore,
+  useGroupStore,
   useSettingV1Store,
 } from "@/store";
-import { userGroupNamePrefix } from "@/store/modules/v1/common";
+import { groupNamePrefix } from "@/store/modules/v1/common";
 import {
   ALL_USERS_USER_EMAIL,
   PresetRoleType,
   filterUserListByKeyword,
+  type ComposedUser,
 } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
 import { UserType } from "@/types/proto/v1/auth_service";
 import { State } from "@/types/proto/v1/common";
+import type { Group } from "@/types/proto/v1/group";
 import { WorkspaceProfileSetting } from "@/types/proto/v1/setting_service";
-import type { UserGroup } from "@/types/proto/v1/user_group";
 import { hasWorkspacePermissionV2 } from "@/utils";
 
 const tabList = ["members", "groups"] as const;
@@ -203,8 +206,8 @@ type LocalState = {
   showInactiveUserList: boolean;
   showCreateUserDrawer: boolean;
   showCreateGroupDrawer: boolean;
-  editingUser?: User;
-  editingGroup?: UserGroup;
+  editingUser?: ComposedUser;
+  editingGroup?: Group;
 };
 
 const state = reactive<LocalState>({
@@ -221,7 +224,7 @@ const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
-const groupStore = useUserGroupStore();
+const groupStore = useGroupStore();
 const currentUserV1 = useCurrentUserV1();
 const uiStateStore = useUIStateStore();
 const subscriptionV1Store = useSubscriptionV1Store();
@@ -260,7 +263,7 @@ const hasRBACFeature = computed(() =>
 );
 
 const allowCreateGroup = computed(() =>
-  hasWorkspacePermissionV2(currentUserV1.value, "bb.userGroups.create")
+  hasWorkspacePermissionV2(currentUserV1.value, "bb.groups.create")
 );
 
 const allowCreateUser = computed(() => {
@@ -268,7 +271,7 @@ const allowCreateUser = computed(() => {
 });
 
 const allowEditGroup = computed(() => {
-  return hasWorkspacePermissionV2(currentUserV1.value, "bb.userGroups.update");
+  return hasWorkspacePermissionV2(currentUserV1.value, "bb.groups.update");
 });
 
 onMounted(() => {
@@ -280,7 +283,7 @@ onMounted(() => {
   }
 
   const name = route.query.name as string;
-  if (name?.startsWith(userGroupNamePrefix)) {
+  if (name?.startsWith(groupNamePrefix)) {
     state.typeTab = "groups";
     state.editingGroup = groupStore.groupList.find(
       (group) => group.name === name
@@ -373,7 +376,7 @@ const handleCreateGroup = () => {
   state.showCreateGroupDrawer = true;
 };
 
-const handleUpdateGroup = (group: UserGroup) => {
+const handleUpdateGroup = (group: Group) => {
   state.editingGroup = group;
   state.showCreateGroupDrawer = true;
 };
@@ -383,7 +386,7 @@ const handleCreateUser = () => {
   state.showCreateUserDrawer = true;
 };
 
-const handleUpdateUser = (user: User) => {
+const handleUpdateUser = (user: ComposedUser) => {
   state.editingUser = user;
   state.showCreateUserDrawer = true;
 };

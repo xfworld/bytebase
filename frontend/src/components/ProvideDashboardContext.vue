@@ -16,19 +16,26 @@ import { ref, onMounted } from "vue";
 import { onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  AUTH_MFA_MODULE,
+  AUTH_PASSWORD_FORGOT_MODULE,
+  AUTH_SIGNIN_MODULE,
+  AUTH_SIGNUP_MODULE,
+} from "@/router/auth";
+import { PROJECT_V1_ROUTE_DASHBOARD } from "@/router/dashboard/workspaceRoutes";
+import {
   useEnvironmentV1Store,
-  useInstanceV1Store,
   usePolicyV1Store,
-  useProjectV1Store,
   useRoleStore,
   useSettingV1Store,
   useUserStore,
   useUIStateStore,
   useDatabaseV1Store,
-  useUserGroupStore,
+  useGroupStore,
+  useProjectV1List,
 } from "@/store";
 import { projectNamePrefix } from "@/store/modules/v1/common";
 import { PolicyResourceType } from "@/types/proto/v1/org_policy_service";
+import { wrapRefAsPromise } from "@/utils";
 import MaskSpinner from "./misc/MaskSpinner.vue";
 
 const route = useRoute();
@@ -39,30 +46,33 @@ const isSwitchingProject = ref(false);
 const policyStore = usePolicyV1Store();
 const databaseStore = useDatabaseV1Store();
 
-const fetchInstances = async (project: string) => {
-  const parent = project ? `${projectNamePrefix}${project}` : undefined;
-  await useInstanceV1Store().fetchInstanceList(
-    /* !showDeleted */ false,
-    parent
-  );
+const prepareProjects = async () => {
+  const routeName = route.name?.toString() || "";
+  if (!routeName.startsWith(`${PROJECT_V1_ROUTE_DASHBOARD}.`)) {
+    await wrapRefAsPromise(useProjectV1List().ready, true);
+  }
 };
 
-const fetchDatabases = async (project: string) => {
+const fetchDatabases = async (optionalProject: string) => {
   const filters = [`instance = "instances/-"`];
   // If `projectId` is provided in the route, filter the database list by the project.
-  if (project) {
-    filters.push(`project = "${projectNamePrefix}${project}"`);
+  if (optionalProject) {
+    filters.push(`project = "${projectNamePrefix}${optionalProject}"`);
   }
   await databaseStore.searchDatabases({
     filter: filters.join(" && "),
   });
 };
 
-const instanceAndDatabaseInitialized = new Set<string /* project */>();
-const fetchInstancesAndDatabases = async (project: string) => {
-  if (instanceAndDatabaseInitialized.has(project || "")) return;
-  await Promise.all([fetchInstances(project), fetchDatabases(project)]);
-  instanceAndDatabaseInitialized.add(project || "");
+const databaseInitialized = new Set<string /* project */>();
+const prepareDatabases = async (optionalProject: string) => {
+  if (databaseInitialized.has(optionalProject || "")) return;
+  try {
+    await Promise.all([fetchDatabases(optionalProject)]);
+    databaseInitialized.add(optionalProject || "");
+  } catch {
+    // nothing
+  }
 };
 
 let unregisterBeforeEachHook: (() => void) | undefined;
@@ -81,16 +91,28 @@ onMounted(async () => {
   // Then prepare the other resources.
   await Promise.all([
     useUserStore().fetchUserList(),
-    useUserGroupStore().fetchGroupList(),
+    useGroupStore().fetchGroupList(),
     useEnvironmentV1Store().fetchEnvironments(),
-    useProjectV1Store().fetchProjectList(true /* showDeleted */),
+    prepareProjects(),
   ]);
-  await Promise.all([useUIStateStore().restoreState()]);
-  await fetchInstancesAndDatabases(route.params.projectId as string);
+
+  await prepareDatabases(route.params.projectId as string);
+  useUIStateStore().restoreState();
 
   isInitializing.value = false;
 
-  unregisterBeforeEachHook = router.beforeEach((to, from, next) => {
+  unregisterBeforeEachHook = router.beforeEach(async (to, from, next) => {
+    if (
+      to.name === AUTH_SIGNIN_MODULE ||
+      to.name === AUTH_SIGNUP_MODULE ||
+      to.name === AUTH_MFA_MODULE ||
+      to.name === AUTH_PASSWORD_FORGOT_MODULE
+    ) {
+      databaseInitialized.clear();
+      next();
+      return;
+    }
+
     const fromProject = from.params.projectId as string;
     const toProject = to.params.projectId as string;
     if (fromProject !== toProject) {
@@ -98,12 +120,14 @@ onMounted(async () => {
         `[ProvideDashboardContext] project switched ${fromProject} -> ${toProject}`
       );
       isSwitchingProject.value = true;
-      fetchInstancesAndDatabases(toProject).finally(() => {
-        isSwitchingProject.value = false;
-
-        next();
-      });
-      return;
+      if (toProject === undefined) {
+        // Prepare projects if the project is not specified.
+        // This is useful when the user navigates to the workspace dashboard from project detail.
+        await wrapRefAsPromise(useProjectV1List().ready, true);
+      }
+      await prepareDatabases(toProject);
+      isSwitchingProject.value = false;
+      next();
     }
 
     next();

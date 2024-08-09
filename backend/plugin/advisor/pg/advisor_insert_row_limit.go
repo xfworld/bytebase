@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/bytebase/bytebase/backend/common"
 	"github.com/bytebase/bytebase/backend/plugin/advisor"
 	"github.com/bytebase/bytebase/backend/plugin/parser/sql/ast"
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
@@ -55,29 +56,25 @@ func (*InsertRowLimitAdvisor) Check(ctx advisor.Context, _ string) ([]*storepb.A
 			checker.text = stmt.Text()
 			checker.line = stmt.LastLine()
 			ast.Walk(checker, stmt)
+			if checker.explainCount >= common.MaximumLintExplainSize {
+				break
+			}
 		}
 	}
 
-	if len(checker.adviceList) == 0 {
-		checker.adviceList = append(checker.adviceList, &storepb.Advice{
-			Status:  storepb.Advice_SUCCESS,
-			Code:    advisor.Ok.Int32(),
-			Title:   "OK",
-			Content: "",
-		})
-	}
 	return checker.adviceList, nil
 }
 
 type insertRowLimitChecker struct {
-	adviceList []*storepb.Advice
-	level      storepb.Advice_Status
-	title      string
-	text       string
-	line       int
-	maxRow     int
-	driver     *sql.DB
-	ctx        context.Context
+	adviceList   []*storepb.Advice
+	level        storepb.Advice_Status
+	title        string
+	text         string
+	line         int
+	maxRow       int
+	driver       *sql.DB
+	ctx          context.Context
+	explainCount int
 }
 
 // Visit implements the ast.Visitor interface.
@@ -95,6 +92,7 @@ func (checker *insertRowLimitChecker) Visit(node ast.Node) ast.Visitor {
 			}
 		} else if checker.driver != nil {
 			// For INSERT INTO ... SELECT statements, use EXPLAIN.
+			checker.explainCount++
 			res, err := advisor.Query(checker.ctx, checker.driver, storepb.Engine_POSTGRES, fmt.Sprintf("EXPLAIN %s", node.Text()))
 			if err != nil {
 				checker.adviceList = append(checker.adviceList, &storepb.Advice{

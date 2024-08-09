@@ -1,15 +1,20 @@
 import type { RemovableRef } from "@vueuse/core";
 import { useLocalStorage } from "@vueuse/core";
 import axios from "axios";
-import { defineStore, storeToRefs } from "pinia";
-import { watchEffect } from "vue";
+import { defineStore } from "pinia";
+import { computed } from "vue";
 import { actuatorServiceClient } from "@/grpcweb";
 import { useSilentRequest } from "@/plugins/silent-request";
-import type { Release, ReleaseInfo } from "@/types";
+import {
+  defaultAppProfile,
+  type AppFeatures,
+  type AppProfile,
+  type Release,
+  type ReleaseInfo,
+} from "@/types";
 import type {
   ActuatorInfo,
   ResourcePackage,
-  DebugLog,
 } from "@/types/proto/v1/actuator_service";
 import { semverCompare } from "@/utils";
 
@@ -18,32 +23,25 @@ const EXTERNAL_URL_PLACEHOLDER =
 const GITHUB_API_LIST_BYTEBASE_RELEASE =
   "https://api.github.com/repos/bytebase/bytebase/releases";
 
-export type PageMode =
-  // General mode. Console is full-featured and SQL Editor is bundled in the layout.
-  | "BUNDLED"
-  // Vender customized mode. Hide certain parts (e.g., headers, sidebars) and
-  // some features are disabled or hidden.
-  | "STANDALONE";
-
 interface ActuatorState {
-  pageMode: PageMode;
-  customTheme?: string;
+  // Whether the app is initialized or not.
+  initialized: boolean;
   serverInfo?: ActuatorInfo;
   resourcePackage?: ResourcePackage;
   releaseInfo: RemovableRef<ReleaseInfo>;
-  debugLogList: DebugLog[];
+  appProfile: AppProfile;
 }
 
 export const useActuatorV1Store = defineStore("actuator_v1", {
   state: (): ActuatorState => ({
-    pageMode: "BUNDLED",
+    initialized: false,
     serverInfo: undefined,
     resourcePackage: undefined,
     releaseInfo: useLocalStorage("bytebase_release", {
       ignoreRemindModalTillNextRelease: false,
       nextCheckTs: 0,
     }),
-    debugLogList: [],
+    appProfile: defaultAppProfile(),
   }),
   getters: {
     info: (state) => {
@@ -122,18 +120,13 @@ export const useActuatorV1Store = defineStore("actuator_v1", {
       });
       this.setServerInfo(serverInfo);
     },
-    async fetchDebugLogList() {
-      const { logs } = await actuatorServiceClient.listDebugLog({});
-      this.debugLogList = logs;
-      return logs;
-    },
     async tryToRemindRelease(): Promise<boolean> {
       if (this.serverInfo?.saas ?? false) {
         return false;
       }
       if (!this.releaseInfo.latest) {
-        const relase = await this.fetchLatestRelease();
-        this.releaseInfo.latest = relase;
+        const release = await this.fetchLatestRelease();
+        this.releaseInfo.latest = release;
       }
       if (!this.releaseInfo.latest) {
         return false;
@@ -141,8 +134,8 @@ export const useActuatorV1Store = defineStore("actuator_v1", {
 
       // It's time to fetch the release
       if (new Date().getTime() >= this.releaseInfo.nextCheckTs) {
-        const relase = await this.fetchLatestRelease();
-        if (!relase) {
+        const release = await this.fetchLatestRelease();
+        if (!release) {
           return false;
         }
 
@@ -150,11 +143,11 @@ export const useActuatorV1Store = defineStore("actuator_v1", {
         this.releaseInfo.nextCheckTs =
           new Date().getTime() + 24 * 60 * 60 * 1000;
 
-        if (semverCompare(relase.tag_name, this.releaseInfo.latest.tag_name)) {
+        if (semverCompare(release.tag_name, this.releaseInfo.latest.tag_name)) {
           this.releaseInfo.ignoreRemindModalTillNextRelease = false;
         }
 
-        this.releaseInfo.latest = relase;
+        this.releaseInfo.latest = release;
       }
 
       if (this.releaseInfo.ignoreRemindModalTillNextRelease) {
@@ -174,18 +167,16 @@ export const useActuatorV1Store = defineStore("actuator_v1", {
         return;
       }
     },
+    overrideAppFeatures(overrides: Partial<AppFeatures>) {
+      Object.assign(this.appProfile.features, overrides);
+    },
   },
 });
 
-export const useDebugLogList = () => {
-  const store = useActuatorV1Store();
-  watchEffect(() => store.fetchDebugLogList());
-
-  return storeToRefs(store).debugLogList;
+export const useAppFeature = <T extends keyof AppFeatures>(feature: T) => {
+  return computed(() => useActuatorV1Store().appProfile.features[feature]);
 };
 
-export const usePageMode = () => {
-  const actuatorStore = useActuatorV1Store();
-  const { pageMode } = storeToRefs(actuatorStore);
-  return pageMode;
+export const useWorkspaceMode = () => {
+  return computed(() => useActuatorV1Store().appProfile.mode);
 };

@@ -31,7 +31,7 @@
           >
             <p class="mb-2">{{ $t("common.databases") }}</p>
             <QuerierDatabaseResourceForm
-              :project-id="project.uid"
+              :project-name="project.name"
               :database-resources="state.databaseResources"
               @update:condition="state.databaseResourceCondition = $event"
               @update:database-resources="state.databaseResources = $event"
@@ -44,11 +44,7 @@
               <p class="mb-2">
                 {{ $t("issue.grant-request.export-rows") }}
               </p>
-              <NInputNumber
-                v-model:value="state.maxRowCount"
-                required
-                placeholder="Max row count"
-              />
+              <MaxRowCountSelect v-model:value="state.maxRowCount" />
             </div>
           </template>
         </template>
@@ -90,7 +86,7 @@
           <p class="mb-2">
             {{ $t("settings.members.groups.self") }}
           </p>
-          <UserGroupSelect v-model:value="state.memberList" :multiple="true" />
+          <GroupSelect v-model:value="state.memberList" :multiple="true" />
         </div>
       </div>
       <template #footer>
@@ -122,18 +118,25 @@
 
 <script lang="ts" setup>
 import { cloneDeep, isEqual, uniq } from "lodash-es";
-import { NButton, NDatePicker, NInput, NInputNumber } from "naive-ui";
+import { NButton, NDatePicker, NInput } from "naive-ui";
 import { computed, reactive, ref, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { BBButtonConfirm } from "@/bbkit";
+import MaxRowCountSelect from "@/components/Issue/panel/RequestExportPanel/MaxRowCountSelect.vue";
 import QuerierDatabaseResourceForm from "@/components/Issue/panel/RequestQueryPanel/DatabaseResourceForm/index.vue";
-import { Drawer, DrawerContent } from "@/components/v2";
+import {
+  Drawer,
+  DrawerContent,
+  GroupSelect,
+  UserSelect,
+} from "@/components/v2";
 import {
   extractGroupEmail,
   useDatabaseV1Store,
   useProjectIamPolicy,
   useProjectIamPolicyStore,
   useUserStore,
-  useUserGroupStore,
+  useGroupStore,
   pushNotification,
 } from "@/store";
 import type { ComposedProject, DatabaseResource } from "@/types";
@@ -175,7 +178,7 @@ interface LocalState {
 const { t } = useI18n();
 const databaseStore = useDatabaseV1Store();
 const userStore = useUserStore();
-const groupStore = useUserGroupStore();
+const groupStore = useGroupStore();
 
 const state = reactive<LocalState>({
   title: "",

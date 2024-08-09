@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bytebase/bytebase/backend/common"
@@ -24,71 +25,7 @@ import (
 	storepb "github.com/bytebase/bytebase/proto/generated-go/store"
 )
 
-func transformDeploymentConfigTargetToSteps(ctx context.Context, s *store.Store, spec *storepb.PlanConfig_Spec, c *storepb.PlanConfig_ChangeDatabaseConfig, project *store.ProjectMessage) ([]*storepb.PlanConfig_Step, error) {
-	projectID, _, err := common.GetProjectIDDeploymentConfigID(c.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get project and deployment id from target %q", c.Target)
-	}
-	if project.ResourceID != projectID {
-		return nil, errors.Errorf("project id %q in target %q does not match project id %q in plan config", projectID, c.Target, project.ResourceID)
-	}
-
-	switch c.Type {
-	case storepb.PlanConfig_ChangeDatabaseConfig_BASELINE:
-	case storepb.PlanConfig_ChangeDatabaseConfig_MIGRATE:
-	case storepb.PlanConfig_ChangeDatabaseConfig_MIGRATE_GHOST:
-	case storepb.PlanConfig_ChangeDatabaseConfig_MIGRATE_SDL:
-	case storepb.PlanConfig_ChangeDatabaseConfig_DATA:
-	default:
-		return nil, errors.Errorf("unsupported change database config type: %v", c.Type)
-	}
-
-	deploymentConfig, err := s.GetDeploymentConfigV2(ctx, project.UID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get deployment config")
-	}
-
-	if err := utils.ValidateDeploymentSchedule(deploymentConfig.Schedule); err != nil {
-		return nil, errors.Wrapf(err, "failed to validate and get deployment schedule")
-	}
-	allDatabases, err := s.ListDatabases(ctx, &store.FindDatabaseMessage{ProjectID: &project.ResourceID})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list databases")
-	}
-	matrix, err := utils.GetDatabaseMatrixFromDeploymentSchedule(deploymentConfig.Schedule, allDatabases)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get database matrix from deployment schedule")
-	}
-
-	var steps []*storepb.PlanConfig_Step
-	for i, databases := range matrix {
-		if len(databases) == 0 {
-			continue
-		}
-
-		step := &storepb.PlanConfig_Step{
-			Title: deploymentConfig.Schedule.Deployments[i].Name,
-		}
-		for _, database := range databases {
-			s, ok := proto.Clone(spec).(*storepb.PlanConfig_Spec)
-			if !ok {
-				return nil, errors.Errorf("failed to clone, got %T", s)
-			}
-			proto.Merge(s, &storepb.PlanConfig_Spec{
-				Config: &storepb.PlanConfig_Spec_ChangeDatabaseConfig{
-					ChangeDatabaseConfig: &storepb.PlanConfig_ChangeDatabaseConfig{
-						Target: common.FormatDatabase(database.InstanceID, database.DatabaseName),
-					},
-				},
-			})
-			step.Specs = append(step.Specs, s)
-		}
-		steps = append(steps, step)
-	}
-	return steps, nil
-}
-
-func transformDatabaseGroupTargetToSteps(ctx context.Context, s *store.Store, spec *storepb.PlanConfig_Spec, c *storepb.PlanConfig_ChangeDatabaseConfig, project *store.ProjectMessage) ([]*storepb.PlanConfig_Step, error) {
+func transformDatabaseGroupTargetToSteps(ctx context.Context, s *store.Store, spec *storepb.PlanConfig_Spec, c *storepb.PlanConfig_ChangeDatabaseConfig, project *store.ProjectMessage) ([]*storepb.PlanConfig_Spec, error) {
 	projectID, databaseGroupID, err := common.GetProjectIDDatabaseGroupID(c.Target)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get project and deployment id from target %q", c.Target)
@@ -117,45 +54,22 @@ func transformDatabaseGroupTargetToSteps(ctx context.Context, s *store.Store, sp
 		return nil, errors.Errorf("no matched databases found in database group %q", databaseGroupID)
 	}
 
-	deploymentConfig, err := s.GetDeploymentConfigV2(ctx, project.UID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get deployment config")
-	}
-	if err := utils.ValidateDeploymentSchedule(deploymentConfig.Schedule); err != nil {
-		return nil, errors.Wrapf(err, "failed to validate and get deployment schedule")
-	}
-	// Calculate the matrix of databases based on the deployment schedule.
-	matrix, err := utils.GetDatabaseMatrixFromDeploymentSchedule(deploymentConfig.Schedule, matchedDatabases)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get database matrix from deployment schedule")
-	}
-
-	var steps []*storepb.PlanConfig_Step
-	for i, databases := range matrix {
-		if len(databases) == 0 {
-			continue
+	var specs []*storepb.PlanConfig_Spec
+	for _, database := range matchedDatabases {
+		s, ok := proto.Clone(spec).(*storepb.PlanConfig_Spec)
+		if !ok {
+			return nil, errors.Errorf("failed to clone, got %T", s)
 		}
-
-		step := &storepb.PlanConfig_Step{
-			Title: deploymentConfig.Schedule.Deployments[i].Name,
-		}
-		for _, database := range databases {
-			s, ok := proto.Clone(spec).(*storepb.PlanConfig_Spec)
-			if !ok {
-				return nil, errors.Errorf("failed to clone, got %T", s)
-			}
-			proto.Merge(s, &storepb.PlanConfig_Spec{
-				Config: &storepb.PlanConfig_Spec_ChangeDatabaseConfig{
-					ChangeDatabaseConfig: &storepb.PlanConfig_ChangeDatabaseConfig{
-						Target: common.FormatDatabase(database.InstanceID, database.DatabaseName),
-					},
+		proto.Merge(s, &storepb.PlanConfig_Spec{
+			Config: &storepb.PlanConfig_Spec_ChangeDatabaseConfig{
+				ChangeDatabaseConfig: &storepb.PlanConfig_ChangeDatabaseConfig{
+					Target: common.FormatDatabase(database.InstanceID, database.DatabaseName),
 				},
-			})
-			step.Specs = append(step.Specs, s)
-		}
-		steps = append(steps, step)
+			},
+		})
+		specs = append(specs, s)
 	}
-	return steps, nil
+	return specs, nil
 }
 
 func getTaskCreatesFromSpec(ctx context.Context, s *store.Store, sheetManager *sheet.Manager, licenseService enterprise.LicenseService, dbFactory *dbfactory.DBFactory, spec *storepb.PlanConfig_Spec, project *store.ProjectMessage, registerEnvironmentID func(string) error) ([]*store.TaskMessage, []store.TaskIndexDAG, error) {
@@ -282,18 +196,18 @@ func getTaskCreatesFromCreateDatabaseConfig(ctx context.Context, s *store.Store,
 			return nil, errors.Wrap(err, "failed to create database creation sheet")
 		}
 
-		payload := api.TaskDatabaseCreatePayload{
-			SpecID:        spec.Id,
-			ProjectID:     project.UID,
+		payload := &storepb.TaskDatabaseCreatePayload{
+			SpecId:        spec.Id,
+			ProjectId:     int32(project.UID),
 			CharacterSet:  c.CharacterSet,
 			TableName:     c.Table,
 			Collation:     c.Collation,
-			EnvironmentID: dbEnvironmentID,
+			EnvironmentId: dbEnvironmentID,
 			Labels:        labelsJSON,
 			DatabaseName:  databaseName,
-			SheetID:       sheet.UID,
+			SheetId:       int32(sheet.UID),
 		}
-		bytes, err := json.Marshal(payload)
+		bytes, err := protojson.Marshal(payload)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create database creation task, unable to marshal payload")
 		}
@@ -321,15 +235,11 @@ func getTaskCreatesFromChangeDatabaseConfig(ctx context.Context, s *store.Store,
 	// possible target:
 	// 1. instances/{instance}/databases/{database}
 	// 2. projects/{project}/databaseGroups/{databaseGroup}
-	// 3. projects/{project}/deploymentConfigs/{deploymentConfig}
 	if _, _, err := common.GetInstanceDatabaseID(c.Target); err == nil {
 		return getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx, s, spec, c, project, registerEnvironmentID)
 	}
 	if _, _, err := common.GetProjectIDDatabaseGroupID(c.Target); err == nil {
 		return nil, nil, errors.Errorf("unexpected database group target %q", c.Target)
-	}
-	if _, _, err := common.GetProjectIDDeploymentConfigID(c.Target); err == nil {
-		return nil, nil, errors.Errorf("unexpected deployment config target %q", c.Target)
 	}
 
 	return nil, nil, errors.Errorf("unknown target %q", c.Target)
@@ -370,15 +280,15 @@ func getTaskCreatesFromExportDataConfig(ctx context.Context, s *store.Store, spe
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get sheet id from sheet %q", c.Sheet)
 	}
-	payload := api.TaskDatabaseDataExportPayload{
-		SpecID:  spec.Id,
-		SheetID: sheetUID,
+	payload := &storepb.TaskDatabaseDataExportPayload{
+		SpecId:  spec.Id,
+		SheetId: int32(sheetUID),
 		Format:  c.Format,
 	}
 	if c.Password != nil {
 		payload.Password = *c.Password
 	}
-	bytes, err := json.Marshal(payload)
+	bytes, err := protojson.Marshal(payload)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to marshal task database data export payload")
 	}
@@ -427,11 +337,11 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 
 	switch c.Type {
 	case storepb.PlanConfig_ChangeDatabaseConfig_BASELINE:
-		payload := api.TaskDatabaseSchemaBaselinePayload{
-			SpecID:        spec.Id,
+		payload := &storepb.TaskDatabaseUpdatePayload{
+			SpecId:        spec.Id,
 			SchemaVersion: getOrDefaultSchemaVersion(c.SchemaVersion),
 		}
-		bytes, err := json.Marshal(payload)
+		bytes, err := protojson.Marshal(payload)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to marshal task database schema baseline payload")
 		}
@@ -451,12 +361,12 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to get sheet id from sheet %q", c.Sheet)
 		}
-		payload := api.TaskDatabaseSchemaUpdatePayload{
-			SpecID:        spec.Id,
-			SheetID:       sheetUID,
+		payload := &storepb.TaskDatabaseUpdatePayload{
+			SpecId:        spec.Id,
+			SheetId:       int32(sheetUID),
 			SchemaVersion: getOrDefaultSchemaVersion(c.SchemaVersion),
 		}
-		bytes, err := json.Marshal(payload)
+		bytes, err := protojson.Marshal(payload)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to marshal task database schema update payload")
 		}
@@ -476,12 +386,12 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to get sheet id from sheet %q", c.Sheet)
 		}
-		payload := api.TaskDatabaseSchemaUpdateSDLPayload{
-			SpecID:        spec.Id,
-			SheetID:       sheetUID,
+		payload := &storepb.TaskDatabaseUpdatePayload{
+			SpecId:        spec.Id,
+			SheetId:       int32(sheetUID),
 			SchemaVersion: getOrDefaultSchemaVersion(c.SchemaVersion),
 		}
-		bytes, err := json.Marshal(payload)
+		bytes, err := protojson.Marshal(payload)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to marshal database schema update SDL payload")
 		}
@@ -506,9 +416,9 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 		}
 		var taskCreateList []*store.TaskMessage
 		// task "sync"
-		payloadSync := api.TaskDatabaseSchemaUpdateGhostSyncPayload{
-			SpecID:        spec.Id,
-			SheetID:       sheetUID,
+		payloadSync := &storepb.TaskDatabaseUpdatePayload{
+			SpecId:        spec.Id,
+			SheetId:       int32(sheetUID),
 			SchemaVersion: getOrDefaultSchemaVersion(c.SchemaVersion),
 			Flags:         c.GhostFlags,
 		}
@@ -526,10 +436,10 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 		})
 
 		// task "cutover"
-		payloadCutover := api.TaskDatabaseSchemaUpdateGhostCutoverPayload{
-			SpecID: spec.Id,
+		payloadCutover := &storepb.TaskDatabaseUpdatePayload{
+			SpecId: spec.Id,
 		}
-		bytesCutover, err := json.Marshal(payloadCutover)
+		bytesCutover, err := protojson.Marshal(payloadCutover)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to marshal database schema update ghost cutover payload")
 		}
@@ -554,17 +464,17 @@ func getTaskCreatesFromChangeDatabaseConfigDatabaseTarget(ctx context.Context, s
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "failed to get sheet id from sheet %q", c.Sheet)
 		}
-		preUpdateBackupDetail := api.PreUpdateBackupDetail{}
+		preUpdateBackupDetail := &storepb.PreUpdateBackupDetail{}
 		if c.GetPreUpdateBackupDetail().GetDatabase() != "" {
 			preUpdateBackupDetail.Database = c.GetPreUpdateBackupDetail().GetDatabase()
 		}
-		payload := api.TaskDatabaseDataUpdatePayload{
-			SpecID:                spec.Id,
-			SheetID:               sheetUID,
+		payload := &storepb.TaskDatabaseUpdatePayload{
+			SpecId:                spec.Id,
+			SheetId:               int32(sheetUID),
 			SchemaVersion:         getOrDefaultSchemaVersion(c.SchemaVersion),
 			PreUpdateBackupDetail: preUpdateBackupDetail,
 		}
-		bytes, err := json.Marshal(payload)
+		bytes, err := protojson.Marshal(payload)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "Failed to marshal database data update payload")
 		}

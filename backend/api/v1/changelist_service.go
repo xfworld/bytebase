@@ -121,36 +121,22 @@ func (s *ChangelistService) ListChangelists(ctx context.Context, request *v1pb.L
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-
-	projectIDs, err := getProjectIDsWithPermission(ctx, s.store, user, s.iamManager, iam.PermissionChangelistsList)
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
+		ResourceID: &projectResourceID,
+	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get projectIDs, error: %v", err)
+		return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get project with resource id %q, err: %s", projectResourceID, err.Error()))
+	}
+	if project == nil {
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q not found", projectResourceID))
+	}
+	if project.Deleted {
+		return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q had deleted", projectResourceID))
 	}
 
-	find := &store.FindChangelistMessage{
-		ProjectIDs: projectIDs,
-	}
-	if projectResourceID != "-" {
-		project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{
-			ResourceID: &projectResourceID,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get project with resource id %q, err: %s", projectResourceID, err.Error()))
-		}
-		if project == nil {
-			return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q not found", projectResourceID))
-		}
-		if project.Deleted {
-			return nil, status.Errorf(codes.NotFound, fmt.Sprintf("project with resource id %q had deleted", projectResourceID))
-		}
-		find.ProjectID = &projectResourceID
-	}
-	changelists, err := s.store.ListChangelists(ctx, find)
+	changelists, err := s.store.ListChangelists(ctx, &store.FindChangelistMessage{
+		ProjectID: &projectResourceID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -200,19 +186,6 @@ func (s *ChangelistService) UpdateChangelist(ctx context.Context, request *v1pb.
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "user not found")
 	}
-	ok, err = func() (bool, error) {
-		if changelist.CreatorID == user.ID {
-			return true, nil
-		}
-		return s.iamManager.CheckPermission(ctx, iam.PermissionChangelistsUpdate, user, project.ResourceID)
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied to update changelist")
-	}
-
 	update := &store.UpdateChangelistMessage{
 		UpdaterID:  user.ID,
 		ProjectID:  project.ResourceID,
@@ -267,23 +240,6 @@ func (s *ChangelistService) DeleteChangelist(ctx context.Context, request *v1pb.
 	}
 	if changelist == nil {
 		return nil, status.Errorf(codes.NotFound, "changelist %q not found", changelistID)
-	}
-
-	user, ok := ctx.Value(common.UserContextKey).(*store.UserMessage)
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "user not found")
-	}
-	ok, err = func() (bool, error) {
-		if changelist.CreatorID == user.ID {
-			return true, nil
-		}
-		return s.iamManager.CheckPermission(ctx, iam.PermissionChangelistsDelete, user, project.ResourceID)
-	}()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to check permission, error: %v", err)
-	}
-	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "permission denied to delete changelist")
 	}
 
 	if err := s.store.DeleteChangelist(ctx, project.ResourceID, changelistID); err != nil {

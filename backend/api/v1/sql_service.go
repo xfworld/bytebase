@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -158,7 +157,7 @@ func (*SQLService) doAdminExecute(ctx context.Context, driver db.Driver, conn *s
 	}
 	ctx, cancelCtx := context.WithTimeout(ctx, timeout)
 	defer cancelCtx()
-	result, err := driver.RunStatement(ctx, conn, request.Statement)
+	result, err := driver.QueryConn(ctx, conn, request.Statement, nil)
 	select {
 	case <-ctx.Done():
 		// canceled or timed out
@@ -186,7 +185,7 @@ func (s *SQLService) Execute(ctx context.Context, request *v1pb.ExecuteRequest) 
 
 	statement := request.Statement
 	// Run SQL review.
-	adviceStatus, advices, err := s.sqlReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */)
+	adviceStatus, advices, err := s.SQLReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */)
 	if err != nil {
 		return nil, err
 	}
@@ -224,14 +223,9 @@ func (s *SQLService) preExecute(ctx context.Context, request *v1pb.ExecuteReques
 		}
 	}
 
-	find := &store.FindInstanceMessage{}
-	instanceUID, isNumber := isNumber(instanceID)
-	if isNumber {
-		find.UID = &instanceUID
-	} else {
-		find.ResourceID = &instanceID
+	find := &store.FindInstanceMessage{
+		ResourceID: &instanceID,
 	}
-
 	instance, err := s.store.GetInstanceV2(ctx, find)
 	if err != nil {
 		return nil, nil, status.Errorf(codes.Internal, err.Error())
@@ -280,7 +274,7 @@ func (s *SQLService) doExecute(ctx context.Context, instance *store.InstanceMess
 	}
 	ctx, cancelCtx := context.WithTimeout(ctx, timeout)
 	defer cancelCtx()
-	result, err := driver.RunStatement(ctx, conn, request.Statement)
+	result, err := driver.QueryConn(ctx, conn, request.Statement, nil)
 	select {
 	case <-ctx.Done():
 		// canceled or timed out
@@ -317,9 +311,10 @@ func (s *SQLService) Export(ctx context.Context, request *v1pb.ExportRequest) (*
 	spans, err := base.GetQuerySpan(
 		ctx,
 		base.GetQuerySpanContext{
-			GetDatabaseMetadataFunc:       BuildGetDatabaseMetadataFunc(s.store, instance),
-			ListDatabaseNamesFunc:         BuildListDatabaseNamesFunc(s.store, instance),
-			GetLinkedDatabaseMetadataFunc: BuildGetLinkedDatabaseMetadataFunc(s.store, instance),
+			InstanceID:                    instance.ResourceID,
+			GetDatabaseMetadataFunc:       BuildGetDatabaseMetadataFunc(s.store),
+			ListDatabaseNamesFunc:         BuildListDatabaseNamesFunc(s.store),
+			GetLinkedDatabaseMetadataFunc: BuildGetLinkedDatabaseMetadataFunc(s.store, instance.Engine),
 		},
 		instance.Engine,
 		statement,
@@ -338,7 +333,7 @@ func (s *SQLService) Export(ctx context.Context, request *v1pb.ExportRequest) (*
 	}
 
 	// Run SQL review.
-	if _, _, err = s.sqlReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */); err != nil {
+	if _, _, err = s.SQLReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */); err != nil {
 		return nil, err
 	}
 
@@ -440,7 +435,6 @@ func DoExport(ctx context.Context, storeInstance *store.Store, dbFactory *dbfact
 	}
 
 	queryContext := &db.QueryContext{
-		ReadOnly:        true,
 		CurrentDatabase: database.DatabaseName,
 	}
 	if request.Limit != 0 {
@@ -678,6 +672,49 @@ func (s *SQLService) Query(ctx context.Context, request *v1pb.QueryRequest) (*v1
 		return nil, err
 	}
 
+	dataSourceID := request.DataSourceId
+	if dataSourceID == "" {
+		dataSources, err := s.store.ListDataSourcesV2(ctx, &store.FindDataSourceMessage{
+			InstanceID: &database.InstanceID,
+		})
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to list data sources: %v", err)
+		}
+		if len(dataSources) == 0 {
+			return nil, status.Errorf(codes.NotFound, "no data source found")
+		}
+		readOnlyDataSources := make([]*store.DataSourceMessage, 0)
+		for _, dataSource := range dataSources {
+			if dataSource.Type == api.RO {
+				readOnlyDataSources = append(readOnlyDataSources, dataSource)
+			}
+		}
+		// First try to use read-only data source if available.
+		if len(readOnlyDataSources) > 0 {
+			dataSourceID = readOnlyDataSources[0].ID
+		} else {
+			dataSourceID = dataSources[0].ID
+		}
+	}
+
+	dataSource, err := s.store.GetDataSource(ctx, &store.FindDataSourceMessage{
+		InstanceID: &database.InstanceID,
+		Name:       &dataSourceID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get data source: %v", err)
+	}
+	if dataSource == nil {
+		return nil, status.Errorf(codes.NotFound, "data source %q not found", request.DataSourceId)
+	}
+	ok, err := s.checkDataSourceQueriable(ctx, database, dataSource)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to check data source queriable: %v", err)
+	}
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "data source %q is not queriable", dataSource.Username)
+	}
+
 	statement := request.Statement
 	// In Redshift datashare, Rewrite query used for parser.
 	if database.DataShare {
@@ -693,9 +730,10 @@ func (s *SQLService) Query(ctx context.Context, request *v1pb.QueryRequest) (*v1
 	spans, err := base.GetQuerySpan(
 		ctx,
 		base.GetQuerySpanContext{
-			GetDatabaseMetadataFunc:       BuildGetDatabaseMetadataFunc(s.store, instance),
-			ListDatabaseNamesFunc:         BuildListDatabaseNamesFunc(s.store, instance),
-			GetLinkedDatabaseMetadataFunc: BuildGetLinkedDatabaseMetadataFunc(s.store, instance),
+			InstanceID:                    instance.ResourceID,
+			GetDatabaseMetadataFunc:       BuildGetDatabaseMetadataFunc(s.store),
+			ListDatabaseNamesFunc:         BuildListDatabaseNamesFunc(s.store),
+			GetLinkedDatabaseMetadataFunc: BuildGetLinkedDatabaseMetadataFunc(s.store, instance.Engine),
 		},
 		instance.Engine,
 		statement,
@@ -714,7 +752,7 @@ func (s *SQLService) Query(ctx context.Context, request *v1pb.QueryRequest) (*v1
 	}
 
 	// Run SQL review.
-	adviceStatus, advices, err := s.sqlReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */)
+	adviceStatus, advices, err := s.SQLReviewCheck(ctx, statement, v1pb.CheckRequest_CHANGE_TYPE_UNSPECIFIED, instance, database, nil /* Override Metadata */)
 	if err != nil {
 		return nil, err
 	}
@@ -724,7 +762,7 @@ func (s *SQLService) Query(ctx context.Context, request *v1pb.QueryRequest) (*v1
 	var durationNs int64
 	if adviceStatus != storepb.Advice_ERROR {
 		results, durationNs, queryErr = s.doQuery(ctx, request, instance, database)
-		if queryErr == nil && s.licenseService.IsFeatureEnabledForInstance(api.FeatureSensitiveData, instance) == nil {
+		if queryErr == nil && s.licenseService.IsFeatureEnabledForInstance(api.FeatureSensitiveData, instance) == nil && !request.Explain {
 			masker := NewQueryResultMasker(s.store)
 			if err := masker.MaskResults(ctx, spans, results, instance, storepb.MaskingExceptionPolicy_MaskingException_QUERY); err != nil {
 				return nil, status.Errorf(codes.Internal, err.Error())
@@ -785,7 +823,6 @@ func (s *SQLService) doQuery(ctx context.Context, request *v1pb.QueryRequest, in
 	results, err := driver.QueryConn(ctx, conn, request.Statement, &db.QueryContext{
 		Limit:           int(request.Limit),
 		Explain:         request.Explain,
-		ReadOnly:        true,
 		CurrentDatabase: database.DatabaseName,
 	})
 	select {
@@ -824,45 +861,48 @@ func (s *SQLService) postQuery(ctx context.Context, database *store.DatabaseMess
 	return nil
 }
 
-func BuildGetLinkedDatabaseMetadataFunc(storeInstance *store.Store, instance *store.InstanceMessage) base.GetLinkedDatabaseMetadataFunc {
-	if instance.Engine != storepb.Engine_ORACLE {
+func BuildGetLinkedDatabaseMetadataFunc(storeInstance *store.Store, engine storepb.Engine) base.GetLinkedDatabaseMetadataFunc {
+	if engine != storepb.Engine_ORACLE {
 		return nil
 	}
-	return func(ctx context.Context, linkedDatabaseName string) (string, *model.DatabaseMetadata, error) {
+	return func(ctx context.Context, instanceID string, linkedDatabaseName string, schemaName string) (string, string, *model.DatabaseMetadata, error) {
 		// Find the linked database metadata.
 		databases, err := storeInstance.ListDatabases(ctx, &store.FindDatabaseMessage{
-			InstanceID: &instance.ResourceID,
+			InstanceID: &instanceID,
 		})
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		var linkedMeta *model.LinkedDatabaseMetadata
 		for _, database := range databases {
 			meta, err := storeInstance.GetDBSchema(ctx, database.UID)
 			if err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 			if linkedMeta = meta.GetDatabaseMetadata().GetLinkedDatabase(linkedDatabaseName); linkedMeta != nil {
 				break
 			}
 		}
 		if linkedMeta == nil {
-			return "", nil, nil
+			return "", "", nil, nil
 		}
 		// Find the linked database in Bytebase.
 		var linkedDatabase *store.DatabaseMessage
-		username := linkedMeta.GetUsername()
+		databaseName := linkedMeta.GetUsername()
+		if schemaName != "" {
+			databaseName = schemaName
+		}
 		databaseList, err := storeInstance.ListDatabases(ctx, &store.FindDatabaseMessage{
-			DatabaseName: &username,
-			Engine:       &instance.Engine,
+			DatabaseName: &databaseName,
+			Engine:       &engine,
 		})
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		for _, database := range databaseList {
 			instanceMeta, err := storeInstance.GetInstanceV2(ctx, &store.FindInstanceMessage{ResourceID: &database.InstanceID})
 			if err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 			if instanceMeta != nil {
 				for _, dataSource := range instanceMeta.DataSources {
@@ -877,24 +917,24 @@ func BuildGetLinkedDatabaseMetadataFunc(storeInstance *store.Store, instance *st
 			}
 		}
 		if linkedDatabase == nil {
-			return "", nil, nil
+			return "", "", nil, nil
 		}
 		// Get the linked database metadata.
 		linkedDatabaseMetadata, err := storeInstance.GetDBSchema(ctx, linkedDatabase.UID)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		if linkedDatabaseMetadata == nil {
-			return "", nil, nil
+			return "", "", nil, nil
 		}
-		return linkedDatabaseName, linkedDatabaseMetadata.GetDatabaseMetadata(), nil
+		return linkedDatabase.InstanceID, linkedDatabaseName, linkedDatabaseMetadata.GetDatabaseMetadata(), nil
 	}
 }
 
-func BuildGetDatabaseMetadataFunc(storeInstance *store.Store, instance *store.InstanceMessage) base.GetDatabaseMetadataFunc {
-	return func(ctx context.Context, databaseName string) (string, *model.DatabaseMetadata, error) {
+func BuildGetDatabaseMetadataFunc(storeInstance *store.Store) base.GetDatabaseMetadataFunc {
+	return func(ctx context.Context, instanceID, databaseName string) (string, *model.DatabaseMetadata, error) {
 		database, err := storeInstance.GetDatabaseV2(ctx, &store.FindDatabaseMessage{
-			InstanceID:   &instance.ResourceID,
+			InstanceID:   &instanceID,
 			DatabaseName: &databaseName,
 		})
 		if err != nil {
@@ -914,10 +954,10 @@ func BuildGetDatabaseMetadataFunc(storeInstance *store.Store, instance *store.In
 	}
 }
 
-func BuildListDatabaseNamesFunc(storeInstance *store.Store, instance *store.InstanceMessage) base.ListDatabaseNamesFunc {
-	return func(ctx context.Context) ([]string, error) {
+func BuildListDatabaseNamesFunc(storeInstance *store.Store) base.ListDatabaseNamesFunc {
+	return func(ctx context.Context, instanceID string) ([]string, error) {
 		databases, err := storeInstance.ListDatabases(ctx, &store.FindDatabaseMessage{
-			InstanceID: &instance.ResourceID,
+			InstanceID: &instanceID,
 		})
 		if err != nil {
 			return nil, err
@@ -938,10 +978,14 @@ func (s *SQLService) accessCheck(
 	limit int32,
 	isAdmin,
 	isExport bool) error {
-	// Check if the caller is admin for exporting with admin mode.
-	role := utils.BackfillRoleFromRoles(user.Roles)
-	if isAdmin && isExport && (role != api.WorkspaceAdmin && role != api.WorkspaceDBA) {
-		return status.Errorf(codes.PermissionDenied, "only workspace owner and DBA can export data using admin mode")
+	if isExport {
+		ok, err := s.iamManager.CheckPermission(ctx, iam.PermissionDatabasesExport, user)
+		if err != nil {
+			return err
+		}
+		if isAdmin && !ok {
+			return status.Errorf(codes.PermissionDenied, "only users with %s permission on the workspace can export data using admin mode", iam.PermissionDatabasesExport)
+		}
 	}
 
 	for _, span := range spans {
@@ -974,7 +1018,7 @@ func (s *SQLService) accessCheck(
 				return status.Errorf(codes.Internal, err.Error())
 			}
 
-			ok, err := s.hasDatabaseAccessRights(ctx, user, projectPolicy, attributes, isExport)
+			ok, err := s.hasDatabaseAccessRights(ctx, user, projectPolicy.Policy, attributes, isExport)
 			if err != nil {
 				return status.Errorf(codes.Internal, "failed to check access control for database: %q, error %v", column.Database, err)
 			}
@@ -1022,14 +1066,9 @@ func (s *SQLService) prepareRelatedMessage(ctx context.Context, requestName stri
 		databaseName = requestDatabaseName
 	}
 
-	find := &store.FindInstanceMessage{}
-	instanceUID, isNumber := isNumber(instanceID)
-	if isNumber {
-		find.UID = &instanceUID
-	} else {
-		find.ResourceID = &instanceID
+	find := &store.FindInstanceMessage{
+		ResourceID: &instanceID,
 	}
-
 	instance, err := s.store.GetInstanceV2(ctx, find)
 	if err != nil {
 		return nil, nil, nil, status.Errorf(codes.Internal, err.Error())
@@ -1054,7 +1093,7 @@ func (s *SQLService) prepareRelatedMessage(ctx context.Context, requestName stri
 }
 
 func validateQueryRequest(instance *store.InstanceMessage, statement string) error {
-	ok, err := base.ValidateSQLForEditor(instance.Engine, statement)
+	ok, _, err := base.ValidateSQLForEditor(instance.Engine, statement)
 	if err != nil {
 		syntaxErr, ok := err.(*base.SyntaxError)
 		if ok {
@@ -1078,29 +1117,27 @@ func validateQueryRequest(instance *store.InstanceMessage, statement string) err
 	return nil
 }
 
-func (s *SQLService) hasDatabaseAccessRights(ctx context.Context, user *store.UserMessage, projectPolicy *storepb.ProjectIamPolicy, attributes map[string]any, isExport bool) (bool, error) {
+func (s *SQLService) hasDatabaseAccessRights(ctx context.Context, user *store.UserMessage, projectPolicy *storepb.IamPolicy, attributes map[string]any, isExport bool) (bool, error) {
 	wantPermission := iam.PermissionDatabasesQuery
 	if isExport {
 		wantPermission = iam.PermissionDatabasesExport
 	}
 
-	for _, role := range user.Roles {
-		permissions, err := s.iamManager.GetPermissions(ctx, common.FormatRole(role.String()))
-		if err != nil {
-			return false, errors.Wrapf(err, "failed to get permissions")
-		}
-		if slices.Contains(permissions, wantPermission) {
-			return true, nil
-		}
+	hasPermission, err := s.iamManager.CheckPermission(ctx, wantPermission, user)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check permissions")
+	}
+	if hasPermission {
+		return true, nil
 	}
 
 	bindings := utils.GetUserIAMPolicyBindings(ctx, s.store, user, projectPolicy)
 	for _, binding := range bindings {
-		permissions, err := s.iamManager.GetPermissions(ctx, binding.Role)
+		permissions, err := s.iamManager.GetPermissions(binding.Role)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to get permissions")
 		}
-		if !slices.Contains(permissions, wantPermission) {
+		if !permissions[wantPermission] {
 			continue
 		}
 
@@ -1152,7 +1189,7 @@ func (s *SQLService) Check(ctx context.Context, request *v1pb.CheckRequest) (*v1
 		return nil, status.Errorf(codes.FailedPrecondition, "statement size exceeds maximum allowed size %dKB", common.MaxSheetCheckSize/1024)
 	}
 
-	instanceID, databaseName, err := common.GetInstanceDatabaseID(request.Database)
+	instanceID, databaseName, err := common.GetInstanceDatabaseID(request.Name)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
@@ -1175,7 +1212,7 @@ func (s *SQLService) Check(ctx context.Context, request *v1pb.CheckRequest) (*v1
 		return nil, status.Errorf(codes.Internal, "failed to get database, error: %v", err)
 	}
 	if database == nil {
-		return nil, status.Errorf(codes.NotFound, "database %q not found", request.Database)
+		return nil, status.Errorf(codes.NotFound, "database %q not found", request.Name)
 	}
 
 	var overideMetadata *storepb.DatabaseSchemaMetadata
@@ -1185,7 +1222,7 @@ func (s *SQLService) Check(ctx context.Context, request *v1pb.CheckRequest) (*v1
 			return nil, err
 		}
 	}
-	_, adviceList, err := s.sqlReviewCheck(ctx, request.Statement, request.ChangeType, instance, database, overideMetadata)
+	_, adviceList, err := s.SQLReviewCheck(ctx, request.Statement, request.ChangeType, instance, database, overideMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -1195,10 +1232,10 @@ func (s *SQLService) Check(ctx context.Context, request *v1pb.CheckRequest) (*v1
 	}, nil
 }
 
-// sqlReviewCheck checks the SQL statement against the SQL review policy bind to given environment,
+// SQLReviewCheck checks the SQL statement against the SQL review policy bind to given environment,
 // against the database schema bind to the given database, if the overrideMetadata is provided,
 // it will be used instead of fetching the database schema from the store.
-func (s *SQLService) sqlReviewCheck(
+func (s *SQLService) SQLReviewCheck(
 	ctx context.Context,
 	statement string,
 	changeType v1pb.CheckRequest_ChangeType,
@@ -1206,39 +1243,27 @@ func (s *SQLService) sqlReviewCheck(
 	database *store.DatabaseMessage,
 	overrideMetadata *storepb.DatabaseSchemaMetadata,
 ) (storepb.Advice_Status, []*v1pb.Advice, error) {
-	if !IsSQLReviewSupported(instance.Engine) || database == nil {
+	if !isSQLReviewSupported(instance.Engine) || database == nil {
 		return storepb.Advice_SUCCESS, nil, nil
 	}
 
 	dbMetadata := overrideMetadata
 	if dbMetadata == nil {
-		dbSchema, err := s.store.GetDBSchema(ctx, database.UID)
+		metadata, err := getDatabaseMetadata(ctx, s.store, s.schemaSyncer, database)
 		if err != nil {
-			return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to fetch database schema: %v", err)
+			return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, err.Error())
 		}
-		if dbSchema == nil {
-			if err := s.schemaSyncer.SyncDatabaseSchema(ctx, database, true /* force */); err != nil {
-				return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to sync database schema: %v", err)
-			}
-			dbSchema, err = s.store.GetDBSchema(ctx, database.UID)
-			if err != nil {
-				return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to fetch database schema: %v", err)
-			}
-			if dbSchema == nil {
-				return storepb.Advice_ERROR, nil, status.Errorf(codes.NotFound, "database schema not found: %v", database.UID)
-			}
-		}
-		dbMetadata = dbSchema.GetMetadata()
+		dbMetadata = metadata
 	}
 
 	catalog, err := catalog.NewCatalog(ctx, s.store, database.UID, instance.Engine, store.IgnoreDatabaseAndTableCaseSensitive(instance), overrideMetadata)
 	if err != nil {
-		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "Failed to create a catalog: %v", err)
+		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to create a catalog: %v", err)
 	}
 
 	driver, err := s.dbFactory.GetAdminDatabaseDriver(ctx, instance, database, db.ConnectionContext{UseDatabaseOwner: true})
 	if err != nil {
-		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "Failed to get database driver: %v", err)
+		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to get database driver: %v", err)
 	}
 	defer driver.Close(ctx)
 	connection := driver.GetDB()
@@ -1255,33 +1280,46 @@ func (s *SQLService) sqlReviewCheck(
 		CurrentDatabase: database.DatabaseName,
 	}
 
-	adviceLevel, adviceList, err := s.sqlCheck(
+	return s.sqlCheck(
 		ctx,
 		statement,
 		database,
 		context,
 	)
-	if err != nil {
-		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "Failed to check SQL review policy: %v", err)
-	}
-
-	return adviceLevel, convertAdviceList(adviceList), nil
 }
 
-func convertAdviceList(list []*storepb.Advice) []*v1pb.Advice {
-	var result []*v1pb.Advice
-	for _, advice := range list {
-		result = append(result, &v1pb.Advice{
-			Status:  convertAdviceStatus(advice.Status),
-			Code:    int32(advice.Code),
-			Title:   advice.Title,
-			Content: advice.Content,
-			Line:    int32(advice.GetStartPosition().GetLine()),
-			Column:  int32(advice.GetStartPosition().GetColumn()),
-			Detail:  advice.Detail,
-		})
+func getDatabaseMetadata(ctx context.Context, stores *store.Store, schemaSyncer *schemasync.Syncer, database *store.DatabaseMessage) (*storepb.DatabaseSchemaMetadata, error) {
+	dbSchema, err := stores.GetDBSchema(ctx, database.UID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to fetch database schema for database %v", database.UID)
 	}
-	return result
+	if dbSchema == nil {
+		if err := schemaSyncer.SyncDatabaseSchema(ctx, database, true /* force */); err != nil {
+			return nil, errors.Wrapf(err, "failed to sync database schema for database %v", database.UID)
+		}
+		dbSchema, err = stores.GetDBSchema(ctx, database.UID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to fetch database schema for database %v", database.UID)
+		}
+		if dbSchema == nil {
+			return nil, errors.Wrapf(err, "cannot found schema for database %v", database.UID)
+		}
+	}
+	return dbSchema.GetMetadata(), nil
+}
+
+func convertToV1Advice(advice *storepb.Advice) *v1pb.Advice {
+	return &v1pb.Advice{
+		Status:        convertAdviceStatus(advice.Status),
+		Code:          int32(advice.Code),
+		Title:         advice.Title,
+		Content:       advice.Content,
+		Line:          int32(advice.GetStartPosition().GetLine()),
+		Column:        int32(advice.GetStartPosition().GetColumn()),
+		Detail:        advice.Detail,
+		StartPosition: convertToPosition(advice.StartPosition),
+		EndPosition:   convertToPosition(advice.EndPosition),
+	}
 }
 
 func convertAdviceStatus(status storepb.Advice_Status) v1pb.Advice_Status {
@@ -1302,19 +1340,19 @@ func (s *SQLService) sqlCheck(
 	statement string,
 	database *store.DatabaseMessage,
 	context advisor.SQLReviewCheckContext,
-) (storepb.Advice_Status, []*storepb.Advice, error) {
-	var adviceList []*storepb.Advice
+) (storepb.Advice_Status, []*v1pb.Advice, error) {
+	var adviceList []*v1pb.Advice
 	reviewConfig, err := s.store.GetReviewConfigForDatabase(ctx, database)
 	if err != nil {
 		if e, ok := err.(*common.Error); ok && e.Code == common.NotFound {
 			return storepb.Advice_SUCCESS, nil, nil
 		}
-		return storepb.Advice_ERROR, nil, err
+		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to get SQL review policy with error: %v", err)
 	}
 
 	res, err := advisor.SQLReviewCheck(s.sheetManager, statement, reviewConfig.SqlReviewRules, context)
 	if err != nil {
-		return storepb.Advice_ERROR, nil, err
+		return storepb.Advice_ERROR, nil, status.Errorf(codes.Internal, "failed to exec SQL review with error: %v", err)
 	}
 
 	adviceLevel := storepb.Advice_SUCCESS
@@ -1326,11 +1364,11 @@ func (s *SQLService) sqlCheck(
 			}
 		case storepb.Advice_ERROR:
 			adviceLevel = storepb.Advice_ERROR
-		case storepb.Advice_SUCCESS:
+		case storepb.Advice_SUCCESS, storepb.Advice_STATUS_UNSPECIFIED:
 			continue
 		}
 
-		adviceList = append(adviceList, advice)
+		adviceList = append(adviceList, convertToV1Advice(advice))
 	}
 
 	return adviceLevel, adviceList, nil
@@ -1549,7 +1587,16 @@ func (s *SQLService) GenerateRestoreSQL(ctx context.Context, request *v1pb.Gener
 		return nil, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 
-	list, err := base.SplitMultiSQL(storepb.Engine_MYSQL, request.Statement)
+	_, sheetUID, err := common.GetProjectResourceIDSheetUID(request.Sheet)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to get sheet UID: %v", err)
+	}
+	statement, err := s.store.GetSheetStatementByID(ctx, sheetUID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get sheet: %v", err)
+	}
+
+	list, err := base.SplitMultiSQL(storepb.Engine_MYSQL, statement)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to split SQL: %v", err)
 	}
@@ -1586,4 +1633,81 @@ func getOffsetAndOriginTable(backupTable string) (int, string, error) {
 		return 0, "", status.Errorf(codes.InvalidArgument, "invalid offset: %s", parts[0])
 	}
 	return offset, strings.Join(parts[3:], "_"), nil
+}
+
+func (s *SQLService) checkDataSourceQueriable(ctx context.Context, database *store.DatabaseMessage, dataSource *store.DataSourceMessage) (bool, error) {
+	// Always allow non-admin data source.
+	if dataSource.Type != api.Admin {
+		return true, nil
+	}
+
+	var envAdminDataSourceRestriction, projectAdminDataSourceRestriction v1pb.DataSourceQueryPolicy_Restriction
+	environment, err := s.store.GetEnvironmentV2(ctx, &store.FindEnvironmentMessage{ResourceID: &database.EffectiveEnvironmentID})
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get environment")
+	}
+	if environment == nil {
+		return false, errors.Errorf("environment %q not found", database.EffectiveEnvironmentID)
+	}
+	dataSourceQueryPolicyType := api.PolicyTypeDataSourceQuery
+	environmentResourceType := api.PolicyResourceTypeEnvironment
+	projectResourceType := api.PolicyResourceTypeProject
+	environmentPolicy, err := s.store.GetPolicyV2(ctx, &store.FindPolicyMessage{
+		ResourceType: &environmentResourceType,
+		ResourceUID:  &environment.UID,
+		Type:         &dataSourceQueryPolicyType,
+	})
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get policy")
+	}
+	if environmentPolicy != nil {
+		envPayload, err := convertToV1PBDataSourceQueryPolicy(environmentPolicy.Payload)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to convert policy payload")
+		}
+		envAdminDataSourceRestriction = envPayload.DataSourceQueryPolicy.GetAdminDataSourceRestriction()
+	}
+
+	project, err := s.store.GetProjectV2(ctx, &store.FindProjectMessage{ResourceID: &database.ProjectID})
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get project")
+	}
+	if project == nil {
+		return false, errors.Errorf("project %q not found", database.ProjectID)
+	}
+	projectPolicy, err := s.store.GetPolicyV2(ctx, &store.FindPolicyMessage{
+		ResourceType: &projectResourceType,
+		ResourceUID:  &project.UID,
+		Type:         &dataSourceQueryPolicyType,
+	})
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get policy")
+	}
+	if projectPolicy != nil {
+		projectPayload, err := convertToV1PBDataSourceQueryPolicy(projectPolicy.Payload)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to convert policy payload")
+		}
+		projectAdminDataSourceRestriction = projectPayload.DataSourceQueryPolicy.GetAdminDataSourceRestriction()
+	}
+
+	// If any of the policy is DISALLOW, then return false.
+	if envAdminDataSourceRestriction == v1pb.DataSourceQueryPolicy_DISALLOW || projectAdminDataSourceRestriction == v1pb.DataSourceQueryPolicy_DISALLOW {
+		return false, nil
+	} else if envAdminDataSourceRestriction == v1pb.DataSourceQueryPolicy_FALLBACK || projectAdminDataSourceRestriction == v1pb.DataSourceQueryPolicy_FALLBACK {
+		readOnlyDataSourceType := api.RO
+		readOnlyDataSources, err := s.store.ListDataSourcesV2(ctx, &store.FindDataSourceMessage{
+			InstanceID: &database.InstanceID,
+			Type:       &readOnlyDataSourceType,
+		})
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list read-only data sources")
+		}
+		// If there is any read-only data source, then return false.
+		if len(readOnlyDataSources) > 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

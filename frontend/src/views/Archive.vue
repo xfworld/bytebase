@@ -11,10 +11,12 @@
     <div class="">
       <ProjectV1Table
         v-if="state.selectedTab == 'PROJECT'"
+        key="archived-project-table"
         :project-list="filteredProjectList"
       />
       <InstanceV1Table
         v-else-if="state.selectedTab == 'INSTANCE'"
+        key="archived-instance-table"
         :instance-list="filteredInstanceList"
         :show-selection="false"
         :can-assign-license="false"
@@ -22,11 +24,13 @@
       />
       <EnvironmentV1Table
         v-else-if="state.selectedTab == 'ENVIRONMENT'"
+        key="archived-environment-table"
         class="border-x"
         :environment-list="filteredEnvironmentList"
       />
       <IdentityProviderTable
         v-else-if="state.selectedTab == 'SSO'"
+        key="archived-sso-table"
         class="border-x"
         :identity-provider-list="filteredSSOList(deletedSSOList)"
       />
@@ -42,12 +46,14 @@ import {
   EnvironmentV1Table,
   InstanceV1Table,
   ProjectV1Table,
+  SearchBox,
+  TabFilter,
 } from "@/components/v2";
 import {
   useCurrentUserV1,
   useEnvironmentV1Store,
   useIdentityProviderStore,
-  useInstanceV1Store,
+  useInstanceV1List,
   useProjectV1List,
 } from "@/store";
 import { State } from "@/types/proto/v1/common";
@@ -63,36 +69,34 @@ interface LocalState {
 }
 
 const { t } = useI18n();
-const instanceStore = useInstanceV1Store();
-
+const environmentStore = useEnvironmentV1Store();
+const currentUserV1 = useCurrentUserV1();
 const state = reactive<LocalState>({
   selectedTab: "PROJECT",
   searchText: "",
 });
 
-const currentUserV1 = useCurrentUserV1();
-
-const { projectList } = useProjectV1List(true /* showDeleted */);
-
 const prepareList = () => {
-  if (hasWorkspacePermissionV2(currentUserV1.value, "bb.instances.list")) {
-    instanceStore.fetchInstanceList(true /* showDeleted */);
-
-    useEnvironmentV1Store().fetchEnvironments(true);
-  }
+  environmentStore.fetchEnvironments(true /* showDeleted */);
 };
 
 watchEffect(prepareList);
 
+const environmentList = computed(() => {
+  return environmentStore.environmentList.filter(
+    (env) => env.state === State.DELETED
+  );
+});
+
 const instanceList = computed(() => {
-  return instanceStore.instanceList.filter(
+  return useInstanceV1List(true /** showDeleted */).instanceList.value.filter(
     (instance) => instance.state === State.DELETED
   );
 });
 
-const environmentList = computed(() => {
-  return useEnvironmentV1Store().environmentList.filter(
-    (env) => env.state === State.DELETED
+const projectList = computed(() => {
+  return useProjectV1List().projectList.value.filter(
+    (project) => project.state === State.DELETED
   );
 });
 

@@ -43,7 +43,7 @@ func TestAdminQueryAffectedRows(t *testing.T) {
 							},
 						},
 					},
-					Statement: "INSERT INTO tbl VALUES(1)",
+					Statement: "INSERT INTO tbl VALUES(1);",
 				},
 			},
 		},
@@ -63,7 +63,7 @@ func TestAdminQueryAffectedRows(t *testing.T) {
 							},
 						},
 					},
-					Statement: "INSERT INTO tbl VALUES(1)",
+					Statement: "INSERT INTO tbl VALUES(1);",
 				},
 				{
 					ColumnNames:     []string{"Affected Rows"},
@@ -75,7 +75,7 @@ func TestAdminQueryAffectedRows(t *testing.T) {
 							},
 						},
 					},
-					Statement: "DELETE FROM tbl WHERE id = 1",
+					Statement: " DELETE FROM tbl WHERE id = 1;",
 				},
 			},
 		},
@@ -95,7 +95,7 @@ func TestAdminQueryAffectedRows(t *testing.T) {
 							},
 						},
 					},
-					Statement: "INSERT INTO tbl VALUES(1),(2)",
+					Statement: "INSERT INTO tbl VALUES(1),(2);",
 				},
 			},
 		},
@@ -106,7 +106,16 @@ func TestAdminQueryAffectedRows(t *testing.T) {
 			query:             "ALTER TABLE tbl ADD COLUMN name VARCHAR(255);",
 			affectedRows: []*v1pb.QueryResult{
 				{
-					Statement: "ALTER TABLE tbl ADD COLUMN name VARCHAR(255)",
+					ColumnNames:     []string{"Affected Rows"},
+					ColumnTypeNames: []string{"INT"},
+					Rows: []*v1pb.QueryRow{
+						{
+							Values: []*v1pb.RowValue{
+								{Kind: &v1pb.RowValue_Int64Value{Int64Value: 0}},
+							},
+						},
+					},
+					Statement: "ALTER TABLE tbl ADD COLUMN name VARCHAR(255);",
 				},
 			},
 		},

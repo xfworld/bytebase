@@ -212,6 +212,11 @@ export interface ExternalApprovalSetting_Node {
   endpoint: string;
 }
 
+export interface ExternalApprovalPayload {
+  externalApprovalNodeId: string;
+  id: string;
+}
+
 export interface SMTPMailDeliverySetting {
   /** The SMTP server address. */
   server: string;
@@ -607,6 +612,14 @@ export interface AppIMSetting_Wecom {
   corpId: string;
   agentId: string;
   secret: string;
+}
+
+export interface MaximumSQLResultSizeSetting {
+  /**
+   * The limit is in bytes.
+   * The default value is 100MB, we will use the default value if the setting not exists, or the limit <= 0.
+   */
+  limit: Long;
 }
 
 function createBaseWorkspaceProfileSetting(): WorkspaceProfileSetting {
@@ -1312,6 +1325,82 @@ export const ExternalApprovalSetting_Node = {
     message.id = object.id ?? "";
     message.title = object.title ?? "";
     message.endpoint = object.endpoint ?? "";
+    return message;
+  },
+};
+
+function createBaseExternalApprovalPayload(): ExternalApprovalPayload {
+  return { externalApprovalNodeId: "", id: "" };
+}
+
+export const ExternalApprovalPayload = {
+  encode(message: ExternalApprovalPayload, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.externalApprovalNodeId !== "") {
+      writer.uint32(10).string(message.externalApprovalNodeId);
+    }
+    if (message.id !== "") {
+      writer.uint32(18).string(message.id);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): ExternalApprovalPayload {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExternalApprovalPayload();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.externalApprovalNodeId = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExternalApprovalPayload {
+    return {
+      externalApprovalNodeId: isSet(object.externalApprovalNodeId)
+        ? globalThis.String(object.externalApprovalNodeId)
+        : "",
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+    };
+  },
+
+  toJSON(message: ExternalApprovalPayload): unknown {
+    const obj: any = {};
+    if (message.externalApprovalNodeId !== "") {
+      obj.externalApprovalNodeId = message.externalApprovalNodeId;
+    }
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ExternalApprovalPayload>): ExternalApprovalPayload {
+    return ExternalApprovalPayload.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ExternalApprovalPayload>): ExternalApprovalPayload {
+    const message = createBaseExternalApprovalPayload();
+    message.externalApprovalNodeId = object.externalApprovalNodeId ?? "";
+    message.id = object.id ?? "";
     return message;
   },
 };
@@ -3667,6 +3756,63 @@ export const AppIMSetting_Wecom = {
     message.corpId = object.corpId ?? "";
     message.agentId = object.agentId ?? "";
     message.secret = object.secret ?? "";
+    return message;
+  },
+};
+
+function createBaseMaximumSQLResultSizeSetting(): MaximumSQLResultSizeSetting {
+  return { limit: Long.ZERO };
+}
+
+export const MaximumSQLResultSizeSetting = {
+  encode(message: MaximumSQLResultSizeSetting, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (!message.limit.isZero()) {
+      writer.uint32(8).int64(message.limit);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): MaximumSQLResultSizeSetting {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMaximumSQLResultSizeSetting();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 8) {
+            break;
+          }
+
+          message.limit = reader.int64() as Long;
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MaximumSQLResultSizeSetting {
+    return { limit: isSet(object.limit) ? Long.fromValue(object.limit) : Long.ZERO };
+  },
+
+  toJSON(message: MaximumSQLResultSizeSetting): unknown {
+    const obj: any = {};
+    if (!message.limit.isZero()) {
+      obj.limit = (message.limit || Long.ZERO).toString();
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<MaximumSQLResultSizeSetting>): MaximumSQLResultSizeSetting {
+    return MaximumSQLResultSizeSetting.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<MaximumSQLResultSizeSetting>): MaximumSQLResultSizeSetting {
+    const message = createBaseMaximumSQLResultSizeSetting();
+    message.limit = (object.limit !== undefined && object.limit !== null) ? Long.fromValue(object.limit) : Long.ZERO;
     return message;
   },
 };

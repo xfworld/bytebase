@@ -111,7 +111,7 @@
         </NButton>
       </div>
     </div>
-    <div v-if="webhookSupportDirectMessage && avtivitySupportDirectMessage">
+    <div v-if="webhookSupportDirectMessage && activitySupportDirectMessage">
       <div class="text-md leading-6 font-medium text-main">
         {{ $t("project.webhook.direct-messages") }}
       </div>
@@ -195,11 +195,18 @@
 <script lang="ts" setup>
 import { cloneDeep, isEmpty, isEqual } from "lodash-es";
 import { InfoIcon } from "lucide-vue-next";
-import { NCheckbox, NRadio, NRadioGroup } from "naive-ui";
-import type { PropType } from "vue";
+import {
+  NButton,
+  NCheckbox,
+  NInput,
+  NRadio,
+  NRadioGroup,
+  NTooltip,
+} from "naive-ui";
 import { reactive, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
+import { BBAttention, BBButtonConfirm } from "@/bbkit";
 import {
   PROJECT_V1_ROUTE_WEBHOOKS,
   PROJECT_V1_ROUTE_WEBHOOK_DETAIL,
@@ -207,49 +214,45 @@ import {
 import { WORKSPACE_ROUTE_IM } from "@/router/dashboard/workspaceRoutes";
 import {
   pushNotification,
+  useProjectV1Store,
   useProjectWebhookV1Store,
   useGracefulRequest,
   useSettingV1Store,
 } from "@/store";
 import {
+  type ComposedProject,
   projectWebhookV1ActivityItemList,
   projectWebhookV1TypeItemList,
 } from "@/types";
 import {
   Webhook_Type,
   type Activity_Type,
-  type Project,
   type Webhook,
 } from "@/types/proto/v1/project_service";
 import { projectWebhookV1Slug } from "../utils";
+import WebhookTypeIcon from "./Project/WebhookTypeIcon.vue";
 
 interface LocalState {
   webhook: Webhook;
 }
 
-const props = defineProps({
-  allowEdit: {
-    default: true,
-    type: Boolean,
-  },
-  create: {
-    type: Boolean,
-    default: false,
-  },
-  project: {
-    required: true,
-    type: Object as PropType<Project>,
-  },
-  webhook: {
-    required: true,
-    type: Object as PropType<Webhook>,
-  },
-});
+const props = withDefaults(
+  defineProps<{
+    allowEdit?: boolean;
+    create: boolean;
+    project: ComposedProject;
+    webhook: Webhook;
+  }>(),
+  {
+    allowEdit: true,
+  }
+);
 
 const router = useRouter();
 const { t } = useI18n();
 
 const settingStore = useSettingV1Store();
+const projectStore = useProjectV1Store();
 const projectWebhookV1Store = useProjectWebhookV1Store();
 
 const state = reactive<LocalState>({
@@ -318,7 +321,7 @@ const webhookSupportDirectMessage = computed(
   () => selectedWebhook.value?.supportDirectMessage
 );
 
-const avtivitySupportDirectMessage = computed(() => {
+const activitySupportDirectMessage = computed(() => {
   return state.webhook.notificationTypes.some(
     (event) =>
       webhookActivityItemList.value.find((item) => item.activity === event)
@@ -351,9 +354,13 @@ const createWebhook = () => {
   useGracefulRequest(async () => {
     const { webhook } = state;
     const updatedProject = await projectWebhookV1Store.createProjectWebhook(
-      props.project,
+      props.project.name,
       webhook
     );
+    projectStore.updateProjectCache({
+      ...props.project,
+      ...updatedProject,
+    });
 
     pushNotification({
       module: "bytebase",
@@ -397,7 +404,14 @@ const updateWebhook = () => {
     ) {
       updateMask.push("notification_type");
     }
-    await projectWebhookV1Store.updateProjectWebhook(state.webhook, updateMask);
+    const updatedProject = await projectWebhookV1Store.updateProjectWebhook(
+      state.webhook,
+      updateMask
+    );
+    projectStore.updateProjectCache({
+      ...props.project,
+      ...updatedProject,
+    });
     pushNotification({
       module: "bytebase",
       style: "SUCCESS",
@@ -411,7 +425,13 @@ const updateWebhook = () => {
 const deleteWebhook = () => {
   useGracefulRequest(async () => {
     const name = state.webhook.title;
-    await projectWebhookV1Store.deleteProjectWebhook(state.webhook);
+    const updatedProject = await projectWebhookV1Store.deleteProjectWebhook(
+      state.webhook
+    );
+    projectStore.updateProjectCache({
+      ...props.project,
+      ...updatedProject,
+    });
     pushNotification({
       module: "bytebase",
       style: "SUCCESS",

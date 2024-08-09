@@ -89,6 +89,7 @@
       />
       <SignInFrequencySetting :allow-edit="allowEdit" />
       <MaximumRoleExpirationSetting :allow-edit="allowEdit" />
+      <MaximumSQLResultSizeSetting :allow-edit="allowEdit" />
       <DomainRestrictionSetting :allow-edit="allowEdit" />
     </div>
   </div>
@@ -101,15 +102,18 @@
 </template>
 
 <script lang="ts" setup>
-import { NCheckbox } from "naive-ui";
+import { NCheckbox, NTooltip } from "naive-ui";
 import { storeToRefs } from "pinia";
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import { featureToRef, pushNotification, useActuatorV1Store } from "@/store";
 import { useSettingV1Store } from "@/store/modules/v1/setting";
 import type { FeatureType } from "@/types";
+import { FeatureBadge, FeatureModal } from "../FeatureGuard";
 import DomainRestrictionSetting from "./DomainRestrictionSetting.vue";
 import MaximumRoleExpirationSetting from "./MaximumRoleExpirationSetting.vue";
+import MaximumSQLResultSizeSetting from "./MaximumSQLResultSizeSetting.vue";
+import RestrictIssueCreationConfigure from "./RestrictIssueCreationConfigure.vue";
 import SignInFrequencySetting from "./SignInFrequencySetting.vue";
 
 interface LocalState {

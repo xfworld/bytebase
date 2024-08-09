@@ -169,7 +169,7 @@
 </template>
 
 <script lang="ts" setup>
-import { cloneDeep, head, isEmpty } from "lodash-es";
+import { cloneDeep, head, isEmpty, isEqual, isUndefined } from "lodash-es";
 import { ArchiveIcon } from "lucide-vue-next";
 import type { SelectGroupOption, SelectOption } from "naive-ui";
 import {
@@ -185,6 +185,7 @@ import {
 import { computed, reactive } from "vue";
 import { useI18n } from "vue-i18n";
 import EmailInput from "@/components/EmailInput.vue";
+import { Drawer, DrawerContent } from "@/components/v2";
 import {
   getUpdateMaskFromUsers,
   pushNotification,
@@ -198,22 +199,22 @@ import {
   PRESET_WORKSPACE_ROLES,
   PresetRoleType,
   emptyUser,
+  type ComposedUser,
 } from "@/types";
-import type { User } from "@/types/proto/v1/auth_service";
 import { UpdateUserRequest, UserType } from "@/types/proto/v1/auth_service";
 import { State } from "@/types/proto/v1/common";
 import { displayRoleTitle, randomString } from "@/utils";
 
 interface LocalState {
   isRequesting: boolean;
-  user: User;
+  user: ComposedUser;
   passwordConfirm: string;
 }
 
 const serviceAccountEmailSuffix = "@service.bytebase.com";
 
 const props = defineProps<{
-  user?: User;
+  user?: ComposedUser;
 }>();
 
 const emit = defineEmits<{
@@ -255,9 +256,9 @@ const availableRoleOptions = computed(
       {
         type: "group",
         key: "project-roles",
-        label: `${t("role.project-roles.self")} (${t(
+        label: `${t("role.project-roles.self")} (${t("common.optional")}, ${t(
           "role.project-roles.apply-to-all-projects"
-        )})`,
+        ).toLocaleLowerCase()})`,
         children: PRESET_PROJECT_ROLES.map((role) => ({
           label: displayRoleTitle(role),
           value: role,
@@ -271,9 +272,9 @@ const availableRoleOptions = computed(
       roleGroups.push({
         type: "group",
         key: "custom-roles",
-        label: `${t("role.custom-roles")} (${t(
+        label: `${t("role.custom-roles")} (${t("common.optional")}, ${t(
           "role.project-roles.apply-to-all-projects"
-        )})`,
+        ).toLocaleLowerCase()})`,
         children: customRoles.map((role) => ({
           label: displayRoleTitle(role),
           value: role,
@@ -300,6 +301,17 @@ const passwordMismatch = computed(() => {
   );
 });
 
+const rolesChanged = computed(() => {
+  if (isCreating.value) {
+    return true;
+  }
+
+  return (
+    !isUndefined(state.user.roles) &&
+    !isEqual(initUser().roles, state.user.roles)
+  );
+});
+
 const allowConfirm = computed(() => {
   if (!state.user.email) {
     return false;
@@ -307,7 +319,8 @@ const allowConfirm = computed(() => {
   if (
     !isCreating.value &&
     (passwordMismatch.value ||
-      getUpdateMaskFromUsers(props.user!, state.user).length == 0)
+      (getUpdateMaskFromUsers(props.user!, state.user).length == 0 &&
+        !rolesChanged.value))
   ) {
     return false;
   }
@@ -396,6 +409,9 @@ const tryCreateOrUpdateUser = async () => {
         updateMask: getUpdateMaskFromUsers(props.user!, state.user),
       })
     );
+    if (rolesChanged.value) {
+      await userStore.updateUserRoles(state.user);
+    }
     pushNotification({
       module: "bytebase",
       style: "SUCCESS",

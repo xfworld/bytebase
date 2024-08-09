@@ -12,7 +12,7 @@
       @update:source-type="state.sourceType = $event"
       @update:head-branch-name="handleUpdateHeadBranch"
       @update:source-branch-name="state.sourceBranchName = $event || null"
-      @update:source-database-uid="state.sourceDatabaseUID = $event || null"
+      @update:source-database-name="state.sourceDatabaseName = $event || null"
     />
 
     <RebaseBranchValidationStateView
@@ -67,7 +67,7 @@
 
 <script lang="ts" setup>
 import { computedAsync } from "@vueuse/core";
-import { useDialog } from "naive-ui";
+import { NButton, useDialog } from "naive-ui";
 import { ClientError, Status } from "nice-grpc-common";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -77,13 +77,13 @@ import { branchServiceClient } from "@/grpcweb";
 import {
   pushNotification,
   useBranchStore,
-  useCurrentUserV1,
   useDatabaseV1Store,
 } from "@/store";
 import type { ComposedProject } from "@/types";
-import { UNKNOWN_ID } from "@/types";
+import { isValidDatabaseName } from "@/types";
 import type { Branch } from "@/types/proto/v1/branch_service";
-import { defer, isOwnerOfProjectV1 } from "@/utils";
+import { defer } from "@/utils";
+import BranchComparison from "../common/BranchComparison.vue";
 import RebaseBranchSelect from "./RebaseBranchSelect.vue";
 import RebaseBranchValidationStateView from "./RebaseBranchValidationStateView.vue";
 import ResolveConflict from "./ResolveConflict.vue";
@@ -92,7 +92,7 @@ import type { RebaseBranchValidationState, RebaseSourceType } from "./types";
 interface LocalState {
   currentStepIndex: number;
   sourceBranchName: string | null;
-  sourceDatabaseUID: string | null;
+  sourceDatabaseName: string | null;
   sourceType: RebaseSourceType;
   isRebasing: boolean;
 }
@@ -110,7 +110,7 @@ const emit = defineEmits<{
 const state = reactive<LocalState>({
   currentStepIndex: 0,
   sourceBranchName: null,
-  sourceDatabaseUID: null,
+  sourceDatabaseName: null,
   sourceType: "BRANCH",
   isRebasing: false,
 });
@@ -119,7 +119,6 @@ const route = useRoute();
 const $dialog = useDialog();
 const resolveConflictRef = ref<InstanceType<typeof ResolveConflict>>();
 const branchStore = useBranchStore();
-const me = useCurrentUserV1();
 const isLoadingHeadBranch = ref(false);
 const isLoadingSourceBranch = ref(false);
 const isValidating = ref(false);
@@ -162,11 +161,11 @@ const sourceDatabase = computed(() => {
   if (state.sourceType === "BRANCH") {
     return undefined;
   }
-  const uid = state.sourceDatabaseUID;
-  if (!uid || uid === String(UNKNOWN_ID)) {
+  const name = state.sourceDatabaseName;
+  if (!isValidDatabaseName(name)) {
     return undefined;
   }
-  return useDatabaseV1Store().getDatabaseByUID(uid);
+  return useDatabaseV1Store().getDatabaseByName(name);
 });
 const sourceBranchOrDatabase = computed(() => {
   if (state.sourceType === "BRANCH") {
@@ -182,9 +181,6 @@ const parentBranchOnly = computed(() => {
   }
   if (!head.parentBranch) {
     return false; // parent-less (main) branches
-  }
-  if (isOwnerOfProjectV1(props.project, me.value)) {
-    return false; // project owners are not limited
   }
   return true;
 });
@@ -302,9 +298,8 @@ watch(
     }
     // Automatically set the sourceDatabase to the branch's baselineDatabase
     // if sourceDatabase is empty
-    if (!state.sourceDatabaseUID) {
-      const db = useDatabaseV1Store().getDatabaseByName(head.baselineDatabase);
-      state.sourceDatabaseUID = db.uid;
+    if (!state.sourceDatabaseName) {
+      state.sourceDatabaseName = head.baselineDatabase;
       state.sourceType = "DATABASE";
     }
 
