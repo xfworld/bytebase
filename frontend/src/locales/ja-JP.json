@@ -915,7 +915,6 @@
     },
     "approval-flow": {
       "self": "承認の流れ",
-      "tooltip": "承認者は、承認フローで指定された順序でイシューを確認し、承認する必要があります。イシューは、承認フローのすべてのステップが承認された後にのみ実行できます。リスクレベルごとに承認をカスタマイズできます。",
       "pre-issue-created-tips": "イシューが作成されると、システムはイシューのタイプとリスク レベルに基づいて、対応するカスタム承認を自動的に照合します。"
     },
     "risk-level": {
@@ -1007,7 +1006,6 @@
       }
     },
     "sql-review-only": "SQLレビューのみ",
-    "create-issue": "問題を作成",
     "this-plan-will-be-converted-to-a-new-issue": "この計画は新しい問題に変換されます",
     "title": {
       "edit-schema": "スキーマを編集",
@@ -1031,6 +1029,7 @@
     "data-change": "データの変更",
     "data-change-description": "挿入、更新、削除、データ変換を含むデータベースコンテンツの変更（DML）",
     "select-targets": "ターゲットを選択",
+    "ready-for-review": "レビュー準備完了",
     "overview": {
       "description": "このプランのすべての仕様を表示および管理します",
       "total-specs": "合計スペック",
@@ -1042,6 +1041,7 @@
     "navigator": {
       "specifications": "仕様",
       "checks": "小切手",
+      "review": "レビュー",
       "statement-empty": "ステートメントが空です"
     },
     "spec": {
@@ -1267,7 +1267,8 @@
       "credential-source": "Credential Source",
       "tenant-id": "Tenant ID",
       "client-id": "Client ID",
-      "client-secret": "Client Secret"
+      "client-secret": "Client Secret",
+      "specific-credential": "特定の資格情報"
     },
     "database-region": "データベース領域",
     "external-secret-gcp": {
@@ -2513,10 +2514,10 @@
       "re-request-review-issue": "イシューの承認を再度リクエストしますか?",
       "sent-back-issue": "イシューを却下する",
       "re-requested-review": "イシューの承認を再度リクエストします",
-      "no-one-matched": "このロールに一致するユーザーはいません。プロジェクト管理者に連絡してロールを割り当ててください。",
-      "any-n-role-can-approve": "任意の {role} を承認できます",
-      "approved-by-n": "{approver} によって承認されました",
-      "issue-creators-cannot-approve-their-own-issue": "イシュー作成者は自分の問題を承認できません"
+      "approved-by": "承認者",
+      "rejected-by": "拒否された",
+      "and-n-other-users": "{names} と他の {count} 人のユーザー",
+      "self-approval-not-allowed": "このプロジェクトでは自己承認は許可されていません。作成者として承認することはできません。"
     }
   },
   "schema-template": {
@@ -2729,10 +2730,8 @@
     "vcs-type": {
       "unspecified": "未指定"
     },
-    "actions": {
-    },
-    "messages": {
-    },
+    "actions": {},
+    "messages": {},
     "usage-description": "このリリースは、API統合を使用したカスタムGitOpsでのみ使用されます。"
   },
   "export-data": {

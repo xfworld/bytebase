@@ -915,7 +915,6 @@
     },
     "approval-flow": {
       "self": "Approval flow",
-      "tooltip": "The approvers will review and approve the issue in the order specified in the flow. The issue can only be applied after all steps in the flow have been approved. You can configure a custom approval flow for each risk.",
       "pre-issue-created-tips": "After an issue is created, Bytebase will automatically match the corresponding custom approval based on the type and risk level of the issue."
     },
     "risk-level": {
@@ -1007,7 +1006,6 @@
       }
     },
     "sql-review-only": "SQL Review Only",
-    "create-issue": "Create issue",
     "this-plan-will-be-converted-to-a-new-issue": "This plan will be converted to a new issue",
     "title": {
       "edit-schema": "Edit schema",
@@ -1031,6 +1029,7 @@
     "data-change": "Data Change",
     "data-change-description": "Database content modifications (DML) including inserts, updates, deletes and data transformations",
     "select-targets": "Select Targets",
+    "ready-for-review": "Ready for Review",
     "overview": {
       "description": "View and manage all specifications in this plan",
       "total-specs": "Total Specs",
@@ -1042,6 +1041,7 @@
     "navigator": {
       "specifications": "Specifications",
       "checks": "Checks",
+      "review": "Review",
       "statement-empty": "Statement is empty"
     },
     "spec": {
@@ -1267,7 +1267,8 @@
       "credential-source": "Credential Source",
       "tenant-id": "Tenant ID",
       "client-id": "Client ID",
-      "client-secret": "Client Secret"
+      "client-secret": "Client Secret",
+      "specific-credential": "Specific Credential"
     },
     "database-region": "Database Region",
     "external-secret-gcp": {
@@ -2513,10 +2514,10 @@
       "re-request-review-issue": "Re-request review issue?",
       "sent-back-issue": "Sent back issue",
       "re-requested-review": "re-requested issue review",
-      "no-one-matched": "No one matched",
-      "any-n-role-can-approve": "Any {role} can approve",
-      "approved-by-n": "Approved by {approver}",
-      "issue-creators-cannot-approve-their-own-issue": "Issue creators cannot approve their own issue"
+      "approved-by": "Approved by",
+      "rejected-by": "Rejected by",
+      "and-n-other-users": "{names} and 1 other user | {names} and {count} other users",
+      "self-approval-not-allowed": "Self-approval is not allowed in this project. So you cannot approve your own issue."
     }
   },
   "schema-template": {
@@ -2729,10 +2730,8 @@
     "vcs-type": {
       "unspecified": "Unspecified"
     },
-    "actions": {
-    },
-    "messages": {
-    },
+    "actions": {},
+    "messages": {},
     "usage-description": "The release is only used in custom GitOps with API integration."
   },
   "export-data": {

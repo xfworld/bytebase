@@ -2,8 +2,33 @@
   <div class="flex flex-col gap-y-3 py-2 px-3">
     <ReleaseInfo />
     <TaskCheckSummarySection />
-    <ReviewSection />
-    <IssueLabels />
+
+    <!-- Review section -->
+    <ApprovalFlowSection
+      v-if="!isCreating"
+      :issue="issue"
+      @issue-updated="
+        events.emit('status-changed', {
+          eager: true,
+        })
+      "
+    />
+    <div v-else class="flex flex-col gap-y-1">
+      <div class="textlabel flex items-center gap-x-1">
+        {{ $t("issue.approval-flow.self") }}
+        <FeatureBadge :feature="PlanFeature.FEATURE_APPROVAL_WORKFLOW" />
+      </div>
+      <div class="text-control-placeholder text-xs">
+        {{ $t("issue.approval-flow.pre-issue-created-tips") }}
+      </div>
+    </div>
+
+    <IssueLabels
+      :project="project"
+      :value="issue.labels"
+      :disabled="!allowChange"
+      @update:value="onIssueLabelsUpdate"
+    />
 
     <div
       v-show="
@@ -39,19 +64,26 @@
 <script lang="ts" setup>
 import { NTooltip } from "naive-ui";
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { FeatureBadge } from "@/components/FeatureGuard";
 import { targetsForSpec } from "@/components/Plan";
 import { GhostSection } from "@/components/Plan/components/Configuration";
 import { provideGhostSettingContext } from "@/components/Plan/components/Configuration/GhostSection/context";
-import { useCurrentProjectV1 } from "@/store";
+import { ApprovalFlowSection } from "@/components/Plan/components/IssueReviewView/Sidebar/ApprovalFlowSection";
+import { issueServiceClient } from "@/grpcweb";
+import { pushNotification, useCurrentProjectV1 } from "@/store";
+import { PlanFeature } from "@/types/proto-es/v1/subscription_service_pb";
+import { Issue } from "@/types/proto/v1/issue_service";
 import type { Plan } from "@/types/proto/v1/plan_service";
 import { specForTask, useIssueContext } from "../../logic";
 import IssueLabels from "./IssueLabels.vue";
 import PreBackupSection from "./PreBackupSection";
 import ReleaseInfo from "./ReleaseInfo.vue";
-import ReviewSection from "./ReviewSection";
 import TaskCheckSummarySection from "./TaskCheckSummarySection";
 
-const { isCreating, selectedTask, issue, events } = useIssueContext();
+const { t } = useI18n();
+const { isCreating, selectedTask, issue, events, allowChange } =
+  useIssueContext();
 const { project } = useCurrentProjectV1();
 const preBackupSectionRef = ref<InstanceType<typeof PreBackupSection>>();
 
@@ -80,6 +112,27 @@ const { shouldShow: shouldShowGhostSection, events: ghostEvents } =
 const shouldShowPreBackupSection = computed(() => {
   return preBackupSectionRef.value?.shouldShow ?? false;
 });
+
+const onIssueLabelsUpdate = async (labels: string[]) => {
+  if (isCreating.value) {
+    issue.value.labels = labels;
+  } else {
+    const issuePatch = Issue.fromPartial({
+      ...issue.value,
+      labels,
+    });
+    const updated = await issueServiceClient.updateIssue({
+      issue: issuePatch,
+      updateMask: ["labels"],
+    });
+    Object.assign(issue.value, updated);
+    pushNotification({
+      module: "bytebase",
+      style: "SUCCESS",
+      title: t("common.updated"),
+    });
+  }
+};
 
 ghostEvents.on("update", () => {
   events.emit("status-changed", {
