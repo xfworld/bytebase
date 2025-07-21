@@ -49,6 +49,36 @@ func TestPadZeroes(t *testing.T) {
 			acc:      6,
 			expected: "12:34:56.123000-02:00",
 		},
+		{
+			name:     "Invalid format: timezone before decimal (edge case fix)",
+			rawStr:   "12:34-05:56.123",
+			acc:      6,
+			expected: "12:34-05:56.123000",
+		},
+		{
+			name:     "Negative interval: leading minus should be ignored",
+			rawStr:   "-00:04:37.530865",
+			acc:      6,
+			expected: "-00:04:37.530865",
+		},
+		{
+			name:     "Negative interval with short precision",
+			rawStr:   "-00:02:45.25",
+			acc:      6,
+			expected: "-00:02:45.250000",
+		},
+		{
+			name:     "Negative interval without decimal",
+			rawStr:   "-00:05:00",
+			acc:      6,
+			expected: "-00:05:00",
+		},
+		{
+			name:     "Negative interval with timezone (minus after decimal)",
+			rawStr:   "-12:34:56.123-05:00",
+			acc:      6,
+			expected: "-12:34:56.123-05:00",
+		},
 	}
 
 	for _, test := range tests {
