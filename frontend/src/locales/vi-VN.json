@@ -653,7 +653,6 @@
         "id": "ID không gian làm việc",
         "id-description": "ID không gian làm việc duy nhất, chỉ đọc.",
         "branding": "Thương hiệu",
-        "only-admin-can-edit": "Chỉ quản trị viên không gian làm việc mới có thể cập nhật cài đặt.",
         "logo": "Logo",
         "logo-aspect": "Kích thước logo được đề xuất nên theo tỷ lệ 5:2, ví dụ 100 x 40.",
         "select-logo": "Tải lên một tệp",
@@ -798,8 +797,7 @@
           }
         },
         "announcement": {
-          "self": "Thông báo",
-          "admin-or-dba-can-edit": "Chỉ quản trị viên không gian làm việc hoặc DBA mới có thể cập nhật cài đặt thông báo."
+          "self": "Thông báo"
         },
         "announcement-alert-level": {
           "description": "Cấp độ"
@@ -1035,7 +1033,6 @@
     "stage-select": {
       "current": "{name} (hiện tại)"
     },
-    "not-allowed-to-operate-unassigned-database": "Không được phép {operation} trên cơ sở dữ liệu chưa được gán.\nTrước tiên, nó cần được chuyển đến một dự án.",
     "migration-mode": {
       "online": {
         "description": "Dựa trên gh-ost. Đối với các bảng lớn, nó có thể giảm thời gian khóa bảng từ hàng giờ xuống còn vài giây {link}."
@@ -1146,10 +1143,6 @@
       "create-database": "Tạo cơ sở dữ liệu",
       "request-role": "Yêu cầu vai trò",
       "request-specific-role": "Yêu cầu vai trò \"{role}\""
-    },
-    "schema-drift-detected": {
-      "self": "Đã phát hiện sự trôi dạt của sơ đồ",
-      "description": "Cơ sở dữ liệu được chọn có sự trôi dạt lược đồ. Vui lòng đảm bảo rằng sự trôi dạt này được mong đợi và an toàn để áp dụng."
     },
     "review": {
       "self": "Ôn tập",
@@ -1650,11 +1643,7 @@
     "no-schema-change": "di chuyển này không có thay đổi lược đồ",
     "show-diff": "Hiển thị khác biệt",
     "schema-snapshot-after-change": "Ảnh chụp nhanh lược đồ được ghi lại sau khi áp dụng thay đổi này",
-    "current-schema-empty": "Lược đồ hiện tại trống",
-    "establish-baseline": "Thiết lập đường cơ sở mới",
-    "refreshing": "Đang làm mới nhật ký thay đổi ...",
-    "establish-baseline-description": "Bytebase sẽ sử dụng lược đồ hiện tại làm đường cơ sở mới. Điều này sẽ điều hòa trạng thái lược đồ thực tế với trạng thái lược đồ được ghi lại trong Bytebase và khắc phục độ lệch lược đồ được báo cáo. Bạn chỉ nên thực hiện việc này nếu lược đồ hiện tại phản ánh trạng thái mong muốn.",
-    "establish-database-baseline": "Thiết lập đường cơ sở \"{name}\""
+    "current-schema-empty": "Lược đồ hiện tại trống"
   },
   "database": {
     "labels": "Nhãn cơ sở dữ liệu",
@@ -1797,19 +1786,7 @@
       "version-already-exists": "Phiên bản này đã tồn tại trong cơ sở dữ liệu",
       "delete-confirm-dialog": "Thao tác này sẽ xóa các bản sửa đổi đã áp dụng này và lược đồ cơ sở dữ liệu sẽ không bị thay đổi. Hành động này không thể hoàn tác."
     },
-    "not-found": "Không tìm thấy cơ sở dữ liệu",
-    "drifted": {
-      "self": "Sơ đồ trôi dạt",
-      "schema-drift-detected": {
-        "self": "Đã phát hiện sự trôi dạt của sơ đồ",
-        "description": "Sơ đồ khác với sơ đồ được áp dụng lần cuối. Điều này có thể gây ra lỗi ứng dụng và cần được giải quyết."
-      },
-      "new-baseline": {
-        "self": "Đường cơ sở mới",
-        "successfully-established": "Đã thiết lập thành công đường cơ sở mới"
-      },
-      "view-diff": "Xem sự khác biệt"
-    }
+    "not-found": "Không tìm thấy cơ sở dữ liệu"
   },
   "project": {
     "filter-projects": "Lọc dự án",
@@ -1942,6 +1919,10 @@
         "require-plan-check-no-error": {
           "self": "Yêu cầu kiểm tra kế hoạch phải đạt trước khi triển khai",
           "description": "Tất cả kiểm tra kế hoạch phải đạt không có lỗi trước khi tạo triển khai."
+        },
+        "allow-request-role": {
+          "self": "Cho phép yêu cầu vai trò",
+          "description": "Người dùng không phải chủ sở hữu dự án có thể tự yêu cầu vai trò cấp dự án"
         }
       },
       "project-labels": {
@@ -2398,7 +2379,6 @@
     "title": "Đánh giá SQL",
     "description": "Chính sách đánh giá SQL có thể xác định các bộ quy tắc lint SQL khác nhau cho các môi trường tương ứng. Nó giúp các nhóm áp dụng thực tiễn tốt nhất về SQL và thực thi tính nhất quán của lược đồ trên các cơ sở dữ liệu khác nhau. Bất cứ khi nào bạn cố gắng thay đổi DDL/DML hoặc sử dụng Trình soạn thảo SQL để truy vấn dữ liệu, truy vấn sẽ được kiểm tra theo chính sách đánh giá SQL đã định cấu hình.",
     "disabled": "Đánh giá SQL bị vô hiệu hóa",
-    "no-policy-set": "Không có chính sách đánh giá SQL",
     "create-policy": "Tạo chính sách đánh giá SQL",
     "select-review": "Chọn đánh giá SQL",
     "select-review-rules": "Chọn quy tắc đánh giá SQL",
@@ -2774,7 +2754,7 @@
     },
     "project-viewer": {
       "self": "Người xem dự án",
-      "description": "Quyền chỉ đọc để xem thông tin cơ bản của dự án, truy cập cơ sở dữ liệu và bắt đầu các yêu cầu đặc quyền."
+      "description": "Quyền chỉ đọc để xem thông tin cơ bản của dự án và cơ sở dữ liệu; người dùng có thể tự tạo yêu cầu để truy vấn và xuất dữ liệu."
     }
   },
   "database-group": {

@@ -5,8 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 
 	storepb "github.com/bytebase/bytebase/backend/generated-go/store"
 )
@@ -17,15 +19,17 @@ type Store struct {
 	enableCache   bool
 
 	// Cache.
-	Secret         string
-	userEmailCache *lru.Cache[string, *UserMessage]
-	instanceCache  *lru.Cache[string, *InstanceMessage]
-	databaseCache  *lru.Cache[string, *DatabaseMessage]
-	projectCache   *lru.Cache[string, *ProjectMessage]
-	policyCache    *lru.Cache[string, *PolicyMessage]
-	settingCache   *lru.Cache[storepb.SettingName, *SettingMessage]
-	rolesCache     *lru.Cache[string, *RoleMessage]
-	groupCache     *lru.Cache[string, *GroupMessage]
+	Secret            string
+	userEmailCache    *lru.Cache[string, *UserMessage]
+	instanceCache     *lru.Cache[string, *InstanceMessage]
+	databaseCache     *lru.Cache[string, *DatabaseMessage]
+	projectCache      *lru.Cache[string, *ProjectMessage]
+	policyCache       *lru.Cache[string, *PolicyMessage]
+	settingCache      *lru.Cache[storepb.SettingName, *SettingMessage]
+	rolesCache        *expirable.LRU[string, *RoleMessage]
+	groupCache        *expirable.LRU[string, *GroupMessage]
+	groupMembersCache *expirable.LRU[string, map[string]bool]
+	memberGroupsCache *expirable.LRU[string, []string]
 
 	// Large objects.
 	sheetFullCache *lru.Cache[string, *SheetMessage]
@@ -58,18 +62,14 @@ func New(ctx context.Context, pgURL string, enableCache bool) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	rolesCache, err := lru.New[string, *RoleMessage](64)
-	if err != nil {
-		return nil, err
-	}
+	rolesCache := expirable.NewLRU[string, *RoleMessage](128, nil, time.Minute)
 	sheetFullCache, err := lru.New[string, *SheetMessage](10)
 	if err != nil {
 		return nil, err
 	}
-	groupCache, err := lru.New[string, *GroupMessage](1024)
-	if err != nil {
-		return nil, err
-	}
+	groupCache := expirable.NewLRU[string, *GroupMessage](1024, nil, time.Minute)
+	groupMembersCache := expirable.NewLRU[string, map[string]bool](1024, nil, time.Minute)
+	memberGroupsCache := expirable.NewLRU[string, []string](4096, nil, time.Minute)
 
 	// Initialize database connection (handles both direct URL and file-based)
 	dbConnManager := NewDBConnectionManager(pgURL)
@@ -82,15 +82,17 @@ func New(ctx context.Context, pgURL string, enableCache bool) (*Store, error) {
 		enableCache:   enableCache,
 
 		// Cache.
-		userEmailCache: userEmailCache,
-		instanceCache:  instanceCache,
-		databaseCache:  databaseCache,
-		projectCache:   projectCache,
-		policyCache:    policyCache,
-		settingCache:   settingCache,
-		rolesCache:     rolesCache,
-		sheetFullCache: sheetFullCache,
-		groupCache:     groupCache,
+		userEmailCache:    userEmailCache,
+		instanceCache:     instanceCache,
+		databaseCache:     databaseCache,
+		projectCache:      projectCache,
+		policyCache:       policyCache,
+		settingCache:      settingCache,
+		rolesCache:        rolesCache,
+		sheetFullCache:    sheetFullCache,
+		groupCache:        groupCache,
+		groupMembersCache: groupMembersCache,
+		memberGroupsCache: memberGroupsCache,
 	}
 
 	return s, nil
@@ -110,6 +112,13 @@ func (s *Store) DeleteCache() {
 	s.settingCache.Purge()
 	s.policyCache.Purge()
 	s.userEmailCache.Purge()
+}
+
+// PurgeGroupCaches purges all group-related caches.
+func (s *Store) PurgeGroupCaches() {
+	s.groupCache.Purge()
+	s.groupMembersCache.Purge()
+	s.memberGroupsCache.Purge()
 }
 
 func getInstanceCacheKey(instanceID string) string {

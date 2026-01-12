@@ -653,7 +653,6 @@
         "id": "Workspace ID",
         "id-description": "The unique, read-only workspace id.",
         "branding": "Branding",
-        "only-admin-can-edit": "Only workspace admin can update the settings.",
         "logo": "Logo",
         "logo-aspect": "The suggested logo size should be 5:2 aspect ratio, e.g 100 x 40.",
         "select-logo": "Upload a file",
@@ -798,8 +797,7 @@
           }
         },
         "announcement": {
-          "self": "Announcement",
-          "admin-or-dba-can-edit": "Only workspace admin or DBA can update announcement setting."
+          "self": "Announcement"
         },
         "announcement-alert-level": {
           "description": "Level"
@@ -1035,7 +1033,6 @@
     "stage-select": {
       "current": "{name} (current)"
     },
-    "not-allowed-to-operate-unassigned-database": "Can't {operation} to unassigned databases.\nIt need to be transferred to a project first.",
     "migration-mode": {
       "online": {
         "description": "Based on gh-ost. For large tables, it can reduce the table lock duration from hours to seconds {link}."
@@ -1146,10 +1143,6 @@
       "create-database": "Create database",
       "request-role": "Request role",
       "request-specific-role": "Request \"{role}\" role"
-    },
-    "schema-drift-detected": {
-      "self": "Schema drift detected",
-      "description": "The selected database(s) has schema drift. Please make sure the drift is expected and safe to apply."
     },
     "review": {
       "self": "Review",
@@ -1650,11 +1643,7 @@
     "no-schema-change": "this migration has no schema change",
     "show-diff": "Show diff",
     "schema-snapshot-after-change": "The schema snapshot recorded after applying this change",
-    "current-schema-empty": "Current schema is empty",
-    "establish-baseline": "Establish new baseline",
-    "refreshing": "Refreshing changelog ...",
-    "establish-baseline-description": "Bytebase will use the current schema as the new baseline. This would reconcile the actual schema state with the recorded schema state in Bytebase and fix the reported schema drift. You should only do this if the current schema does reflect the desired state.",
-    "establish-database-baseline": "Establish \"{name}\" baseline"
+    "current-schema-empty": "Current schema is empty"
   },
   "database": {
     "labels": "Database Labels",
@@ -1797,19 +1786,7 @@
       "version-already-exists": "This version already exists in the database",
       "delete-confirm-dialog": "This will delete these applied revisions and the database schema will not be changed. This action cannot be undone."
     },
-    "not-found": "Cannot found the database",
-    "drifted": {
-      "self": "Schema drifted",
-      "schema-drift-detected": {
-        "self": "Schema drift detected",
-        "description": "The schema is different from the last applied schema. This may cause application errors and should be resolved."
-      },
-      "new-baseline": {
-        "self": "New baseline",
-        "successfully-established": "Successfully established new baseline"
-      },
-      "view-diff": "View diff"
-    }
+    "not-found": "Cannot found the database"
   },
   "project": {
     "filter-projects": "Filter projects",
@@ -1942,6 +1919,10 @@
         "require-plan-check-no-error": {
           "self": "Require plan checks to pass before rollout",
           "description": "All plan checks must pass without errors before creating rollout."
+        },
+        "allow-request-role": {
+          "self": "Allow request role",
+          "description": "Non-project-owner users can request project-level roles themselves"
         }
       },
       "project-labels": {
@@ -2398,7 +2379,6 @@
     "title": "SQL Review",
     "description": "SQL review policy can define different set of SQL lint rules for the respective environments. It helps teams to adopt SQL best practice and enforce schema consistency across different databases. Whenever you attempt a DDL/DML change or use SQL Editor to query data, the query will be checked against the configured SQL review policy.",
     "disabled": "SQL review is disabled",
-    "no-policy-set": "No SQL review policy",
     "create-policy": "Create SQL review",
     "select-review": "Select SQL review",
     "select-review-rules": "Select SQL review rules",
@@ -2774,7 +2754,7 @@
     },
     "project-viewer": {
       "self": "Project Viewer",
-      "description": "Read-only permissions for viewing basic project information, accessing databases, and initiating privilege requests."
+      "description": "Read-only permissions for viewing basic project and database information; users may self-initiate tickets to request data queries and exports."
     }
   },
   "database-group": {
