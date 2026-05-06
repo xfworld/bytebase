@@ -1,4 +1,4 @@
-package store
+package dbauth
 
 import (
 	"context"
@@ -14,18 +14,18 @@ import (
 )
 
 const (
-	metadataDBAWSRDSIAMParam = "bytebase_aws_rds_iam"
-	metadataDBAWSRegionParam = "bytebase_aws_region"
+	awsRDSIAMParam = "bytebase_aws_rds_iam"
+	awsRegionParam = "bytebase_aws_region"
 )
 
-type metadataDBAuthConfig struct {
+type awsConfig struct {
 	enabled  bool
 	region   string
 	endpoint string
 	user     string
 }
 
-type metadataDBTokenProvider interface {
+type awsTokenProvider interface {
 	BuildAuthToken(ctx context.Context, endpoint, region, user string) (string, error)
 }
 
@@ -52,18 +52,18 @@ func (p *awsMetadataDBTokenProvider) BuildAuthToken(ctx context.Context, endpoin
 	return token, nil
 }
 
-func metadataDBAuthConfigFromPGXConfig(pgxConfig *pgx.ConnConfig) (*metadataDBAuthConfig, error) {
-	iamEnabled := pgxConfig.RuntimeParams[metadataDBAWSRDSIAMParam] == "true"
-	region := pgxConfig.RuntimeParams[metadataDBAWSRegionParam]
-	delete(pgxConfig.RuntimeParams, metadataDBAWSRDSIAMParam)
-	delete(pgxConfig.RuntimeParams, metadataDBAWSRegionParam)
+func awsConfigFromPGXConfig(pgxConfig *pgx.ConnConfig) (*awsConfig, error) {
+	iamEnabled := pgxConfig.RuntimeParams[awsRDSIAMParam] == "true"
+	region := pgxConfig.RuntimeParams[awsRegionParam]
+	delete(pgxConfig.RuntimeParams, awsRDSIAMParam)
+	delete(pgxConfig.RuntimeParams, awsRegionParam)
 
 	if !iamEnabled {
 		return nil, nil
 	}
 
 	if region == "" {
-		return nil, errors.Errorf("%s is required when metadata database AWS RDS IAM auth is enabled", metadataDBAWSRegionParam)
+		return nil, errors.Errorf("%s is required when metadata database AWS RDS IAM auth is enabled", awsRegionParam)
 	}
 
 	if pgxConfig.User == "" {
@@ -86,7 +86,7 @@ func metadataDBAuthConfigFromPGXConfig(pgxConfig *pgx.ConnConfig) (*metadataDBAu
 		return nil, errors.New("verified TLS is required when metadata database AWS RDS IAM auth is enabled")
 	}
 
-	return &metadataDBAuthConfig{
+	return &awsConfig{
 		enabled:  true,
 		region:   region,
 		endpoint: net.JoinHostPort(pgxConfig.Host, strconv.FormatUint(uint64(pgxConfig.Port), 10)),
@@ -94,7 +94,7 @@ func metadataDBAuthConfigFromPGXConfig(pgxConfig *pgx.ConnConfig) (*metadataDBAu
 	}, nil
 }
 
-func newMetadataDBBeforeConnect(authConfig *metadataDBAuthConfig, tokenProvider metadataDBTokenProvider) func(context.Context, *pgx.ConnConfig) error {
+func newAWSBeforeConnect(authConfig *awsConfig, tokenProvider awsTokenProvider) func(context.Context, *pgx.ConnConfig) error {
 	return func(ctx context.Context, connConfig *pgx.ConnConfig) error {
 		token, err := tokenProvider.BuildAuthToken(ctx, authConfig.endpoint, authConfig.region, authConfig.user)
 		if err != nil {
@@ -105,9 +105,9 @@ func newMetadataDBBeforeConnect(authConfig *metadataDBAuthConfig, tokenProvider 
 	}
 }
 
-func metadataDBOpenOptions(authConfig *metadataDBAuthConfig, tokenProvider metadataDBTokenProvider) []stdlib.OptionOpenDB {
+func awsOpenOptions(authConfig *awsConfig, tokenProvider awsTokenProvider) []stdlib.OptionOpenDB {
 	if authConfig == nil || !authConfig.enabled {
 		return nil
 	}
-	return []stdlib.OptionOpenDB{stdlib.OptionBeforeConnect(newMetadataDBBeforeConnect(authConfig, tokenProvider))}
+	return []stdlib.OptionOpenDB{stdlib.OptionBeforeConnect(newAWSBeforeConnect(authConfig, tokenProvider))}
 }
