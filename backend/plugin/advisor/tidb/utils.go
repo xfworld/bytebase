@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/pingcap/tidb/pkg/parser/ast"
 	"github.com/pingcap/tidb/pkg/parser/format"
@@ -136,6 +137,29 @@ type OmniStmt struct {
 func (s OmniStmt) AbsoluteLine(byteOffset int) int {
 	pos := tidbparser.ByteOffsetToRunePosition(s.Text, byteOffset)
 	return s.BaseLine + int(pos.Line)
+}
+
+// TrimmedText returns Text with surrounding whitespace removed. Suitable
+// for embedding the statement text into advice content; raw Text may
+// include leading/trailing newlines from the original multi-statement
+// split.
+func (s OmniStmt) TrimmedText() string {
+	return strings.TrimSpace(s.Text)
+}
+
+// FirstTokenLine returns the 1-based absolute line of the first
+// non-whitespace character in s.Text. Matches pingcap's
+// OriginTextPosition: pingcap's lexer strips leading whitespace but
+// keeps comments as part of the statement, so its reported line points
+// at the first comment OR keyword. Used as the StartPosition for
+// statement-level advices.
+func (s OmniStmt) FirstTokenLine() int {
+	for i, r := range s.Text {
+		if !unicode.IsSpace(r) {
+			return s.AbsoluteLine(i)
+		}
+	}
+	return s.AbsoluteLine(0)
 }
 
 // canNull reports whether the given pingcap-AST column may have NULL values
