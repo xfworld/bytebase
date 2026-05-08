@@ -4,8 +4,8 @@ import dayjs from "dayjs";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  getRoleEnvironmentLimitationKind,
   roleHasDatabaseLimitation,
-  roleHasEnvironmentLimitation,
 } from "@/components/ProjectMember/utils";
 import { issueServiceClientConnect } from "@/connect";
 import type { ConditionGroupExpr, Factor, Operator } from "@/plugins/cel";
@@ -21,6 +21,7 @@ import type { OptionConfig } from "@/react/components/ExprEditor";
 import { ExprEditor } from "@/react/components/ExprEditor";
 import { IssueLabelSelect } from "@/react/components/IssueLabelSelect";
 import { RoleSelect } from "@/react/components/RoleSelect";
+import { DDLWarningCallout } from "@/react/components/role-grant/DDLWarningCallout";
 import { Alert } from "@/react/components/ui/alert";
 import { Button } from "@/react/components/ui/button";
 import { ExpirationPicker } from "@/react/components/ui/expiration-picker";
@@ -244,7 +245,7 @@ function RequestRoleForm({
   // scope). Submitting without one produces a project-wide binding which is
   // broader than the user typically intends.
   const showDatabases = !!role && roleHasDatabaseLimitation(role);
-  const showEnvironments = !!role && roleHasEnvironmentLimitation(role);
+  const envKind = role ? getRoleEnvironmentLimitationKind(role) : undefined;
 
   const databaseScopeComplete =
     !showDatabases ||
@@ -287,7 +288,9 @@ function RequestRoleForm({
         databaseResources.length > 0
           ? databaseResources
           : undefined;
-      const scopedEnvironments = showEnvironments ? environments : undefined;
+      // EnvLimitationKind union has no falsy members, so the truthy check
+      // is equivalent to !== undefined.
+      const scopedEnvironments = envKind ? environments : undefined;
 
       // The backend uses two fields on the RoleGrant message:
       //   1. `condition.expression` — CEL evaluated by
@@ -528,11 +531,12 @@ function RequestRoleForm({
               )}
             </div>
           )}
-          {showEnvironments && (
-            <div className="flex flex-col gap-y-1">
+          {envKind && (
+            <div className="flex flex-col gap-y-2">
               <label className="text-sm font-medium">
                 {t("common.environments")}
               </label>
+              <DDLWarningCallout type="drawer" kind={envKind} />
               <EnvironmentMultiSelect
                 value={environments}
                 onChange={setEnvironments}
