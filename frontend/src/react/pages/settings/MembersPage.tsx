@@ -37,6 +37,7 @@ import { UserAvatar } from "@/react/components/UserAvatar";
 import { Alert } from "@/react/components/ui/alert";
 import { Badge } from "@/react/components/ui/badge";
 import { Button } from "@/react/components/ui/button";
+import { Checkbox } from "@/react/components/ui/checkbox";
 import { Input } from "@/react/components/ui/input";
 import { SearchInput } from "@/react/components/ui/search-input";
 import {
@@ -233,11 +234,7 @@ function MemberTable({
           <TableRow>
             {allowEdit && (
               <TableHead className="w-10">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                />
+                <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
               </TableHead>
             )}
             <TableHead>{t("settings.members.table.account")}</TableHead>
@@ -250,11 +247,10 @@ function MemberTable({
             <TableRow key={mb.binding}>
               {allowEdit && (
                 <TableCell>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selectedBindings.includes(mb.binding)}
                     disabled={isSelectDisabled(mb)}
-                    onChange={() => toggleOne(mb.binding)}
+                    onCheckedChange={() => toggleOne(mb.binding)}
                   />
                 </TableCell>
               )}
