@@ -330,8 +330,10 @@
     "minutes": "分钟",
     "missing-required-permission": "缺少必需的权限 {permissions}",
     "missing-required-permission-for-resource": "缺少资源 {resource} 的必需权限",
+    "more": "更多",
     "n-items-selected": "已选 {n} 项",
     "n-more": "+{n} 更多",
+    "n-selected": "已选择 {n} 项",
     "name": "名称",
     "next": "下一步",
     "no-data": "无数据",
@@ -683,7 +685,6 @@
       "unspecified": "未指定"
     },
     "select": "选择数据库",
-    "selected-n-databases": "已选择 {n} 个数据库",
     "successfully-exported-schema": "成功导出 Schema",
     "successfully-transferred-databases": "数据库转移完成",
     "sync-complete-for-instance": "实例 '{0}' 同步完成",

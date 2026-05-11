@@ -330,8 +330,10 @@
     "minutes": "Minutes",
     "missing-required-permission": "Missing required permissions {permissions}",
     "missing-required-permission-for-resource": "Missing required permissions for resource {resource}",
+    "more": "More",
     "n-items-selected": "{n} items selected",
     "n-more": "+{n} more",
+    "n-selected": "{n} selected",
     "name": "Name",
     "next": "Next",
     "no-data": "No data",
@@ -683,7 +685,6 @@
       "unspecified": "Unspecified"
     },
     "select": "Select database",
-    "selected-n-databases": "{n} database selected | {n} databases selected",
     "successfully-exported-schema": "Successfully exported schema",
     "successfully-transferred-databases": "Successfully transferred databases",
     "sync-complete-for-instance": "Sync complete for instance '{0}'",

@@ -330,8 +330,10 @@
     "minutes": "Minutos",
     "missing-required-permission": "Faltan permisos requeridos {permissions}",
     "missing-required-permission-for-resource": "Faltan permisos requeridos para el recurso {resource}",
+    "more": "Más",
     "n-items-selected": "{n} elementos seleccionados",
     "n-more": "+{n} más",
+    "n-selected": "{n} seleccionados",
     "name": "Nombre",
     "next": "Siguiente",
     "no-data": "Sin datos",
@@ -683,7 +685,6 @@
       "unspecified": "No especificado"
     },
     "select": "Seleccionar base de datos",
-    "selected-n-databases": "{n} base de datos seleccionada | {n} bases de datos seleccionadas",
     "successfully-exported-schema": "Esquema exportado con éxito",
     "successfully-transferred-databases": "Bases de datos transferidas exitosamente",
     "sync-complete-for-instance": "Sincronización completada para la instancia '{0}'",

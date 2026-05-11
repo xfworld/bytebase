@@ -330,8 +330,10 @@
     "minutes": "分",
     "missing-required-permission": "必要な権限がありません {permissions}",
     "missing-required-permission-for-resource": "リソース {resource} に必要な権限がありません",
+    "more": "その他",
     "n-items-selected": "{n} 件選択済み",
     "n-more": "+{n} もっと",
+    "n-selected": "{n} 件選択中",
     "name": "名前",
     "next": "次のステップ",
     "no-data": "データなし",
@@ -683,7 +685,6 @@
       "unspecified": "不特定"
     },
     "select": "データベースの選択",
-    "selected-n-databases": "{n} 個のデータベースが選択されました",
     "successfully-exported-schema": "スキーマのエクスポートに成功しました",
     "successfully-transferred-databases": "データベースの移行が完了しました",
     "sync-complete-for-instance": "インスタンス '{0}' の同期が完了しました",
