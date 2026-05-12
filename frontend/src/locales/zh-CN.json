@@ -1115,8 +1115,7 @@
           "description": "输入 \"key:value\" 后按下回车"
         },
         "project": {
-          "description": "根据项目过滤",
-          "title": "项目"
+          "description": "根据项目过滤"
         },
         "state": {
           "description": "按状态过滤"
@@ -1128,9 +1127,7 @@
           "description": "输入值然后按 Enter",
           "title": "表"
         }
-      },
-      "search": "输入名称或 ID 来搜索",
-      "self": "高级搜索"
+      }
     },
     "approval-flow": {
       "self": "审批流"

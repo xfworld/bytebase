@@ -1115,8 +1115,7 @@
           "description": "Ingrese el par \"clave:valor\" y luego presione Enter"
         },
         "project": {
-          "description": "Filtrar por proyecto",
-          "title": "Proyecto"
+          "description": "Filtrar por proyecto"
         },
         "state": {
           "description": "Filtrar por estado"
@@ -1128,9 +1127,7 @@
           "description": "Ingrese el valor y luego presione Enter",
           "title": "Tabla"
         }
-      },
-      "search": "Ingrese título o id para buscar",
-      "self": "Búsqueda Avanzada"
+      }
     },
     "approval-flow": {
       "self": "Flujo de aprobación"
