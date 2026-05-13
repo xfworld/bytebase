@@ -1834,7 +1834,6 @@ function CreateWizardDrawer({
                       <ResourceIdField
                         ref={resourceIdFieldRef}
                         value={resourceId}
-                        resourceType="idp"
                         resourceName="SSO"
                         resourceTitle={title}
                         suffix
