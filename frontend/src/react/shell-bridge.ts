@@ -1,9 +1,10 @@
-import type { NotificationCreate } from "@/types/notification";
-
 export const ReactShellBridgeEvent = {
   localeChange: "bb.react-locale-change",
-  notification: "bb.react-notification",
   quickstartReset: "bb.react-quickstart-reset",
+} as const;
+
+export const VueShellBridgeEvent = {
+  notification: "bb.vue-notification",
 } as const;
 
 export type ReactShellBridgeEventName =
@@ -16,14 +17,6 @@ export type ReactQuickstartResetDetail = {
 export function emitReactLocaleChange(lang: string) {
   window.dispatchEvent(
     new CustomEvent(ReactShellBridgeEvent.localeChange, { detail: lang })
-  );
-}
-
-export function emitReactNotification(notification: NotificationCreate) {
-  window.dispatchEvent(
-    new CustomEvent(ReactShellBridgeEvent.notification, {
-      detail: notification,
-    })
   );
 }
 
