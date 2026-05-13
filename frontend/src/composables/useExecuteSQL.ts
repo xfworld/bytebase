@@ -38,6 +38,7 @@ import {
   getValidDataSourceByPolicy,
   hasPermissionToCreateChangeDatabaseIssueInProject,
 } from "@/utils";
+import { sqlEditorEvents } from "@/views/sql-editor/events";
 import { flattenNoSQLResult } from "./utils";
 
 // QUERY_INTERVAL_LIMIT is the minimal gap between two queries
@@ -288,20 +289,23 @@ const useExecuteSQL = () => {
       abortController.signal
     );
 
-    // After all the queries are executed, we update the tab with the latest query result map.
-    // Refresh the query history list when the query executed successfully
-    // (with or without warnings).
-    queryHistoryStore.resetPageToken({
-      project: sqlEditorStore.project,
-      database: database.name,
-    });
+    // Merge the freshly-executed statement into the history cache
+    // WITHOUT resetting pagination — the user keeps whatever pages
+    // they had already loaded ("Load more"d), and the new entry just
+    // gets prepended. After the cache update lands, emit the event so
+    // the HistoryPane re-renders from it (store reactivity alone
+    // doesn't reliably propagate into the React `useVueState`
+    // subscriber, so we trigger the re-render explicitly).
     queryHistoryStore
-      .fetchQueryHistoryList({
+      .mergeLatest({
         project: sqlEditorStore.project,
         database: database.name,
       })
       .catch(() => {
         /* nothing */
+      })
+      .finally(() => {
+        void sqlEditorEvents.emit("query-executed");
       });
 
     const instanceResource = getInstanceResource(database);

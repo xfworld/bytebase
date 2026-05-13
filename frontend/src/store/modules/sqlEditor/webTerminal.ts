@@ -8,7 +8,12 @@ import { fromEventPattern, Observable } from "rxjs";
 import { markRaw, ref, shallowRef } from "vue";
 import { useCancelableTimeout } from "@/composables/useCancelableTimeout";
 import { refreshTokens } from "@/connect/refreshToken";
-import { pushNotification, useDatabaseV1Store } from "@/store";
+import {
+  pushNotification,
+  useDatabaseV1Store,
+  useSQLEditorQueryHistoryStore,
+  useSQLEditorStore,
+} from "@/store";
 import type {
   SQLEditorQueryParams,
   SQLEditorTab,
@@ -32,6 +37,7 @@ import {
   extractGrpcErrorMessage,
   getErrorCode as extractGrpcStatusCode,
 } from "@/utils/connect";
+import { sqlEditorEvents } from "@/views/sql-editor/events";
 
 const ENDPOINT = "/v1:adminExecute";
 const SIG_ABORT = 3000 + Code.Aborted;
@@ -264,6 +270,25 @@ const useQueryStateLogic = (qs: WebTerminalQueryState) => {
           description: message.content,
         });
       }
+    }
+    // Admin-mode queries don't go through `useExecuteSQL`, so mirror
+    // its post-exec history refresh here. `mergeLatest` prepends the
+    // just-run statement without resetting the user's pagination.
+    const database = activeQuery().params?.connection.database;
+    if (database) {
+      useSQLEditorQueryHistoryStore()
+        .mergeLatest({
+          project: useSQLEditorStore().project,
+          database,
+        })
+        .catch(() => {
+          /* nothing */
+        })
+        .finally(() => {
+          void sqlEditorEvents.emit("query-executed");
+        });
+    } else {
+      void sqlEditorEvents.emit("query-executed");
     }
     cleanup();
   });
