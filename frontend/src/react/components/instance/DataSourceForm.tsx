@@ -783,17 +783,15 @@ export function DataSourceForm({
                   <div className="sm:col-span-3 sm:col-start-1">
                     <label className="textlabel flex items-center gap-x-1">
                       {t("common.username")}
-                      {isCreating &&
-                        onOpenInfoPanel &&
-                        hasAuthenticationInfo && (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-x-0.5 text-accent text-xs"
-                            onClick={() => onOpenInfoPanel("authentication")}
-                          >
-                            <Info className="size-3.5" />
-                          </button>
-                        )}
+                      {onOpenInfoPanel && hasAuthenticationInfo && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-x-0.5 text-accent text-xs"
+                          onClick={() => onOpenInfoPanel("authentication")}
+                        >
+                          <Info className="size-3.5" />
+                        </button>
+                      )}
                     </label>
                     <Input
                       value={dataSource.username}
@@ -1703,7 +1701,7 @@ export function DataSourceForm({
             <div className="sm:col-span-3 sm:col-start-1">
               <div className="flex items-center justify-start gap-x-2 textlabel">
                 {t("data-source.ssl.connection-security")}
-                {isCreating && onOpenInfoPanel && hasSslInfo && (
+                {onOpenInfoPanel && hasSslInfo && (
                   <button
                     type="button"
                     className="inline-flex items-center gap-x-0.5 text-accent text-xs"
@@ -1827,7 +1825,7 @@ export function DataSourceForm({
                 <label className="textlabel block">
                   {t("data-source.ssh-connection")}
                 </label>
-                {isCreating && onOpenInfoPanel && hasSshInfo && (
+                {onOpenInfoPanel && hasSshInfo && (
                   <button
                     type="button"
                     className="inline-flex items-center gap-x-0.5 text-accent text-xs"
