@@ -99,6 +99,50 @@ func buildFixedMockDatabaseMetadataGetterAndLister() (base.GetDatabaseMetadataFu
 							},
 						},
 					},
+					Indexes: []*store.IndexMetadata{
+						{
+							Name:    "PRIMARY",
+							Primary: true,
+							Unique:  true,
+							Expressions: []string{
+								"b",
+							},
+						},
+						{
+							Name:   "uk_a",
+							Unique: true,
+							Expressions: []string{
+								"a",
+							},
+						},
+						// Unique key on a generated column (c_generated = a + b).
+						// Used by TestGenerateRestoreSQLGeneratedColumnUKSkipped to
+						// pin that hasDisjointUniqueKey skips UKs whose
+						// expressions reference generated columns. Pre-fix this
+						// UK would false-positive as disjoint via naive string
+						// comparison; post-fix it's correctly skipped.
+						{
+							Name:   "uk_c_generated",
+							Unique: true,
+							Expressions: []string{
+								"c_generated",
+							},
+						},
+						// Unique key with empty Expressions — represents the
+						// TiDB-metadata shape for some expression/functional
+						// index parts that don't populate key.Column (per
+						// backend/plugin/schema/tidb/get_database_metadata.go).
+						// Used by TestGenerateRestoreSQLEmptyExpressionsUKSkipped
+						// to pin that hasDisjointUniqueKey skips empty-
+						// Expressions UKs. Pre-fix: disjoint([]) returns
+						// vacuously true, false-positive disjoint. Post-fix:
+						// empty-Expressions UKs are skipped explicitly.
+						{
+							Name:        "uk_empty_expressions",
+							Unique:      true,
+							Expressions: nil,
+						},
+					},
 				},
 				{
 					Name: "t1",
@@ -139,6 +183,22 @@ func buildFixedMockDatabaseMetadataGetterAndLister() (base.GetDatabaseMetadataFu
 						},
 						{
 							Name: "c",
+						},
+					},
+					Indexes: []*store.IndexMetadata{
+						{
+							Name:    "PRIMARY",
+							Primary: true,
+							Expressions: []string{
+								"c",
+							},
+						},
+						{
+							Name:   "PRIMARY",
+							Unique: true,
+							Expressions: []string{
+								"a",
+							},
 						},
 					},
 				},
