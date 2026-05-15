@@ -1,5 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EllipsisText } from "@/react/components/ui/ellipsis-text";
 import { cn } from "@/react/lib/utils";
 import { useSQLEditorTabStore, useWorkSheetStore } from "@/store";
@@ -20,6 +21,7 @@ type Props = {
  *  - Ellipsis + native tooltip via EllipsisText.
  */
 export function Label({ tab }: Props) {
+  const { t } = useTranslation();
   const tabStore = useSQLEditorTabStore();
   const worksheetStore = useWorkSheetStore();
 
@@ -28,6 +30,15 @@ export function Label({ tab }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const readonly = tab.viewState.view !== "CODE";
+  const displayTitle = tab.title || t("common.untitled");
+  // Captures whether the tab was already current at mousedown time, before
+  // the parent TabItem's onMouseDown handler runs and switches activation.
+  // We can't use a render-captured value: React commits the re-render
+  // between mousedown and click, so by the time onClick fires the new render
+  // already shows this tab as current. Inner mousedown handlers fire before
+  // the parent's (bubble order), giving us a moment to read the *previous*
+  // value from the store.
+  const wasCurrentAtMouseDownRef = useRef(false);
 
   const beginEdit = () => {
     if (readonly) return;
@@ -42,10 +53,6 @@ export function Label({ tab }: Props) {
 
   const confirmEdit = () => {
     const title = draft.trim();
-    if (title === "") {
-      cancelEdit();
-      return;
-    }
     tabStore.updateTab(tab.id, { title });
     if (tab.worksheet) {
       void worksheetStore.patchWorksheet(
@@ -109,14 +116,31 @@ export function Label({ tab }: Props) {
           the relative container and the `absolute inset-0` input shrinks to
           zero height → the cursor is visible but the text field is not. */}
       <EllipsisText
-        text={tab.title}
-        className={cn("text-sm leading-5 block", editing && "invisible")}
+        text={displayTitle}
+        className={cn(
+          "text-sm leading-5 block",
+          !tab.title && "text-control-placeholder italic",
+          editing && "invisible"
+        )}
       />
-      {/* Invisible "expand" dbl-click layer — EllipsisText strips onDblClick */}
+      {/* Invisible click layer — EllipsisText strips its own handlers.
+          Click-to-rename behaviour:
+          - Click on the *current* tab's label → enter rename mode.
+          - Click on a non-current tab → just activates the tab (handled by
+            the parent TabItem's onMouseDown). No rename on the first click.
+          We snapshot `wasCurrentAtMouseDownRef` at this layer's mousedown
+          (which fires before the parent's via bubble order). The parent's
+          mousedown then mutates the store; by the time onClick fires, the
+          ref still holds the pre-activation value. */}
       {!editing && !readonly && (
         <div
           className="absolute inset-0 cursor-text"
-          onDoubleClick={beginEdit}
+          onMouseDown={() => {
+            wasCurrentAtMouseDownRef.current = tabStore.currentTabId === tab.id;
+          }}
+          onClick={() => {
+            if (wasCurrentAtMouseDownRef.current) beginEdit();
+          }}
         />
       )}
       {editing && (
@@ -125,6 +149,7 @@ export function Label({ tab }: Props) {
           type="text"
           className="absolute inset-0 border-0 border-b p-0 text-sm leading-5 bg-background"
           value={draft}
+          placeholder={t("common.untitled")}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={confirmEdit}
           onKeyDown={(e) => {

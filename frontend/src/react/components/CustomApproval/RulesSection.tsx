@@ -17,13 +17,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   PermissionGuard,
   usePermissionCheck,
 } from "@/react/components/PermissionGuard";
 import { Button } from "@/react/components/ui/button";
+import { ColumnResizeHandle } from "@/react/components/ui/column-resize-handle";
+import { useColumnWidths } from "@/react/hooks/useColumnWidths";
 import { pushNotification, useWorkspaceApprovalSettingStore } from "@/store";
 import type { LocalApprovalRule } from "@/types";
 import type { WorkspaceApprovalSetting_Rule_Source } from "@/types/proto-es/v1/setting_service_pb";
@@ -44,6 +46,7 @@ function SortableRow({
   index,
   allowAdmin,
   hasFeature,
+  gridStyle,
   onEdit,
   onDelete,
   onShowFeatureModal,
@@ -52,6 +55,7 @@ function SortableRow({
   index: number;
   allowAdmin: boolean;
   hasFeature: boolean;
+  gridStyle: React.CSSProperties;
   onEdit: (rule: LocalApprovalRule) => void;
   onDelete: (rule: LocalApprovalRule) => void;
   onShowFeatureModal: () => void;
@@ -69,6 +73,7 @@ function SortableRow({
   } = useSortable({ id: rule.uid });
 
   const style = {
+    ...gridStyle,
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : undefined,
@@ -99,7 +104,7 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid grid-cols-[40px_200px_1fr_280px_140px] border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
+      className={`grid border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
         index % 2 === 1 ? "bg-gray-50/50" : ""
       }`}
     >
@@ -165,9 +170,18 @@ function SortableRow({
   );
 }
 
-function RuleRowOverlay({ rule }: { rule: LocalApprovalRule }) {
+function RuleRowOverlay({
+  rule,
+  gridStyle,
+}: {
+  rule: LocalApprovalRule;
+  gridStyle: React.CSSProperties;
+}) {
   return (
-    <div className="grid grid-cols-[40px_200px_1fr_280px_140px] border border-gray-200 bg-blue-50 opacity-50">
+    <div
+      style={gridStyle}
+      className="grid border border-gray-200 bg-blue-50 opacity-50"
+    >
       <div className="flex items-center justify-center px-2 py-2">
         <GripVertical className="h-4 w-4 text-gray-400" />
       </div>
@@ -203,6 +217,23 @@ export function RulesSection({
   const [editingRule, setEditingRule] = useState<
     LocalApprovalRule | undefined
   >();
+
+  // Only the title and flow columns are resizable; the other three are
+  // fixed (40px gripper, flexible content, 140px actions). The shared hook
+  // tracks an array of widths positional to its input, so we hand it just
+  // the two resizable columns and compose them into the grid template.
+  const { widths: resizableWidths, onResizeStart } = useColumnWidths([
+    { defaultWidth: 200, minWidth: 80 },
+    { defaultWidth: 280, minWidth: 80 },
+  ]);
+  const [titleWidth, flowWidth] = resizableWidths;
+
+  const gridStyle = useMemo<React.CSSProperties>(
+    () => ({
+      gridTemplateColumns: `40px ${titleWidth}px minmax(0, 1fr) ${flowWidth}px 140px`,
+    }),
+    [titleWidth, flowWidth]
+  );
 
   const isFallback = source === RuleSource.SOURCE_UNSPECIFIED;
 
@@ -316,14 +347,21 @@ export function RulesSection({
 
       <div className="rounded-sm border border-gray-200 text-sm">
         {/* Table Header */}
-        <div className="grid grid-cols-[40px_200px_1fr_280px_140px] border-b border-gray-200 bg-gray-50 font-medium text-gray-600">
-          <div className="w-10 px-2 py-2" />
-          <div className="px-3 py-2">{t("common.title")}</div>
-          <div className="px-3 py-2">{t("cel.condition.self")}</div>
-          <div className="px-3 py-2">
-            {t("custom-approval.approval-flow.self")}
+        <div
+          style={gridStyle}
+          className="grid border-b border-gray-200 bg-gray-50 font-medium text-gray-600"
+        >
+          <div className="px-2 py-2" />
+          <div className="relative px-3 py-2">
+            {t("common.title")}
+            <ColumnResizeHandle onMouseDown={(e) => onResizeStart(0, e)} />
           </div>
-          <div className="w-[140px] px-3 py-2">{t("common.operations")}</div>
+          <div className="px-3 py-2">{t("cel.condition.self")}</div>
+          <div className="relative px-3 py-2">
+            {t("custom-approval.approval-flow.self")}
+            <ColumnResizeHandle onMouseDown={(e) => onResizeStart(1, e)} />
+          </div>
+          <div className="px-3 py-2">{t("common.operations")}</div>
         </div>
 
         {/* Draggable Body */}
@@ -344,6 +382,7 @@ export function RulesSection({
                 index={index}
                 allowAdmin={allowAdmin}
                 hasFeature={hasFeature}
+                gridStyle={gridStyle}
                 onEdit={handleEditRule}
                 onDelete={handleDeleteRule}
                 onShowFeatureModal={onShowFeatureModal}
@@ -351,7 +390,9 @@ export function RulesSection({
             ))}
           </SortableContext>
           <DragOverlay>
-            {activeRule ? <RuleRowOverlay rule={activeRule} /> : null}
+            {activeRule ? (
+              <RuleRowOverlay rule={activeRule} gridStyle={gridStyle} />
+            ) : null}
           </DragOverlay>
         </DndContext>
 
