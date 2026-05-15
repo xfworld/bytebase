@@ -20,9 +20,8 @@ import { useSQLEditorStore } from "@/react/stores/sqlEditor";
 import {
   useConnectionOfCurrentSQLEditorTab,
   useSQLEditorTabStore,
-  useUIStateStore,
-  useWorkSheetAndTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
+import { useUIStateStore, useWorkSheetAndTabStore } from "@/store";
 import {
   dialectOfEngineV1,
   isValidDatabaseName,

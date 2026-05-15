@@ -15,13 +15,13 @@ import {
 } from "@/react/components/ui/popover";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import { router } from "@/router";
 import { SQL_EDITOR_WORKSHEET_MODULE } from "@/router/sqlEditor";
 import {
   pushNotification,
   useActuatorV1Store,
   useCurrentUserV1,
-  useSQLEditorTabStore,
   useWorkSheetStore,
 } from "@/store";
 import type { Worksheet } from "@/types/proto-es/v1/worksheet_service_pb";
@@ -37,14 +37,13 @@ type AccessOption = {
 
 type Props = {
   readonly worksheet?: Worksheet;
-  readonly onUpdated?: () => void;
 };
 
 /**
  * Replaces frontend/src/views/sql-editor/EditorCommon/SharePopover.vue.
  * Renders the share popover body content: visibility selector + shareable link.
  */
-export function SharePopoverBody({ worksheet, onUpdated }: Props) {
+export function SharePopoverBody({ worksheet }: Props) {
   const { t } = useTranslation();
   const actuatorStore = useActuatorV1Store();
   const currentUserStore = useCurrentUserV1();
@@ -140,7 +139,9 @@ export function SharePopoverBody({ worksheet, onUpdated }: Props) {
       });
     }
 
-    onUpdated?.();
+    // Close only the inner access selector — keep the outer share
+    // popover open so the user can still copy the just-updated link
+    // (or change the access again).
     setSelectorOpen(false);
   };
 

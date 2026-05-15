@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -21,8 +21,10 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
-  useSQLEditorStore: mocks.useSQLEditorStore,
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/react/components/ui/dialog", () => ({
@@ -99,7 +101,7 @@ const setup = (
     isShowExecutingHint: options.show ?? false,
     executingHintDatabase: options.database,
   };
-  mocks.useSQLEditorStore.mockReturnValue(store);
+  mocks.useSQLEditorVueState.mockReturnValue(store);
   mocks.useVueState.mockImplementation((getter) => getter());
   return store;
 };

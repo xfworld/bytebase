@@ -15,13 +15,9 @@ import { Button } from "@/react/components/ui/button";
 import { Tooltip } from "@/react/components/ui/tooltip";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
-import {
-  pushNotification,
-  useDatabaseV1Store,
-  useSQLEditorStore,
-  useSQLEditorTabStore,
-  useSQLStore,
-} from "@/store";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
+import { pushNotification, useDatabaseV1Store, useSQLStore } from "@/store";
 import { ExportFormat } from "@/types/proto-es/v1/common_pb";
 import type { Database } from "@/types/proto-es/v1/database_service_pb";
 import { ExportRequestSchema } from "@/types/proto-es/v1/sql_service_pb";
@@ -80,7 +76,7 @@ export function BatchQuerySelect({
   const tabStore = useSQLEditorTabStore();
   const databaseStore = useDatabaseV1Store();
   const sqlStore = useSQLStore();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
 
   const [showEmpty, setShowEmpty] = useState(true);
   const [selectedDatabaseNames, setSelectedDatabaseNames] = useState<

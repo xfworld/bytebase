@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useSQLEditorTabStore: vi.fn(),
 }));
 
@@ -22,9 +22,14 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
-  useSQLEditorStore: mocks.useSQLEditorStore,
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/react/components/ui/tooltip", () => ({
@@ -56,7 +61,7 @@ const renderIntoContainer = (element: ReactElement) => {
 beforeEach(async () => {
   vi.clearAllMocks();
   // Default: allow admin, WORKSHEET mode, connected
-  mocks.useSQLEditorStore.mockReturnValue({ allowAdmin: true });
+  mocks.useSQLEditorVueState.mockReturnValue({ allowAdmin: true });
   mocks.useSQLEditorTabStore.mockReturnValue({
     updateCurrentTab: vi.fn(),
   });
@@ -66,7 +71,7 @@ beforeEach(async () => {
 
 describe("AdminModeButton", () => {
   test("renders nothing when allowAdmin is false", () => {
-    mocks.useSQLEditorStore.mockReturnValue({ allowAdmin: false });
+    mocks.useSQLEditorVueState.mockReturnValue({ allowAdmin: false });
     mocks.useVueState.mockImplementation((getter) => getter());
     // Need to also mock the tab state reads. Configure useVueState to return
     // appropriate values per call: allowAdmin=false, mode="WORKSHEET", isDisconnected=false

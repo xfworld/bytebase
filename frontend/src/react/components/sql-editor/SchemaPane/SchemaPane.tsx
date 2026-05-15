@@ -23,9 +23,9 @@ import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useDBSchemaV1Store,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
+import { useDBSchemaV1Store } from "@/store";
 import { isValidDatabaseName } from "@/types";
 import type {
   DatabaseMetadata,

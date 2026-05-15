@@ -7,11 +7,11 @@ import { Button } from "@/react/components/ui/button";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
 import { RequestRoleSheet } from "@/react/pages/settings/RequestRoleSheet";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
 import {
   hasFeature,
   useProjectV1Store,
   useRoleStore,
-  useSQLEditorStore,
   useSubscriptionV1Store,
 } from "@/store";
 import type { DatabaseResource, Permission } from "@/types";
@@ -81,7 +81,7 @@ export function RequestQueryButton({
   const [showJITDrawer, setShowJITDrawer] = useState(false);
 
   const projectStore = useProjectV1Store();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
   const roleStore = useRoleStore();
   const subscriptionStore = useSubscriptionV1Store();
 

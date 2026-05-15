@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useCurrentUserV1: vi.fn(),
   // Legacy Pinia editor store.
-  useSQLEditorPiniaStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useSQLEditorTabStore: vi.fn(),
   // New zustand setters.
   setAsidePanelTab: vi.fn(),
@@ -33,10 +33,16 @@ vi.mock("@/react/hooks/useVueState", () => ({
 
 vi.mock("@/store", () => ({
   useCurrentUserV1: mocks.useCurrentUserV1,
-  useSQLEditorStore: mocks.useSQLEditorPiniaStore,
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
   pushNotification: mocks.pushNotification,
   useDatabaseV1Store: mocks.useDatabaseV1Store,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/react/stores/sqlEditor", () => ({
@@ -293,7 +299,7 @@ const setupMocks = () => {
     value: { email: "user@example.com" },
   });
 
-  mocks.useSQLEditorPiniaStore.mockReturnValue({ project: "projects/proj1" });
+  mocks.useSQLEditorVueState.mockReturnValue({ project: "projects/proj1" });
 
   mocks.useSQLEditorTabStore.mockReturnValue({
     currentTab: {

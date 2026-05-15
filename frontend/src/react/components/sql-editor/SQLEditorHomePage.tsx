@@ -24,13 +24,10 @@ import { applyPlanTitleToQuery } from "@/react/lib/plan/title";
 import { cn } from "@/react/lib/utils";
 import { useNavigate } from "@/react/router";
 import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import { PROJECT_V1_ROUTE_PLAN_DETAIL_SPEC_DETAIL } from "@/router/dashboard/projectV1";
-import {
-  useDatabaseV1Store,
-  useProjectV1Store,
-  useSQLEditorStore as useSQLEditorPiniaStore,
-  useSQLEditorTabStore,
-} from "@/store";
+import { useDatabaseV1Store, useProjectV1Store } from "@/store";
 import { unknownProject } from "@/types";
 import {
   extractDatabaseResourceName,
@@ -68,7 +65,7 @@ export function SQLEditorHomePage() {
   );
   const databaseStore = useDatabaseV1Store();
   const projectStore = useProjectV1Store();
-  const editorStore = useSQLEditorPiniaStore();
+  const editorStore = useSQLEditorVueState();
 
   const projectContextReady = useVueState(
     () => editorStore.projectContextReady

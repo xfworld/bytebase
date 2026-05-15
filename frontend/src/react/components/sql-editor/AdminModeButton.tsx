@@ -4,7 +4,8 @@ import { Button } from "@/react/components/ui/button";
 import { Tooltip } from "@/react/components/ui/tooltip";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
-import { useSQLEditorStore, useSQLEditorTabStore } from "@/store";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 
 type AdminModeButtonProps = {
   readonly size?: "sm" | "default";
@@ -23,7 +24,7 @@ export function AdminModeButton({
   onEnter,
 }: AdminModeButtonProps) {
   const { t } = useTranslation();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
   const tabStore = useSQLEditorTabStore();
 
   const allowAdmin = useVueState(() => editorStore.allowAdmin);

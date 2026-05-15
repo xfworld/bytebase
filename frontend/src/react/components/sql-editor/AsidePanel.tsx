@@ -3,14 +3,11 @@ import { useTranslation } from "react-i18next";
 import { ProjectSelect } from "@/react/components/ProjectSelect";
 import { useVueState } from "@/react/hooks/useVueState";
 import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import { router } from "@/router";
 import { PROJECT_V1_ROUTE_DASHBOARD } from "@/router/dashboard/workspaceRoutes";
-import {
-  useActuatorV1Store,
-  useSQLEditorStore as useSQLEditorPiniaStore,
-  useSQLEditorTabStore,
-  useSQLEditorWorksheetStore,
-} from "@/store";
+import { useActuatorV1Store } from "@/store";
 import { defaultProject, isValidProjectName } from "@/types";
 import { hasProjectPermissionV2, hasWorkspacePermissionV2 } from "@/utils";
 import { AccessPane } from "./AccessPane";
@@ -36,10 +33,10 @@ import { WorksheetPane } from "./WorksheetPane";
  */
 export function AsidePanel() {
   const { t } = useTranslation();
-  const editorStore = useSQLEditorPiniaStore();
+  const editorStore = useSQLEditorVueState();
   const actuatorStore = useActuatorV1Store();
   const tabStore = useSQLEditorTabStore();
-  const worksheetStore = useSQLEditorWorksheetStore();
+  const maybeSwitchProject = useSQLEditorStore((s) => s.maybeSwitchProject);
 
   const asidePanelTab = useSQLEditorStore((s) => s.asidePanelTab);
   const isDisconnected = useVueState(() => tabStore.isDisconnected);
@@ -61,10 +58,10 @@ export function AsidePanel() {
       if (!name || !isValidProjectName(name)) {
         editorStore.setProject("");
       } else {
-        void worksheetStore.maybeSwitchProject(name);
+        void maybeSwitchProject(name);
       }
     },
-    [editorStore, worksheetStore]
+    [editorStore, maybeSwitchProject]
   );
 
   // Vue's `<template #empty>` — rich empty state when the user is not

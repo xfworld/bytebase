@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useVueState } from "@/react/hooks/useVueState";
-import { useSQLEditorTabStore, useWebTerminalStore } from "@/store";
+import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import type { WebTerminalQueryItemV1 } from "@/types";
 import { minmax } from "@/utils";
 
@@ -21,14 +22,18 @@ interface HistoryState {
  */
 export function useHistory() {
   const tabStore = useSQLEditorTabStore();
-  const webTerminalStore = useWebTerminalStore();
+  const updateWebTerminalQueryItem = useSQLEditorStore(
+    (s) => s.updateWebTerminalQueryItem
+  );
   const historyByTabIdRef = useRef(new Map<string, HistoryState>());
 
-  const currentQuery = useVueState((): WebTerminalQueryItemV1 | undefined => {
-    const tab = tabStore.currentTab;
-    if (!tab) return undefined;
-    const list = webTerminalStore.getQueryStateByTab(tab).queryItemList.value;
-    return list[list.length - 1];
+  // The selector returns the (immutable) tail item from zustand; React
+  // re-renders whenever the underlying array changes.
+  const currentTabId = useVueState(() => tabStore.currentTab?.id);
+  const currentQuery = useSQLEditorStore((s) => {
+    if (!currentTabId) return undefined;
+    const list = s.webTerminalQueryItemsByTabId[currentTabId];
+    return list && list.length > 0 ? list[list.length - 1] : undefined;
   });
 
   const currentStack = (): HistoryState | undefined => {
@@ -53,12 +58,20 @@ export function useHistory() {
     stack.index = stack.list.length - 1;
   };
 
-  // Push the new query item onto the per-tab history whenever the tail
-  // changes. Mirrors Vue's `watch(currentQuery, push, { immediate: true })`.
-  // `push` reads through refs and store getters, so it doesn't need to be
-  // a dependency.
+  // Push the new query item onto the per-tab history only when a new
+  // command row is created — not on every keystroke. The Vue original
+  // got this for free because `updateWebTerminalQueryItem` mutated the
+  // tail in place, so the `computed(() => list[length-1])` kept the
+  // same reference across edits. The zustand slice replaces the tail
+  // immutably (`{...item, ...patch}`), so the selector returns a new
+  // identity on every statement edit; gate on `id` to recover the
+  // original semantics.
+  const lastPushedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (currentQuery) push(currentQuery);
+    if (!currentQuery) return;
+    if (currentQuery.id === lastPushedIdRef.current) return;
+    lastPushedIdRef.current = currentQuery.id;
+    push(currentQuery);
   }, [currentQuery]);
 
   const move = (direction: "up" | "down") => {
@@ -71,15 +84,19 @@ export function useHistory() {
 
     const tab = tabStore.currentTab;
     if (!tab) return;
-    const head = webTerminalStore.getQueryStateByTab(tab).queryItemList.value;
-    const tail = head[head.length - 1];
+    const tabItems =
+      useSQLEditorStore.getState().webTerminalQueryItemsByTabId[tab.id];
+    const tail = tabItems?.[tabItems.length - 1];
     if (!tail) return;
 
     if (nextIndex === list.length - 1) {
-      tail.statement = "";
+      updateWebTerminalQueryItem(tab.id, tail.id, { statement: "" });
     } else {
       const historyQuery = list[nextIndex];
-      if (historyQuery) tail.statement = historyQuery.statement;
+      if (historyQuery)
+        updateWebTerminalQueryItem(tab.id, tail.id, {
+          statement: historyQuery.statement,
+        });
     }
     stack.index = nextIndex;
   };

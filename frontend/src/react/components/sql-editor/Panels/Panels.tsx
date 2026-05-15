@@ -33,10 +33,9 @@ import {
 } from "@/react/stores/sqlEditor";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useDatabaseV1Store,
-  useDBSchemaV1Store,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
+import { useDatabaseV1Store, useDBSchemaV1Store } from "@/store";
 import { isValidDatabaseName } from "@/types";
 import {
   extractDatabaseResourceName,

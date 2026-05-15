@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useSQLEditorTabStore: vi.fn(),
-  useSQLEditorWorksheetStore: vi.fn(),
   closeTab: vi.fn(),
   setCurrentTabId: vi.fn(),
   createWorksheet: vi.fn().mockResolvedValue(undefined),
@@ -34,9 +33,19 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorWorksheetStore: mocks.useSQLEditorWorksheetStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor", () => ({
+  useSQLEditorStore: (
+    selector: (s: { createWorksheet: typeof mocks.createWorksheet }) => unknown
+  ) =>
+    selector({
+      createWorksheet: mocks.createWorksheet,
+    }),
 }));
 
 vi.mock("@/views/sql-editor/TabList/events", () => ({
@@ -206,9 +215,6 @@ const setup = (tabs: SQLEditorTab[], currentTabId = tabs[0]?.id ?? "") => {
     closeTab: mocks.closeTab,
   };
   mocks.useSQLEditorTabStore.mockReturnValue(tabStore);
-  mocks.useSQLEditorWorksheetStore.mockReturnValue({
-    createWorksheet: mocks.createWorksheet,
-  });
   mocks.useVueState.mockImplementation((getter) => getter());
   mocks.tabListEventsOn.mockReturnValue(() => {});
   return { tabStore };

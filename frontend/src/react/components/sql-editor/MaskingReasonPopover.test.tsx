@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useProjectV1Store: vi.fn(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   hasFeature: vi.fn(() => true),
 }));
 
@@ -25,8 +25,11 @@ vi.mock("@/react/hooks/useVueState", () => ({
 
 vi.mock("@/store", () => ({
   useProjectV1Store: mocks.useProjectV1Store,
-  useSQLEditorStore: mocks.useSQLEditorStore,
   hasFeature: mocks.hasFeature,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/types/proto-es/v1/subscription_service_pb", () => ({
@@ -143,7 +146,7 @@ const setupDefaultMocks = (allowJIT = false) => {
       allowJustInTimeAccess: allowJIT,
     })),
   });
-  mocks.useSQLEditorStore.mockReturnValue({ project: "projects/proj1" });
+  mocks.useSQLEditorVueState.mockReturnValue({ project: "projects/proj1" });
   mocks.hasFeature.mockReturnValue(true);
   mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
 };

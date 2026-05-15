@@ -11,8 +11,19 @@ const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useSQLEditorTabStore: vi.fn(),
-  useSQLEditorStore: vi.fn(),
-  useSQLEditorQueryHistoryStore: vi.fn(),
+  // Legacy Pinia editor store.
+  useSQLEditorVueState: vi.fn(),
+  // Mutable per-test state for the zustand mock.
+  historyEntry: {
+    queryHistories: [] as Array<{
+      name: string;
+      statement: string;
+      createTime: { seconds: bigint; nanos: number } | undefined;
+    }>,
+    nextPageToken: "" as string | undefined,
+  },
+  fetchQueryHistoryList: vi.fn().mockResolvedValue({ queryHistories: [] }),
+  resetPageToken: vi.fn(),
   pushNotification: vi.fn(),
   sqlEditorEventsEmit: vi.fn().mockResolvedValue(undefined),
 }));
@@ -26,10 +37,29 @@ vi.mock("@/react/hooks/useVueState", () => ({
 }));
 
 vi.mock("@/store", () => ({
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorStore: mocks.useSQLEditorStore,
-  useSQLEditorQueryHistoryStore: mocks.useSQLEditorQueryHistoryStore,
   pushNotification: mocks.pushNotification,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
+}));
+
+vi.mock("@/react/stores/sqlEditor", () => ({
+  selectQueryHistoryEntry: () => () => mocks.historyEntry,
+  useSQLEditorStore: (
+    selector: (s: {
+      fetchQueryHistoryList: typeof mocks.fetchQueryHistoryList;
+      resetPageToken: typeof mocks.resetPageToken;
+    }) => unknown
+  ) =>
+    selector({
+      fetchQueryHistoryList: mocks.fetchQueryHistoryList,
+      resetPageToken: mocks.resetPageToken,
+    }),
 }));
 
 vi.mock("@/views/sql-editor/events", () => ({
@@ -124,18 +154,12 @@ beforeEach(async () => {
     addTab: vi.fn(),
   });
 
-  mocks.useSQLEditorStore.mockReturnValue({
+  mocks.useSQLEditorVueState.mockReturnValue({
     project: "projects/proj1",
   });
 
-  mocks.useSQLEditorQueryHistoryStore.mockReturnValue({
-    getQueryHistoryList: vi.fn(() => ({
-      queryHistories: [],
-      nextPageToken: "",
-    })),
-    fetchQueryHistoryList: vi.fn().mockResolvedValue({ queryHistories: [] }),
-    resetPageToken: vi.fn(),
-  });
+  mocks.historyEntry = { queryHistories: [], nextPageToken: "" };
+  mocks.fetchQueryHistoryList.mockResolvedValue({ queryHistories: [] });
 
   mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
 
@@ -155,17 +179,6 @@ afterEach(() => {
 
 describe("HistoryPane", () => {
   test("empty state — shows no-history-found when empty list and not loading", () => {
-    const queryHistoryStore = {
-      getQueryHistoryList: vi.fn(() => ({
-        queryHistories: [],
-        nextPageToken: "",
-      })),
-      fetchQueryHistoryList: vi.fn().mockResolvedValue({ queryHistories: [] }),
-      resetPageToken: vi.fn(),
-    };
-    mocks.useSQLEditorQueryHistoryStore.mockReturnValue(queryHistoryStore);
-    mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
-
     const { container, render, unmount } = renderIntoContainer(<HistoryPane />);
     render();
 
@@ -174,22 +187,13 @@ describe("HistoryPane", () => {
   });
 
   test("rendered history list — both entries visible via statement text", () => {
-    const histories = [
-      makeHistory("histories/h1", "SELECT * FROM users"),
-      makeHistory("histories/h2", "SELECT id FROM orders"),
-    ];
-    const queryHistoryStore = {
-      getQueryHistoryList: vi.fn(() => ({
-        queryHistories: histories,
-        nextPageToken: "",
-      })),
-      fetchQueryHistoryList: vi
-        .fn()
-        .mockResolvedValue({ queryHistories: histories }),
-      resetPageToken: vi.fn(),
+    mocks.historyEntry = {
+      queryHistories: [
+        makeHistory("histories/h1", "SELECT * FROM users"),
+        makeHistory("histories/h2", "SELECT id FROM orders"),
+      ],
+      nextPageToken: "",
     };
-    mocks.useSQLEditorQueryHistoryStore.mockReturnValue(queryHistoryStore);
-    mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
 
     const { container, render, unmount } = renderIntoContainer(<HistoryPane />);
     render();
@@ -202,30 +206,14 @@ describe("HistoryPane", () => {
   test("debounced search — fetchQueryHistoryList called with statement after timer", async () => {
     vi.useFakeTimers();
 
-    const fetchQueryHistoryList = vi
-      .fn()
-      .mockResolvedValue({ queryHistories: [] });
-    const queryHistoryStore = {
-      getQueryHistoryList: vi.fn(() => ({
-        queryHistories: [],
-        nextPageToken: "",
-      })),
-      fetchQueryHistoryList,
-      resetPageToken: vi.fn(),
-    };
-    mocks.useSQLEditorQueryHistoryStore.mockReturnValue(queryHistoryStore);
-    mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
-
     const { container, render, unmount } = renderIntoContainer(<HistoryPane />);
     render();
 
-    // Find the search input and type
     const searchInput = container.querySelector(
       "[data-testid='search-input']"
     ) as HTMLInputElement;
     expect(searchInput).not.toBeNull();
 
-    // Type into the search input by directly setting value and firing input event
     act(() => {
       Object.defineProperty(searchInput, "value", {
         writable: true,
@@ -239,35 +227,23 @@ describe("HistoryPane", () => {
       searchInput.dispatchEvent(inputEvent);
     });
 
-    // Advance timers to trigger debounce
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
 
-    // fetchQueryHistoryList should have been called (initial load + after search)
-    expect(fetchQueryHistoryList).toHaveBeenCalled();
+    expect(mocks.fetchQueryHistoryList).toHaveBeenCalled();
     unmount();
   });
 
   test("click history row → emits append-editor-content event", async () => {
-    const histories = [makeHistory("histories/h1", "SELECT * FROM users")];
-    const queryHistoryStore = {
-      getQueryHistoryList: vi.fn(() => ({
-        queryHistories: histories,
-        nextPageToken: "",
-      })),
-      fetchQueryHistoryList: vi
-        .fn()
-        .mockResolvedValue({ queryHistories: histories }),
-      resetPageToken: vi.fn(),
+    mocks.historyEntry = {
+      queryHistories: [makeHistory("histories/h1", "SELECT * FROM users")],
+      nextPageToken: "",
     };
-    mocks.useSQLEditorQueryHistoryStore.mockReturnValue(queryHistoryStore);
-    mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
 
     const { container, render, unmount } = renderIntoContainer(<HistoryPane />);
     render();
 
-    // Find history row (first div in the history list)
     const historyRow = container.querySelector(
       "[data-history-row]"
     ) as HTMLElement;
@@ -285,19 +261,10 @@ describe("HistoryPane", () => {
   });
 
   test("click copy button → clipboard writeText and pushNotification called", async () => {
-    const histories = [makeHistory("histories/h1", "SELECT * FROM users")];
-    const queryHistoryStore = {
-      getQueryHistoryList: vi.fn(() => ({
-        queryHistories: histories,
-        nextPageToken: "",
-      })),
-      fetchQueryHistoryList: vi
-        .fn()
-        .mockResolvedValue({ queryHistories: histories }),
-      resetPageToken: vi.fn(),
+    mocks.historyEntry = {
+      queryHistories: [makeHistory("histories/h1", "SELECT * FROM users")],
+      nextPageToken: "",
     };
-    mocks.useSQLEditorQueryHistoryStore.mockReturnValue(queryHistoryStore);
-    mocks.useVueState.mockImplementation((getter: () => unknown) => getter());
 
     const { container, render, unmount } = renderIntoContainer(<HistoryPane />);
     render();

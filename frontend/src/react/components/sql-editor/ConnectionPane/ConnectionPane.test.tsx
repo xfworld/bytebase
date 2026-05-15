@@ -118,19 +118,34 @@ vi.mock("@/store", () => ({
   useEnvironmentV1Store: () => mocks.environmentStore,
   useInstanceV1Store: () => mocks.instanceStore,
   useProjectV1Store: () => mocks.projectStore,
-  useSQLEditorStore: () => mocks.editorStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useSQLEditorTabStore: () => mocks.tabStore,
-  useSQLEditorTreeStore: () => mocks.treeStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: () => mocks.editorStore,
 }));
 
 vi.mock("@/react/stores/sqlEditor", () => ({
   useSQLEditorStore: (
-    selector: (s: { setShowConnectionPanel: (v: boolean) => void }) => unknown
+    selector: (s: {
+      setShowConnectionPanel: (v: boolean) => void;
+      treeState: string;
+      setTreeState: (state: string) => void;
+      treeNodeKeysByTarget: () => string[];
+    }) => unknown
   ) =>
     selector({
       setShowConnectionPanel: (next: boolean) => {
         mocks.uiStore.showConnectionPanel = next;
       },
+      treeState: mocks.treeStore.state,
+      setTreeState: (state: string) => {
+        mocks.treeStore.state = state as typeof mocks.treeStore.state;
+      },
+      treeNodeKeysByTarget: mocks.treeStore.nodeKeysByTarget,
     }),
 }));
 
@@ -192,7 +207,7 @@ vi.mock("@/utils", () => ({
   instanceV1Name: (i: { title: string }) => i.title,
 }));
 
-vi.mock("@/react/components/instance/constants", () => ({
+vi.mock("@/components/InstanceForm/constants", () => ({
   EngineIconPath: { MYSQL: "/mysql.svg" },
 }));
 

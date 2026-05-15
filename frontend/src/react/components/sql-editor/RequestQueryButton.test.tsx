@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useProjectV1Store: vi.fn(),
   useRoleStore: vi.fn(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useSubscriptionV1Store: vi.fn(),
   hasFeature: vi.fn(() => true),
   parseStringToResource: vi.fn((s: string) => ({
@@ -32,9 +32,12 @@ vi.mock("@/react/hooks/useVueState", () => ({
 vi.mock("@/store", () => ({
   useProjectV1Store: mocks.useProjectV1Store,
   useRoleStore: mocks.useRoleStore,
-  useSQLEditorStore: mocks.useSQLEditorStore,
   useSubscriptionV1Store: mocks.useSubscriptionV1Store,
   hasFeature: mocks.hasFeature,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/utils/v1/databaseResource", () => ({
@@ -180,7 +183,7 @@ const setupDefaultMocks = (allowJIT = false, allowRequestRole = true) => {
       },
     ],
   });
-  mocks.useSQLEditorStore.mockReturnValue({ project: "projects/proj1" });
+  mocks.useSQLEditorVueState.mockReturnValue({ project: "projects/proj1" });
   mocks.useSubscriptionV1Store.mockReturnValue({
     hasInstanceFeature: vi.fn(() => false),
   });

@@ -11,10 +11,9 @@ import {
 import { useVueState } from "@/react/hooks/useVueState";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useDBSchemaV1Store,
-  useSettingV1Store,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
+import { useDBSchemaV1Store, useSettingV1Store } from "@/store";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import type { DatabaseMetadata } from "@/types/proto-es/v1/database_service_pb";
 import type { AISetting } from "@/types/proto-es/v1/setting_service_pb";

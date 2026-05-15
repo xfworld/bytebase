@@ -23,13 +23,14 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
-  useSQLEditorStore: () => ({ allowAdmin: mocks.allowAdmin }),
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useSQLEditorTabStore: () => ({ currentTab: null }),
-  useSQLEditorWorksheetStore: () => ({
-    createWorksheet: vi.fn().mockResolvedValue(undefined),
-    maybeUpdateWorksheet: vi.fn().mockResolvedValue(undefined),
-  }),
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: () => ({ allowAdmin: mocks.allowAdmin }),
 }));
 
 vi.mock("@/react/stores/sqlEditor", () => ({
@@ -43,6 +44,8 @@ vi.mock("@/react/stores/sqlEditor", () => ({
     {
       getState: () => ({
         setAsidePanelTab: mocks.setAsidePanelTab,
+        createWorksheet: vi.fn().mockResolvedValue(undefined),
+        maybeUpdateWorksheet: vi.fn().mockResolvedValue(undefined),
       }),
     }
   ),

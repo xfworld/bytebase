@@ -20,12 +20,12 @@ import {
 import { Tooltip } from "@/react/components/ui/tooltip";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import {
   pushNotification,
   useDatabaseV1Store,
   useDBSchemaV1Store,
-  useSQLEditorStore,
-  useSQLEditorTabStore,
   useSQLStore,
 } from "@/store";
 import { usePolicyV1Store } from "@/store/modules/v1/policy";
@@ -73,7 +73,7 @@ export function ResultView({
   const { t } = useTranslation();
   const policyStore = usePolicyV1Store();
   const queryDataPolicy = useVueState(
-    () => useSQLEditorStore().queryDataPolicy
+    () => useSQLEditorVueState().queryDataPolicy
   );
   const tabStore = useSQLEditorTabStore();
 

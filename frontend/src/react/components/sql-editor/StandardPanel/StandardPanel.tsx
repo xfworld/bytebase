@@ -17,7 +17,7 @@ import {
 import {
   useConnectionOfCurrentSQLEditorTab,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
 import { instanceV1HasReadonlyMode } from "@/utils";
 import { EditorMain } from "./EditorMain";
 

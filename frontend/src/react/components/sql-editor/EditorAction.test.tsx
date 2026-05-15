@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useSQLEditorTabStore: vi.fn(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useUIStateStore: vi.fn(),
   useWorkSheetStore: vi.fn(),
   useWorkSheetAndTabStore: vi.fn(),
@@ -33,12 +33,18 @@ vi.mock("@/react/hooks/useVueState", () => ({
 }));
 
 vi.mock("@/store", () => ({
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorStore: mocks.useSQLEditorStore,
   useUIStateStore: mocks.useUIStateStore,
   useWorkSheetStore: mocks.useWorkSheetStore,
   useWorkSheetAndTabStore: mocks.useWorkSheetAndTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useConnectionOfCurrentSQLEditorTab: mocks.useConnectionOfCurrentSQLEditorTab,
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/utils", () => ({
@@ -174,7 +180,7 @@ const setup = (options: SetupOptions = {}) => {
     isDisconnected,
     updateCurrentTab,
   });
-  mocks.useSQLEditorStore.mockReturnValue({ resultRowsLimit: 500 });
+  mocks.useSQLEditorVueState.mockReturnValue({ resultRowsLimit: 500 });
   mocks.useUIStateStore.mockReturnValue({ saveIntroStateByKey });
   mocks.useWorkSheetStore.mockReturnValue({
     getWorksheetByName: vi.fn(() => ({

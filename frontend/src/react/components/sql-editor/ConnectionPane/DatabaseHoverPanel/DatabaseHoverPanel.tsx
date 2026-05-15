@@ -5,7 +5,7 @@ import { EnvironmentLabel } from "@/react/components/EnvironmentLabel";
 import { getLayerRoot, LAYER_SURFACE_CLASS } from "@/react/components/ui/layer";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
-import { useSQLEditorStore } from "@/store";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
 import type { Position, SQLEditorTreeNode } from "@/types";
 import {
   getDatabaseProject,
@@ -36,7 +36,7 @@ export function DatabaseHoverPanel({
   onClickOutside,
 }: Props) {
   const { t } = useTranslation();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
   const { state, position, update } = useHoverState();
 
   const hasProjectContext = useVueState(() => !!editorStore.project);

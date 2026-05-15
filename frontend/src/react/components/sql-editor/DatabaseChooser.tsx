@@ -6,11 +6,11 @@ import { Tooltip } from "@/react/components/ui/tooltip";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
 import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useSQLEditorStore as useSQLEditorPiniaStore,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
 import { isValidDatabaseName, isValidInstanceName } from "@/types";
 import {
   extractDatabaseResourceName,
@@ -30,7 +30,7 @@ type DatabaseChooserProps = {
 export function DatabaseChooser({ disabled = false }: DatabaseChooserProps) {
   const { t } = useTranslation();
   const tabStore = useSQLEditorTabStore();
-  const editorStore = useSQLEditorPiniaStore();
+  const editorStore = useSQLEditorVueState();
   const setShowConnectionPanel = useSQLEditorStore(
     (s) => s.setShowConnectionPanel
   );

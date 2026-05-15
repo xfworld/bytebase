@@ -34,8 +34,11 @@ vi.mock("@/store", () => ({
   useActuatorV1Store: mocks.useActuatorV1Store,
   useCurrentUserV1: mocks.useCurrentUserV1,
   useWorkSheetStore: mocks.useWorkSheetStore,
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
   pushNotification: mocks.pushNotification,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
 }));
 
 vi.mock("@/utils", () => ({
@@ -187,16 +190,12 @@ describe("SharePopoverBody", () => {
     unmount();
   });
 
-  test("handleChangeAccess calls patchWorksheet and pushNotification and onUpdated", async () => {
-    const onUpdated = vi.fn();
+  test("handleChangeAccess calls patchWorksheet and pushNotification but does NOT close the outer popover", async () => {
     const patchWorksheet = vi.fn().mockResolvedValue({});
     mocks.useWorkSheetStore.mockReturnValue({ patchWorksheet });
 
     const { container, render, unmount } = renderIntoContainer(
-      <SharePopoverBody
-        worksheet={mockWorksheet as never}
-        onUpdated={onUpdated}
-      />
+      <SharePopoverBody worksheet={mockWorksheet as never} />
     );
     render();
 
@@ -206,14 +205,16 @@ describe("SharePopoverBody", () => {
     const optionRows = popoverContent?.querySelectorAll("[data-option-row]");
     expect(optionRows?.length).toBeGreaterThanOrEqual(1);
 
-    // Click second option (Project Read)
+    // Click second option (Project Read).
     await act(async () => {
       (optionRows?.[1] as HTMLElement)?.click();
     });
 
     expect(patchWorksheet).toHaveBeenCalledTimes(1);
     expect(mocks.pushNotification).toHaveBeenCalledTimes(1);
-    expect(onUpdated).toHaveBeenCalledTimes(1);
+    // The SharePopoverBody no longer signals "close me" on access
+    // change — the outer share popover stays open so the user can copy
+    // the just-updated link.
     unmount();
   });
 

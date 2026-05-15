@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useProjectV1Store: vi.fn(),
   // Legacy Pinia editor store.
-  useSQLEditorPiniaStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useSQLEditorTabStore: vi.fn(),
   // New zustand store state + setter.
   state: {
@@ -37,12 +37,18 @@ vi.mock("@/react/hooks/useVueState", () => ({
 
 vi.mock("@/store", () => ({
   useProjectV1Store: mocks.useProjectV1Store,
-  useSQLEditorStore: mocks.useSQLEditorPiniaStore,
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
   useAccessGrantStore: mocks.useAccessGrantStore,
   useIssueV1Store: mocks.useIssueV1Store,
   useDatabaseV1Store: mocks.useDatabaseV1Store,
   hasFeature: mocks.hasFeature,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/react/stores/sqlEditor", () => ({
@@ -231,7 +237,7 @@ const setupDefaultMocks = () => {
     })),
   });
 
-  mocks.useSQLEditorPiniaStore.mockReturnValue({ project: "projects/proj1" });
+  mocks.useSQLEditorVueState.mockReturnValue({ project: "projects/proj1" });
   mocks.useSQLEditorTabStore.mockReturnValue({
     currentTab: { connection: { database: "instances/inst1/databases/db1" } },
   });

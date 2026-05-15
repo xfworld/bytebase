@@ -22,8 +22,9 @@ const mocks = vi.hoisted(() => ({
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useWorkSheetStore: vi.fn(),
   useSQLEditorTabStore: vi.fn(),
-  useSQLEditorStore: vi.fn(),
-  useSQLEditorWorksheetStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
+  // The new zustand store mock — only `createWorksheet` is used by SheetTree.
+  createWorksheet: vi.fn().mockResolvedValue({}),
   useSheetContext: vi.fn(),
   useSheetContextByView: vi.fn(),
   useDropdown: vi.fn(),
@@ -41,10 +42,21 @@ vi.mock("@/react/hooks/useVueState", () => ({
 
 vi.mock("@/store", () => ({
   useWorkSheetStore: mocks.useWorkSheetStore,
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorStore: mocks.useSQLEditorStore,
-  useSQLEditorWorksheetStore: mocks.useSQLEditorWorksheetStore,
   pushNotification: mocks.pushNotification,
+}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
+}));
+
+vi.mock("@/react/stores/sqlEditor", () => ({
+  useSQLEditorStore: (
+    selector: (s: { createWorksheet: typeof mocks.createWorksheet }) => unknown
+  ) => selector({ createWorksheet: mocks.createWorksheet }),
 }));
 
 vi.mock("@/views/sql-editor/Sheet", () => ({
@@ -384,7 +396,7 @@ const setupDefaultMocks = () => {
 
   mocks.useSheetContext.mockReturnValue(sheetContext);
   mocks.useSheetContextByView.mockReturnValue(viewContext);
-  mocks.useSQLEditorStore.mockReturnValue({
+  mocks.useSQLEditorVueState.mockReturnValue({
     project: "projects/proj1",
   });
   mocks.useWorkSheetStore.mockReturnValue({
@@ -406,9 +418,7 @@ const setupDefaultMocks = () => {
     updateTab: vi.fn(),
     setCurrentTabId: vi.fn(),
   });
-  mocks.useSQLEditorWorksheetStore.mockReturnValue({
-    createWorksheet: vi.fn().mockResolvedValue({}),
-  });
+  mocks.createWorksheet.mockResolvedValue({});
   mocks.useDropdown.mockReturnValue({
     currentNode: undefined,
     options: [],

@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useSQLEditorTabStore: vi.fn(),
-  // Legacy Pinia useSQLEditorStore (editor.ts).
-  useSQLEditorPiniaStore: vi.fn(),
+  // Legacy Pinia useSQLEditorVueState (editor.ts).
+  useSQLEditorVueState: vi.fn(),
   useConnectionOfCurrentSQLEditorTab: vi.fn(),
   // New zustand store setter.
   setShowConnectionPanel: vi.fn(),
@@ -32,10 +32,15 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorStore: mocks.useSQLEditorPiniaStore,
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useConnectionOfCurrentSQLEditorTab: mocks.useConnectionOfCurrentSQLEditorTab,
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/react/stores/sqlEditor", () => ({
@@ -58,7 +63,7 @@ vi.mock("@/utils", () => ({
   getInstanceResource: mocks.getInstanceResource,
 }));
 
-vi.mock("@/react/components/instance/constants", () => ({
+vi.mock("@/components/InstanceForm/constants", () => ({
   EngineIconPath: mocks.EngineIconPath,
 }));
 
@@ -112,7 +117,7 @@ beforeEach(async () => {
     currentTab: { id: "tab1" },
     isInBatchMode: false,
   });
-  mocks.useSQLEditorPiniaStore.mockReturnValue({ projectContextReady: true });
+  mocks.useSQLEditorVueState.mockReturnValue({ projectContextReady: true });
   mocks.isValidInstanceName.mockReturnValue(true);
   mocks.isValidDatabaseName.mockReturnValue(true);
   mocks.getInstanceResource.mockReturnValue(mockInstance);
@@ -158,7 +163,7 @@ describe("DatabaseChooser", () => {
   });
 
   test("button is disabled when projectContextReady is false", () => {
-    mocks.useSQLEditorPiniaStore.mockReturnValue({
+    mocks.useSQLEditorVueState.mockReturnValue({
       projectContextReady: false,
     });
     const { container, render, unmount } = renderIntoContainer(

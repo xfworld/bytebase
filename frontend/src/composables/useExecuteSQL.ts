@@ -4,14 +4,14 @@ import { cloneDeep, isEmpty } from "lodash-es";
 import { v4 as uuidv4 } from "uuid";
 import { markRaw, reactive } from "vue";
 import { t } from "@/plugins/i18n";
+import { useSQLEditorStore as useSQLEditorReactStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import {
   hasFeature,
   pushNotification,
   useDatabaseV1Store,
   useDBGroupStore,
-  useSQLEditorQueryHistoryStore,
-  useSQLEditorStore,
-  useSQLEditorTabStore,
   useSQLStore,
 } from "@/store";
 import type {
@@ -51,8 +51,7 @@ const useExecuteSQL = () => {
   const dbGroupStore = useDBGroupStore();
   const dbStore = useDatabaseV1Store();
   const tabStore = useSQLEditorTabStore();
-  const sqlEditorStore = useSQLEditorStore();
-  const queryHistoryStore = useSQLEditorQueryHistoryStore();
+  const sqlEditorStore = useSQLEditorVueState();
 
   const notify = (
     type: BBNotificationStyle,
@@ -296,7 +295,8 @@ const useExecuteSQL = () => {
     // the HistoryPane re-renders from it (store reactivity alone
     // doesn't reliably propagate into the React `useVueState`
     // subscriber, so we trigger the re-render explicitly).
-    queryHistoryStore
+    useSQLEditorReactStore
+      .getState()
       .mergeLatest({
         project: sqlEditorStore.project,
         database: database.name,

@@ -1,6 +1,17 @@
 import { cloneDeep, head, isUndefined, omitBy, pick } from "lodash-es";
-import { defineStore, storeToRefs } from "pinia";
-import { computed, type MaybeRef, reactive, unref, watch } from "vue";
+import { computed, type MaybeRef, reactive, toRefs, unref, watch } from "vue";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import {
+  hasFeature,
+  useCurrentUserV1,
+  useDatabaseV1ByName,
+  useEnvironmentV1Store,
+  useWorkSheetStore,
+} from "@/store";
+import {
+  migrateDraftsFromCache,
+  migrateTabViewState,
+} from "@/store/modules/sqlEditor/legacy/migration";
 import type {
   BatchQueryContext,
   SQLEditorConnection,
@@ -22,20 +33,16 @@ import {
   storageKeySqlEditorTabs,
   useDynamicLocalStorage,
 } from "@/utils";
-import {
-  hasFeature,
-  useDatabaseV1ByName,
-  useEnvironmentV1Store,
-  useWorkSheetStore,
-} from "../v1";
-import { useCurrentUserV1 } from "../v1/auth";
-import { useSQLEditorStore } from "./editor";
-import {
-  migrateDraftsFromCache,
-  migrateTabViewState,
-} from "./legacy/migration";
-import { useWebTerminalStore } from "./webTerminal";
 
+/**
+ * Vue-reactive SQL Editor tab state. Replaces the Pinia
+ * `useSQLEditorTabStore` (`store/modules/sqlEditor/tab.ts`) — same
+ * shape and field semantics, but lives as a module-level lazy
+ * singleton instead of a Pinia store. The store is still heavily
+ * Vue-reactive (`reactive(new Map())`, `computed`, `watch`,
+ * `useDynamicLocalStorage`), so consumers continue to use
+ * `useVueState(() => tabStore.X)` for cross-framework reads.
+ */
 const PERSISTENT_TAB_FIELDS = [
   "id",
   "worksheet",
@@ -46,9 +53,9 @@ const PERSISTENT_TAB_FIELDS = [
 ] as const;
 type PersistentTab = Pick<SQLEditorTab, (typeof PERSISTENT_TAB_FIELDS)[number]>;
 
-export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
+const buildSQLEditorTabState = () => {
   // re-expose selected project in sqlEditorStore for shortcut
-  const { project } = storeToRefs(useSQLEditorStore());
+  const { project } = toRefs(useSQLEditorVueState());
   const tabsById = reactive(new Map<string, SQLEditorTab>());
   const worksheetStore = useWorkSheetStore();
 
@@ -170,7 +177,6 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     return databaseGroups.length > 0 || databases.length > 1;
   });
 
-  // actions
   /**
    * Create or update the tab, and ensure the tab is open.
    * @param payload
@@ -228,7 +234,13 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     }
     openTmpTabList.value.splice(position, 1);
     tabsById.delete(tabId);
-    useWebTerminalStore().clearQueryStateByTab(tabId);
+    // Dynamic import avoids a static cycle with the zustand store
+    // (which transitively re-imports this module via `@/store`).
+    void import("@/react/stores/sqlEditor/webTerminal-service").then(
+      ({ disposeWebTerminalQuerySession }) => {
+        disposeWebTerminalQuerySession(tabId);
+      }
+    );
 
     if (tabId === currentTabId.value) {
       const nextIndex = Math.min(position, openTmpTabList.value.length - 1);
@@ -327,7 +339,6 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     if (!tab.databaseQueryContexts.has(database)) {
       return;
     }
-    // Early exit if no contexts to remove
     if (contextIds.length === 0) {
       return;
     }
@@ -336,7 +347,6 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     const contexts = tab.databaseQueryContexts.get(database)!;
     const newContexts = contexts.filter((ctx) => !target.has(ctx.id));
 
-    // Only update if something actually changed
     if (newContexts.length !== contexts.length) {
       tab.databaseQueryContexts.set(database, newContexts);
     }
@@ -387,14 +397,17 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     }
   );
 
-  // some shortcuts
   const isDisconnected = computed(() => {
     const tab = currentTab.value;
     if (!tab) return true;
     return !isConnectedSQLEditorTab(tab);
   });
 
-  return {
+  // Wrap with `reactive()` so consumers see the same auto-unwrap /
+  // auto-wrap-on-assign ergonomics they had with the Pinia store. Use
+  // Vue's `toRefs()` (not Pinia's `storeToRefs`) to extract individual
+  // refs when needed.
+  return reactive({
     project,
     initProject,
     getTabById,
@@ -416,22 +429,28 @@ export const useSQLEditorTabStore = defineStore("sqlEditorTab", () => {
     isDisconnected,
     isInBatchMode,
     supportBatchMode,
-  };
-});
+  });
+};
+
+let _state: ReturnType<typeof buildSQLEditorTabState> | undefined;
+export const useSQLEditorTabStore = () => {
+  if (!_state) _state = buildSQLEditorTabState();
+  return _state;
+};
+
+export type SQLEditorTabState = ReturnType<typeof useSQLEditorTabStore>;
 
 export const useCurrentSQLEditorTab = () => {
-  return storeToRefs(useSQLEditorTabStore()).currentTab;
+  return toRefs(useSQLEditorTabStore()).currentTab;
 };
 
 export const isSQLEditorTabClosable = (tab: SQLEditorTab) => {
   const { openTabList } = useSQLEditorTabStore();
 
   if (openTabList.length > 1) {
-    // Not the only one tab
     return true;
   }
   if (openTabList.length === 1) {
-    // It's the only one tab, and it's closable if it's a sheet tab
     return !!tab.worksheet;
   }
   return false;

@@ -21,14 +21,14 @@ import {
 import { Textarea } from "@/react/components/ui/textarea";
 import { useVueState } from "@/react/hooks/useVueState";
 import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import { router } from "@/router";
 import { PROJECT_V1_ROUTE_ISSUE_DETAIL } from "@/router/dashboard/projectV1";
 import {
   pushNotification,
   useCurrentUserV1,
   useDatabaseV1Store,
-  useSQLEditorStore as useSQLEditorPiniaStore,
-  useSQLEditorTabStore,
 } from "@/store";
 import {
   AccessGrant_Status,
@@ -111,7 +111,7 @@ function AccessGrantRequestDrawerInner({
 }: AccessGrantRequestDrawerInnerProps) {
   const { t } = useTranslation();
   const currentUser = useCurrentUserV1();
-  const editorStore = useSQLEditorPiniaStore();
+  const editorStore = useSQLEditorVueState();
   const tabStore = useSQLEditorTabStore();
   const setAsidePanelTab = useSQLEditorStore((s) => s.setAsidePanelTab);
   const setHighlightAccessGrantName = useSQLEditorStore(

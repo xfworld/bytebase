@@ -5,7 +5,7 @@ import { cn } from "@/react/lib/utils";
 import {
   useConnectionOfCurrentSQLEditorTab,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
 import { extractDatabaseResourceName } from "@/utils";
 import type { AvailableAction } from "../SchemaPane/actions";
 import { useSchemaPaneActions } from "../SchemaPane/actions";

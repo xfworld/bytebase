@@ -41,7 +41,12 @@ vi.mock("@/react/hooks/useSQLEditorEvent", () => ({
 
 vi.mock("@/store", () => ({
   useWorkSheetStore: vi.fn(() => mocks.worksheetStore),
-  useSQLEditorWorksheetStore: vi.fn(() => mocks.editorWorksheetStore),
+}));
+
+vi.mock("@/react/stores/sqlEditor", () => ({
+  useSQLEditorStore: (
+    selector: (s: typeof mocks.editorWorksheetStore) => unknown
+  ) => selector(mocks.editorWorksheetStore),
 }));
 
 vi.mock("@/views/sql-editor/Sheet", () => ({

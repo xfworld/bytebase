@@ -4,14 +4,14 @@ import { Alert } from "@/react/components/ui/alert";
 import { Button } from "@/react/components/ui/button";
 import { useVueState } from "@/react/hooks/useVueState";
 import { applyPlanTitleToQuery } from "@/react/lib/plan/title";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
 import { router } from "@/router";
 import { PROJECT_V1_ROUTE_PLAN_DETAIL_SPEC_DETAIL } from "@/router/dashboard/projectV1";
 import {
   pushNotification,
   useDatabaseV1Store,
   useProjectV1Store,
-  useSQLEditorStore,
-  useSQLEditorTabStore,
   useStorageStore,
 } from "@/store";
 import { unknownProject } from "@/types";
@@ -35,7 +35,7 @@ type Props = {
 export function ExecuteHint({ database, onClose }: Props) {
   const { t } = useTranslation();
   const tabStore = useSQLEditorTabStore();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
   const databaseStore = useDatabaseV1Store();
   const projectStore = useProjectV1Store();
   const storageStore = useStorageStore();

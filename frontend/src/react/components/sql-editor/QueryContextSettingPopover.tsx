@@ -12,11 +12,11 @@ import {
 import { Tooltip } from "@/react/components/ui/tooltip";
 import { useVueState } from "@/react/hooks/useVueState";
 import { cn } from "@/react/lib/utils";
+import { useSQLEditorVueState } from "@/react/stores/sqlEditor/editor-vue-state";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useSQLEditorStore,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import type { DataSource } from "@/types/proto-es/v1/instance_service_pb";
 import {
@@ -37,7 +37,7 @@ type Props = {
 export function QueryContextSettingPopover({ disabled = false }: Props) {
   const { t } = useTranslation();
   const tabStore = useSQLEditorTabStore();
-  const editorStore = useSQLEditorStore();
+  const editorStore = useSQLEditorVueState();
   const connection = useConnectionOfCurrentSQLEditorTab();
 
   const currentTabMode = useVueState(() => tabStore.currentTab?.mode);

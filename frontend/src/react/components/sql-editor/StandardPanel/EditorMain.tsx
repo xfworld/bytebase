@@ -4,9 +4,9 @@ import { ReadonlyModeNotSupported } from "@/react/components/sql-editor/Readonly
 import { useVueState } from "@/react/hooks/useVueState";
 import {
   useConnectionOfCurrentSQLEditorTab,
-  useDatabaseV1Store,
   useSQLEditorTabStore,
-} from "@/store";
+} from "@/react/stores/sqlEditor/tab-vue-state";
+import { useDatabaseV1Store } from "@/store";
 import type { SQLEditorQueryParams } from "@/types";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import { getInstanceResource, instanceV1HasReadonlyMode } from "@/utils";

@@ -46,9 +46,12 @@ vi.mock("@/router/dashboard/workspaceRoutes", () => ({
 }));
 
 vi.mock("@/store", () => ({
-  useSQLEditorStore: vi.fn(),
   useProjectV1Store: vi.fn(),
   useWorkspaceV1Store: vi.fn(),
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: vi.fn(),
 }));
 
 vi.mock("@/assets/logo-full.svg", () => ({

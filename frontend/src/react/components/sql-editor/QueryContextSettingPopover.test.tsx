@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({ t: (key: string) => key })),
   useVueState: vi.fn<(getter: () => unknown) => unknown>(),
   useSQLEditorTabStore: vi.fn(),
-  useSQLEditorStore: vi.fn(),
+  useSQLEditorVueState: vi.fn(),
   useConnectionOfCurrentSQLEditorTab: vi.fn(),
   getInstanceResource: vi.fn(),
   readableDataSourceType: vi.fn((type: number) => `type-${type}`),
@@ -26,10 +26,15 @@ vi.mock("@/react/hooks/useVueState", () => ({
   useVueState: mocks.useVueState,
 }));
 
-vi.mock("@/store", () => ({
-  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
-  useSQLEditorStore: mocks.useSQLEditorStore,
+vi.mock("@/store", () => ({}));
+
+vi.mock("@/react/stores/sqlEditor/tab-vue-state", () => ({
   useConnectionOfCurrentSQLEditorTab: mocks.useConnectionOfCurrentSQLEditorTab,
+  useSQLEditorTabStore: mocks.useSQLEditorTabStore,
+}));
+
+vi.mock("@/react/stores/sqlEditor/editor-vue-state", () => ({
+  useSQLEditorVueState: mocks.useSQLEditorVueState,
 }));
 
 vi.mock("@/utils", () => ({
@@ -134,7 +139,7 @@ beforeEach(async () => {
     currentTab: { mode: "WORKSHEET" },
     updateCurrentTab: vi.fn(),
   });
-  mocks.useSQLEditorStore.mockReturnValue({
+  mocks.useSQLEditorVueState.mockReturnValue({
     resultRowsLimit: 1000,
     redisCommandOption: 0,
     queryDataPolicy: {

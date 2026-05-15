@@ -1,11 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useVueState } from "@/react/hooks/useVueState";
-import {
-  pushNotification,
-  useSQLEditorTabStore,
-  useSQLEditorWorksheetStore,
-  useWorkSheetStore,
-} from "@/store";
+import { useSQLEditorStore } from "@/react/stores/sqlEditor";
+import { useSQLEditorTabStore } from "@/react/stores/sqlEditor/tab-vue-state";
+import { pushNotification, useWorkSheetStore } from "@/store";
 import { isWorksheetWritableV1 } from "@/utils";
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
@@ -26,7 +23,11 @@ const AUTO_SAVE_DEBOUNCE_MS = 2000;
 export function useSQLEditorAutoSave() {
   const tabStore = useSQLEditorTabStore();
   const worksheetStore = useWorkSheetStore();
-  const sqlEditorWorksheetStore = useSQLEditorWorksheetStore();
+  const abortAutoSave = useSQLEditorStore((s) => s.abortAutoSave);
+  const setAutoSaveController = useSQLEditorStore(
+    (s) => s.setAutoSaveController
+  );
+  const maybeUpdateWorksheet = useSQLEditorStore((s) => s.maybeUpdateWorksheet);
 
   const statement = useVueState(() => tabStore.currentTab?.statement);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,18 +57,18 @@ export function useSQLEditorAutoSave() {
     const worksheet = worksheetStore.getWorksheetByName(tab.worksheet);
     if (!worksheet || !isWorksheetWritableV1(worksheet)) return;
 
-    sqlEditorWorksheetStore.abortAutoSave();
+    abortAutoSave();
 
     const statementToSave = tab.statement;
     const tabId = tab.id;
 
     const controller = new AbortController();
-    sqlEditorWorksheetStore.autoSaveController = controller;
+    setAutoSaveController(controller);
     tabStore.updateTab(tabId, { status: "SAVING" });
 
     let wasAborted = false;
     try {
-      await sqlEditorWorksheetStore.maybeUpdateWorksheet({
+      await maybeUpdateWorksheet({
         tabId,
         worksheet: tab.worksheet,
         database: tab.connection.database,
@@ -89,7 +90,7 @@ export function useSQLEditorAutoSave() {
         description: error instanceof Error ? error.message : "Unknown error",
       });
     } finally {
-      sqlEditorWorksheetStore.autoSaveController = null;
+      setAutoSaveController(null);
       if (!wasAborted) {
         const currentStatement = tabStore.getTabById(tabId)?.statement;
         if (currentStatement !== statementToSave) {
