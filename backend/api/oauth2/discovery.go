@@ -38,7 +38,20 @@ type protectedResourceMetadata struct {
 func (s *Service) getBaseURL(c *echo.Context) string {
 	ctx := c.Request().Context()
 
-	workspaceID, _ := s.getWorkspaceFromRequest(c)
+	// The --external-url CLI flag (profile.ExternalURL) short-circuits the
+	// lookup. Otherwise on self-hosted we resolve the singleton workspace ID
+	// first so GetEffectiveExternalURL can find the DB-backed
+	// workspace_profile.external_url setting. On SaaS there is no singleton
+	// — the CLI flag is required.
+	if s.profile.ExternalURL != "" {
+		return strings.TrimSuffix(s.profile.ExternalURL, "/")
+	}
+	workspaceID := ""
+	if !s.profile.SaaS {
+		if ws, err := s.store.GetWorkspaceID(ctx); err == nil {
+			workspaceID = ws
+		}
+	}
 	externalURL, err := utils.GetEffectiveExternalURL(ctx, s.store, s.profile, workspaceID)
 	if err != nil {
 		slog.Warn("failed to get external url for OAuth2", log.BBError(err))
@@ -62,7 +75,7 @@ func (s *Service) getBaseURL(c *echo.Context) string {
 
 func (s *Service) handleDiscovery(c *echo.Context) error {
 	baseURL := s.getBaseURL(c)
-	oauthBase := s.getOAuthBasePath(c, baseURL)
+	oauthBase := fmt.Sprintf("%s/api/oauth2", baseURL)
 	metadata := &authorizationServerMetadata{
 		Issuer:                            baseURL,
 		AuthorizationEndpoint:             fmt.Sprintf("%s/authorize", oauthBase),
@@ -77,24 +90,31 @@ func (s *Service) handleDiscovery(c *echo.Context) error {
 	return c.JSON(http.StatusOK, metadata)
 }
 
-// getOAuthBasePath returns the base path for OAuth2 endpoints.
-// In self-hosted mode, it uses legacy paths that don't require a workspace ID.
-// In SaaS mode, the discovery endpoint cannot resolve a workspace ID (the route
-// has no :workspaceID param), so it falls back to templated URLs. SaaS workspace
-// discovery requires a separate mechanism (e.g., workspace-scoped well-known endpoint).
-func (s *Service) getOAuthBasePath(_ *echo.Context, baseURL string) string {
-	if !s.profile.SaaS {
-		return fmt.Sprintf("%s/api/oauth2", baseURL)
-	}
-	return fmt.Sprintf("%s/api/workspaces/:workspaceID/oauth2", baseURL)
-}
-
 // handleProtectedResourceMetadata returns RFC 9728 protected resource metadata.
 // This tells clients which authorization server protects this resource.
+//
+// RFC 9728 §3.3 requires the `resource` value to match the resource the client
+// is accessing. We support both:
+//   - GET /.well-known/oauth-protected-resource         → resource = baseURL
+//   - GET /.well-known/oauth-protected-resource/<path>  → resource = baseURL + /<path>
+//
+// The path-suffixed form lets the `/mcp` endpoint advertise metadata that
+// strict clients validate against the resource URL they actually requested.
 func (s *Service) handleProtectedResourceMetadata(c *echo.Context) error {
 	baseURL := s.getBaseURL(c)
+
+	const wellKnownPrefix = "/.well-known/oauth-protected-resource"
+	resource := baseURL
+	if subPath := strings.TrimPrefix(c.Request().URL.Path, wellKnownPrefix); subPath != "" && subPath != "/" {
+		// Ensure leading slash and trim any trailing slash.
+		if !strings.HasPrefix(subPath, "/") {
+			subPath = "/" + subPath
+		}
+		resource = baseURL + strings.TrimRight(subPath, "/")
+	}
+
 	metadata := &protectedResourceMetadata{
-		Resource:               baseURL,
+		Resource:               resource,
 		AuthorizationServers:   []string{baseURL},
 		BearerMethodsSupported: []string{"header"},
 	}

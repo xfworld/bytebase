@@ -10,6 +10,10 @@ import {
 import { router } from "@/router";
 import { WORKSPACE_ROUTE_LANDING } from "@/router/dashboard/workspaceRoutes";
 import { userNamePrefix, workspaceNamePrefix } from "@/store/modules/v1/common";
+import {
+  broadcastWorkspaceSwitch,
+  workspaceSwitchChannel,
+} from "@/store/workspaceSwitchChannel";
 import { ALL_USERS_USER_EMAIL } from "@/types";
 import { SwitchWorkspaceRequestSchema } from "@/types/proto-es/v1/auth_service_pb";
 import type { IamPolicy } from "@/types/proto-es/v1/iam_policy_pb";
@@ -25,14 +29,18 @@ import { getUserListInBinding, isBindingPolicyExpired } from "@/utils";
 import { useActuatorV1Store } from "./actuator";
 import { composePolicyBindings } from "./projectIamPolicy";
 
-// Notify other tabs when the user switches workspace.
-const workspaceSwitchChannel = new BroadcastChannel("bb-workspace-switch");
-workspaceSwitchChannel.onmessage = () => {
+// Listen on the shared cross-tab channel. Using `addEventListener` instead of
+// `onmessage = ...` lets the React-side store register its own handler on the
+// same channel object — and crucially, posts made through that same object
+// (e.g. from the OAuth2 consent page via `switchWorkspaceWithoutRedirect`)
+// will NOT trigger either listener in the sending tab thanks to source-object
+// exclusion.
+workspaceSwitchChannel.addEventListener("message", () => {
   // Another tab switched workspace — full-reload to the landing page
   // to pick up the new cookie and reset all frontend state.
   const landingPath = router.resolve({ name: WORKSPACE_ROUTE_LANDING }).href;
   window.location.href = landingPath;
-};
+});
 
 export const useWorkspaceV1Store = defineStore("workspace_v1", () => {
   const _workspaceIamPolicy = ref<IamPolicy>(create(IamPolicySchema, {}));
@@ -233,15 +241,25 @@ export const useWorkspaceV1Store = defineStore("workspace_v1", () => {
     workspaceList.value = resp.workspaces;
   };
 
-  const switchWorkspace = async (workspaceName: string) => {
+  // switchWorkspaceWithoutRedirect performs the server-side switch and
+  // notifies other tabs, but leaves navigation to the caller. Posting via
+  // the shared `broadcastWorkspaceSwitch` helper uses the single
+  // workspaceSwitchChannel instance both the Vue and React stores listen
+  // on, so source-object exclusion suppresses both in-tab listeners — the
+  // caller (e.g. the OAuth2 consent page) is free to handle its own page
+  // lifecycle via location.reload() without losing the consent URL.
+  const switchWorkspaceWithoutRedirect = async (workspaceName: string) => {
     await authServiceClientConnect.switchWorkspace(
       create(SwitchWorkspaceRequestSchema, {
         workspace: workspaceName,
         web: true,
       })
     );
-    // Notify other tabs to reload with the new workspace.
-    workspaceSwitchChannel.postMessage(workspaceName);
+    broadcastWorkspaceSwitch(workspaceName);
+  };
+
+  const switchWorkspace = async (workspaceName: string) => {
+    await switchWorkspaceWithoutRedirect(workspaceName);
     // Full-reload to the landing page to reset all frontend state.
     // Reloading the current URL would fail if the page is project-scoped
     // (the project likely doesn't exist in the target workspace).
@@ -263,5 +281,6 @@ export const useWorkspaceV1Store = defineStore("workspace_v1", () => {
     fetchCurrentWorkspace,
     fetchWorkspaceList,
     switchWorkspace,
+    switchWorkspaceWithoutRedirect,
   };
 });
