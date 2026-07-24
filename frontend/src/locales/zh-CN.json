@@ -2106,7 +2106,6 @@
     }
   },
   "rollout": {
-    "no-stages": "暂无阶段",
     "no-tasks-created": "尚未创建任务",
     "pending-tasks-preview": {
       "action": "预览",

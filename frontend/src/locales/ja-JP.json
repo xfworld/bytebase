@@ -2106,7 +2106,6 @@
     }
   },
   "rollout": {
-    "no-stages": "利用可能なステージはありません",
     "no-tasks-created": "まだタスクが作成されていません",
     "pending-tasks-preview": {
       "action": "プレビュー",
